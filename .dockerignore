@@ -1,0 +1,16 @@
+.git
+.gitignore
+.venv
+__pycache__/
+**/__pycache__/
+**pycache**
+*.pyc
+*.pyo
+.env
+.env.*
+uploads/*
+!uploads/.gitkeep
+outputs/*
+!outputs/.gitkeep
+*.pdf
+*.xlsx
