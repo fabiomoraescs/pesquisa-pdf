@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+**/__pycache__/
+*.py[cod]
+
+uploads/*
+!uploads/.gitkeep
+outputs/*
+!outputs/.gitkeep
+
+.env
+*.pdf
+*.xlsx

@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Varredura de PDFs</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+  <script>try { document.documentElement.dataset.theme = localStorage.getItem('varredura-pdf-theme') || 'dark'; } catch (_) { document.documentElement.dataset.theme = 'dark'; }</script>
+</head>
+<body>
+  <main class="container-fluid app-shell px-3 px-lg-5 py-4 py-lg-5">
+    <section class="hero-card">
+      <button class="btn btn-outline-primary theme-icon-button" id="theme-toggle" type="button" aria-label="Alternar tema" title="Alternar tema"></button>
+      <h1>Varredura de PDFs</h1>
+      <p class="lead mb-4">Envie seu(s) arquivo(s) em PDF e digite os termos da busca.</p>
+
+      {% with mensagens = get_flashed_messages(with_categories=true) %}
+        {% for categoria, mensagem in mensagens %}
+          <div class="alert alert-{{ categoria }}" role="alert">{{ mensagem }}</div>
+        {% endfor %}
+      {% endwith %}
+
+      <form method="post" enctype="multipart/form-data" id="form-analise">
+        <div class="mb-4">
+          <label for="pdfs" class="form-label">Arquivos PDF</label>
+          <input class="form-control form-control-lg" id="pdfs" name="pdfs" type="file" accept="application/pdf,.pdf" multiple required>
+          <div class="form-text">Você pode selecionar um ou vários PDFs.</div>
+        </div>
+
+        <div class="mb-4">
+          <label for="termos" class="form-label">Termos para pesquisar</label>
+          <textarea class="form-control" id="termos" name="termos" rows="4" placeholder="Ex.: Rio de Janeiro; Rio Grande do Norte; João Pessoa"></textarea>
+          <div class="form-text">Separe os termos por ponto e vírgula. Termos compostos devem permanecer inteiros.</div>
+        </div>
+
+        <div class="mb-4">
+          <label for="arquivo_termos" class="form-label">Arquivo TXT com termos <span class="text-secondary fw-normal">(opcional)</span></label>
+          <input class="form-control" id="arquivo_termos" name="arquivo_termos" type="file" accept="text/plain,.txt">
+          <div class="form-text">Use um termo por linha ou separe-os por ponto e vírgula. As duas fontes são combinadas sem duplicatas.</div>
+        </div>
+
+        <div class="mb-4">
+          <label for="versao" class="form-label">Versão de análise</label>
+          <select class="form-select" id="versao" name="versao">
+            <option value="v1" selected>V1</option>
+            <option value="v2">V2</option>
+          </select>
+        </div>
+
+        <div class="d-flex align-items-center gap-3 flex-wrap">
+          <button class="btn btn-primary btn-lg px-4" type="submit" id="botao-analisar">Analisar</button>
+          <span class="text-secondary" id="status-envio" aria-live="polite"></span>
+        </div>
+      </form>
+    </section>
+  </main>
+  <div class="loading-overlay" id="overlay-processamento" hidden aria-hidden="true">
+    <section class="loading-panel" role="status" aria-live="assertive" aria-labelledby="titulo-processamento">
+      <div class="loading-spinner" aria-hidden="true"></div>
+      <h2 id="titulo-processamento">Processando os arquivos...</h2>
+      <p>Aguarde enquanto os PDFs são analisados. Esse processo pode levar alguns minutos.</p>
+    </section>
+  </div>
+  <script>
+    (() => {
+      const formulario = document.getElementById('form-analise');
+      const botao = document.getElementById('botao-analisar');
+      const status = document.getElementById('status-envio');
+      const overlay = document.getElementById('overlay-processamento');
+      let enviando = false;
+
+      function restaurarFormulario() {
+        enviando = false;
+        botao.disabled = false;
+        formulario.removeAttribute('aria-busy');
+        document.body.classList.remove('is-processing');
+        overlay.hidden = true;
+        overlay.setAttribute('aria-hidden', 'true');
+      }
+
+      formulario.addEventListener('submit', (evento) => {
+        if (enviando) {
+          evento.preventDefault();
+          return;
+        }
+        if (!formulario.checkValidity()) {
+          evento.preventDefault();
+          restaurarFormulario();
+          formulario.reportValidity();
+          return;
+        }
+
+        enviando = true;
+        botao.disabled = true;
+        formulario.setAttribute('aria-busy', 'true');
+        status.textContent = 'Processamento iniciado.';
+        overlay.hidden = false;
+        overlay.setAttribute('aria-hidden', 'false');
+        document.body.classList.add('is-processing');
+      });
+
+      formulario.addEventListener('invalid', restaurarFormulario, true);
+      window.addEventListener('pageshow', restaurarFormulario);
+      window.addEventListener('error', restaurarFormulario);
+      window.addEventListener('unhandledrejection', restaurarFormulario);
+    })();
+  </script>
+  <script src="{{ url_for('static', filename='js/interface.js') }}"></script>
+</body>
+</html>

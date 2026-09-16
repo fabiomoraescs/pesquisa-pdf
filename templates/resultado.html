@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Resultados — Varredura de PDFs</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+  <script>try { document.documentElement.dataset.theme = localStorage.getItem('varredura-pdf-theme') || 'dark'; } catch (_) { document.documentElement.dataset.theme = 'dark'; }</script>
+</head>
+<body class="page-results">
+  <main class="container-fluid app-shell px-3 px-lg-5 py-4 py-lg-5">
+    <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-4">
+      <div>
+        <span class="eyebrow">ANÁLISE CONCLUÍDA</span>
+        <h1 class="mb-1">Resultados da varredura</h1>
+        <p class="text-secondary mb-0">Os gráficos têm controles interativos e o ícone de câmera na barra do Plotly baixa o gráfico como PNG.</p>
+      </div>
+      <div class="app-actions">
+        <a href="{{ url_for('inicio') }}" class="btn btn-outline-primary">Nova análise</a>
+      </div>
+    </div>
+
+    {% if resultado.erros %}
+      <div class="alert alert-warning">
+        <strong>Alguns arquivos não puderam ser analisados.</strong>
+        <ul class="mb-0 mt-2">
+          {% for erro in resultado.erros %}<li><span class="fw-semibold">{{ erro.arquivo }}:</span> {{ erro.mensagem }}</li>{% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+
+    <section class="row g-3 mb-4" aria-label="Indicadores">
+      <div class="col-6 col-lg-3"><div class="metric-card"><span>PDFs analisados</span><strong id="indicador-pdfs">0</strong></div></div>
+      <div class="col-6 col-lg-3"><div class="metric-card"><span>Termos pesquisados</span><strong id="indicador-termos">0</strong></div></div>
+      <div class="col-6 col-lg-3"><div class="metric-card"><span>Ocorrências encontradas</span><strong id="indicador-ocorrencias">0</strong></div></div>
+      <div class="col-6 col-lg-3"><div class="metric-card"><span>Páginas com OCR</span><strong id="indicador-ocr">0</strong></div></div>
+    </section>
+
+    <section class="download-card mb-4">
+      <h2 class="h5">Planilhas geradas</h2>
+      <div class="d-flex gap-2 flex-wrap">
+        {% for arquivo in resultado.arquivos %}
+          <a class="btn {% if arquivo.consolidado %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{{ url_for('download', identificador=identificador, nome_arquivo=arquivo.nome) }}">{{ arquivo.rotulo }}</a>
+        {% endfor %}
+      </div>
+      {% if not resultado.arquivos %}<p class="mb-0 text-secondary">Não houve planilha gerada porque nenhum PDF foi processado com sucesso.</p>{% endif %}
+    </section>
+
+    <section class="row g-4 mb-4 dashboard-grid">
+      <div class="col-12 col-lg-6">
+        <div class="chart-card">
+          <div class="chart-header"><h2>Ocorrências por termo</h2><label for="tipo-termo">Visualização</label><select class="form-select form-select-sm chart-select" id="tipo-termo"><option value="barras" selected>Barras</option><option value="pizza">Pizza</option><option value="rosca">Rosca</option><option value="treemap">Treemap</option></select></div>
+          <p id="aviso-termo" class="chart-advice" hidden>Para muitas categorias, Barras ou Treemap podem facilitar a leitura.</p>
+          <div id="grafico-termo" class="chart"></div>
+        </div>
+      </div>
+      <div class="col-12 col-lg-6">
+        <div class="chart-card">
+          <div class="chart-header"><h2>Ocorrências por livro</h2><label for="tipo-livro">Visualização</label><select class="form-select form-select-sm chart-select" id="tipo-livro"><option value="barras" selected>Barras</option><option value="pizza">Pizza</option><option value="rosca">Rosca</option></select></div>
+          <p id="aviso-livro" class="chart-advice" hidden>Para muitas categorias, Barras ou Treemap podem facilitar a leitura.</p>
+          <div id="grafico-livro" class="chart"></div>
+        </div>
+      </div>
+      <div class="col-12 col-lg-6">
+        <div class="chart-card">
+          <div class="chart-header"><h2>Ocorrências por contexto sociológico</h2><label for="tipo-contexto">Visualização</label><select class="form-select form-select-sm chart-select" id="tipo-contexto"><option value="barras" selected>Barras</option><option value="pizza">Pizza</option><option value="rosca">Rosca</option><option value="treemap">Treemap</option></select></div>
+          <p id="aviso-contexto" class="chart-advice" hidden>Para muitas categorias, Barras ou Treemap podem facilitar a leitura.</p>
+          <div id="grafico-contexto" class="chart"></div>
+        </div>
+      </div>
+      <div class="col-12 col-lg-6">
+        <div class="chart-card">
+          <div class="chart-header"><h2>Comparação entre termo e livro</h2><label for="tipo-comparacao">Visualização</label><select class="form-select form-select-sm chart-select" id="tipo-comparacao"><option value="agrupadas">Barras agrupadas</option><option value="empilhadas">Barras empilhadas</option><option value="heatmap" selected>Heatmap</option></select></div>
+          <div id="grafico-comparacao" class="chart"></div>
+        </div>
+      </div>
+      <div class="col-12 col-lg-6">
+        <div class="chart-card">
+          <div class="chart-header"><h2>Contextos sociológicos por livro</h2><span class="chart-subtitle">Composição percentual por livro</span></div>
+          <div id="grafico-contextos-livro" class="chart"></div>
+        </div>
+      </div>
+      <div class="col-12 col-lg-6">
+        <div class="chart-card">
+          <div class="chart-header"><h2>Concentração das ocorrências por termo</h2><span class="chart-subtitle">Pareto</span></div>
+          <div id="grafico-pareto" class="chart"></div>
+        </div>
+      </div>
+      <div class="col-12">
+        <div class="chart-card">
+          <div class="chart-header"><h2>Fluxos entre termos, contextos e livros</h2><span class="chart-subtitle">Termo → Contexto sociológico → Livro</span></div>
+          <p id="aviso-sankey" class="chart-advice" hidden></p>
+          <div id="grafico-sankey" class="chart chart-sankey"></div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+  <script id="dados-dashboard" type="application/json">{{ resultado.dashboard | tojson }}</script>
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+  <script src="{{ url_for('static', filename='js/interface.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+</body>
+</html>
