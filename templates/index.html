@@ -11,7 +11,12 @@
 <body>
   <main class="container-fluid app-shell px-3 px-lg-5 py-4 py-lg-5">
     <section class="hero-card">
-      <button class="btn btn-outline-primary theme-icon-button" id="theme-toggle" type="button" aria-label="Alternar tema" title="Alternar tema"></button>
+      <div class="hero-actions" aria-label="Controles da aplicação">
+        <button class="btn btn-outline-primary info-icon-button" type="button" data-bs-toggle="modal" data-bs-target="#modal-como-funciona" aria-label="Como funciona a busca" title="Como funciona a busca">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 10v6M12 7h.01"></path></svg>
+        </button>
+        <button class="btn btn-outline-primary theme-icon-button" id="theme-toggle" type="button" aria-label="Alternar tema" title="Alternar tema"></button>
+      </div>
       <h1>Varredura de PDFs</h1>
       <p class="lead mb-4">Envie seu(s) arquivo(s) em PDF e digite os termos da busca.</p>
 
@@ -23,30 +28,67 @@
 
       <form method="post" enctype="multipart/form-data" id="form-analise">
         <div class="mb-4">
-          <label for="pdfs" class="form-label">Arquivos PDF</label>
-          <input class="form-control form-control-lg" id="pdfs" name="pdfs" type="file" accept="application/pdf,.pdf" multiple required>
+          <label for="pdfs" class="form-label file-upload-label">Arquivos PDF</label>
+          <input class="form-control file-upload-input" id="pdfs" name="pdfs" type="file" accept="application/pdf,.pdf" multiple required>
           <div class="form-text">Você pode selecionar um ou vários PDFs.</div>
         </div>
 
         <div class="mb-4">
           <label for="termos" class="form-label">Termos para pesquisar</label>
-          <textarea class="form-control" id="termos" name="termos" rows="4" placeholder="Ex.: Rio de Janeiro; Rio Grande do Norte; João Pessoa"></textarea>
-          <div class="form-text">Separe os termos por ponto e vírgula. Termos compostos devem permanecer inteiros.</div>
+          <textarea class="form-control" id="termos" name="termos" rows="4" placeholder="Ex.: Rio de Janeiro; Rio Grande do Norte; João Pessoa" aria-describedby="ajuda-termos erro-separador-termos"></textarea>
+          <div class="form-text" id="ajuda-termos">Separe os termos por ponto e vírgula ou coloque um termo por linha. Termos compostos devem permanecer inteiros.</div>
+          <div class="terms-separator-error" id="erro-separador-termos" role="alert" hidden>
+            <strong>Use ponto e vírgula ou coloque um termo por linha.</strong>
+            <span>Exemplo: Nordeste; São Paulo; Rio de Janeiro</span>
+          </div>
         </div>
 
         <div class="mb-4">
-          <label for="arquivo_termos" class="form-label">Arquivo TXT com termos <span class="text-secondary fw-normal">(opcional)</span></label>
-          <input class="form-control" id="arquivo_termos" name="arquivo_termos" type="file" accept="text/plain,.txt">
+          <label for="arquivo_termos" class="form-label file-upload-label">Arquivo TXT com termos <span class="text-secondary fw-normal">(opcional)</span></label>
+          <input class="form-control file-upload-input" id="arquivo_termos" name="arquivo_termos" type="file" accept="text/plain,.txt">
           <div class="form-text">Use um termo por linha ou separe-os por ponto e vírgula. As duas fontes são combinadas sem duplicatas.</div>
         </div>
 
         <div class="mb-4">
-          <label for="versao" class="form-label">Versão de análise</label>
-          <select class="form-select" id="versao" name="versao">
-            <option value="v1" selected>V1</option>
-            <option value="v2">V2</option>
+          <label for="versao" class="form-label">Método de varredura</label>
+          <select class="form-select" id="versao" name="versao" required aria-describedby="ajuda-metodo">
+            <option value="" selected disabled>Escolha o método de varredura</option>
+            <option value="v1">V1: Busca lexical detalhada</option>
+            <option value="v2">V2: Busca lexical (planilha simplificada)</option>
+            <option value="v3">V3: Busca híbrida (lexical + semântica)</option>
           </select>
+          <div class="form-text" id="ajuda-metodo">Escolha o método de varredura conforme o objetivo da sua busca.</div>
         </div>
+
+        <section class="v3-settings mb-4" id="configuracoes-v3" hidden aria-labelledby="titulo-configuracoes-v3">
+          <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-3">
+            <div>
+              <h2 class="h5 mb-1" id="titulo-configuracoes-v3">Configurações da busca híbrida</h2>
+              <p class="text-secondary mb-0">A V3 combina a busca lexical da V1 com recuperação por similaridade de sentido.</p>
+            </div>
+            <span class="badge text-bg-info">Exploratória</span>
+          </div>
+          <fieldset class="mb-3">
+            <legend class="form-label mb-2">Modalidades incluídas</legend>
+            <div class="form-check form-switch">
+              <input class="form-check-input" type="checkbox" role="switch" id="incluir-lexical" name="incluir_lexical" checked>
+              <label class="form-check-label" for="incluir-lexical">Incluir busca lexical e morfológica</label>
+            </div>
+            <div class="form-check form-switch mt-2">
+              <input class="form-check-input" type="checkbox" role="switch" id="incluir-semantica" name="incluir_semantica" checked>
+              <label class="form-check-label" for="incluir-semantica">Incluir busca semântica</label>
+            </div>
+            <p class="form-text mt-2 mb-0">Você pode combinar as duas modalidades ou utilizá-las separadamente. A busca lexical e morfológica localiza termos efetivamente presentes no texto; a busca semântica recupera também trechos conceitualmente relacionados.</p>
+            <p class="form-text mb-0">Pelo menos uma modalidade deve permanecer selecionada.</p>
+          </fieldset>
+          <div class="v3-threshold" id="controle-limiar-semantico">
+            <label class="form-label d-flex justify-content-between gap-3" for="limiar-semantico"><span>Limiar de similaridade</span><output id="valor-limiar" for="limiar-semantico">0,70</output></label>
+            <input class="form-range" id="limiar-semantico" name="limiar_semantico" type="range" min="0.50" max="0.90" value="0.70" step="0.01" aria-describedby="ajuda-limiar">
+            <div class="d-flex justify-content-between threshold-labels" aria-hidden="true"><span>0,50 · mais exploratória</span><span>0,70 · equilibrada</span><span>0,90 · mais precisa</span></div>
+            <p class="form-text mb-0" id="ajuda-limiar">Valores menores ampliam a recuperação de trechos relacionados; valores maiores tornam a seleção mais restritiva.</p>
+          </div>
+          <p class="semantic-warning mb-0 mt-3" id="aviso-semantico"><strong>Atenção:</strong> resultados semânticos indicam proximidade de sentido e devem ser validados manualmente. Eles não comprovam ocorrência literal do termo.</p>
+        </section>
 
         <div class="d-flex align-items-center gap-3 flex-wrap">
           <button class="btn btn-primary btn-lg px-4" type="submit" id="botao-analisar">Analisar</button>
@@ -55,6 +97,203 @@
       </form>
     </section>
   </main>
+
+  <footer class="app-footer">
+    Desenvolvido por <a href="http://lattes.cnpq.br/0075160400322127" target="_blank" rel="noopener noreferrer">Fabio Monteiro de Moraes</a> - 2026 | Versão beta
+  </footer>
+
+  <div class="modal fade" id="modal-como-funciona" tabindex="-1" aria-labelledby="titulo-modal-como-funciona" aria-describedby="descricao-modal-como-funciona">
+    <div class="modal-dialog modal-dialog-scrollable modal-xl">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 class="modal-title fs-5" id="titulo-modal-como-funciona">Como funciona a busca</h2>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+        </div>
+        <div class="modal-body modal-help" id="descricao-modal-como-funciona">
+          <p class="modal-help__intro">A ferramenta permite localizar termos e expressões em arquivos PDF e analisar os trechos em que aparecem. Dependendo do método de varredura escolhido, a busca pode considerar ocorrências lexicais e morfológicas ou também recuperar trechos por similaridade semântica.</p>
+
+          <section class="modal-help__section" aria-labelledby="modal-termos">
+            <h3 id="modal-termos">Como informar os termos</h3>
+            <p>Digite os termos ou expressões que deseja pesquisar. Separe-os por ponto e vírgula ou coloque um termo por linha. Termos compostos devem permanecer inteiros.</p>
+            <div class="modal-help__examples" aria-label="Exemplos de termos de pesquisa">
+              <p><strong>Em uma linha:</strong> São Paulo; Rio de Janeiro; Nordeste</p>
+              <p class="mb-0"><strong>Um por linha:</strong><br>São Paulo<br>Rio de Janeiro<br>Nordeste</p>
+            </div>
+            <p>São Paulo, Rio de Janeiro e racismo ambiental são exemplos de consultas que permanecem inteiras. Os espaços entre as palavras não dividem uma expressão.</p>
+            <p class="modal-help__notice mb-0"><strong>Atenção:</strong> vírgula e ponto não devem ser utilizados para separar consultas.</p>
+          </section>
+
+          <section class="modal-help__section" aria-labelledby="modal-lexical">
+            <h3 id="modal-lexical">Busca lexical e morfológica</h3>
+            <p>A busca lexical procura o termo ou expressão no texto do PDF. O sistema normaliza algumas diferenças de escrita para ampliar a localização sem transformar a pesquisa em uma busca conceitual.</p>
+            <div class="modal-help__feature-grid">
+              <article class="modal-help__feature">
+                <h4>Maiúsculas e minúsculas</h4>
+                <p>Não há distinção entre letras maiúsculas e minúsculas.</p>
+                <p class="modal-help__example mb-0">Ceará · ceará · CEARÁ</p>
+              </article>
+              <article class="modal-help__feature">
+                <h4>Acentuação</h4>
+                <p>A busca desconsidera diferenças de acentuação.</p>
+                <p class="modal-help__example mb-0">Ceará · ceara</p>
+              </article>
+              <article class="modal-help__feature">
+                <h4>Variações morfológicas</h4>
+                <p>O sistema considera variações simples de gênero e número quando aplicáveis.</p>
+                <p class="modal-help__example mb-0">baiano → baiana, baianos, baianas<br>cearense → cearenses</p>
+              </article>
+              <article class="modal-help__feature">
+                <h4>Termos compostos</h4>
+                <p>Expressões compostas são pesquisadas como uma unidade e mantêm a sequência das palavras.</p>
+                <p class="modal-help__example mb-0">São Paulo · Rio de Janeiro · Rio Grande do Norte · João Pessoa · racismo ambiental</p>
+              </article>
+            </div>
+            <p class="mb-0">A busca lexical e morfológica localiza formas efetivamente presentes no texto. Ela não procura automaticamente conceitos apenas por serem relacionados ao termo pesquisado.</p>
+          </section>
+
+          <section class="modal-help__section" aria-labelledby="modal-diferenca-buscas">
+            <h3 id="modal-diferenca-buscas">Lexical ou semântica: qual é a diferença?</h3>
+            <div class="modal-help__comparison">
+              <p class="mb-2"><strong>Consulta:</strong> racismo ambiental</p>
+              <div>
+                <h4>Busca lexical/morfológica</h4>
+                <p>Localiza trechos nos quais a expressão pesquisada ou uma variação prevista aparece efetivamente no texto.</p>
+              </div>
+              <div>
+                <h4>Busca semântica</h4>
+                <p class="mb-0">Pode recuperar, por exemplo, um trecho que discuta concentração da população negra em áreas periféricas com menor acesso a saneamento e serviços públicos, mesmo sem utilizar literalmente a expressão “racismo ambiental”.</p>
+              </div>
+            </div>
+            <p class="modal-help__notice mb-0"><strong>Por isso, uma correspondência semântica não é o mesmo que uma ocorrência textual.</strong></p>
+          </section>
+
+          <section class="modal-help__section" aria-labelledby="modal-semantica">
+            <h3 id="modal-semantica">Busca semântica</h3>
+            <p>A busca semântica compara a consulta com os trechos do PDF por meio de representações matemáticas do significado dos textos. Ela procura proximidade conceitual, e não apenas repetição de palavras.</p>
+            <p>Isso permite pesquisar palavras, expressões ou pequenas formulações conceituais, como:</p>
+            <ul class="modal-help__list">
+              <li>racismo ambiental;</li>
+              <li>representações estereotipadas do Nordeste;</li>
+              <li>migração provocada pela seca;</li>
+              <li>desigualdade no acesso ao saneamento.</li>
+            </ul>
+            <p class="mb-0">Cada expressão é analisada como uma consulta completa. Por exemplo, “racismo ambiental” não é dividido em buscas independentes por “racismo” e “ambiental”.</p>
+          </section>
+
+          <section class="modal-help__section" aria-labelledby="modal-similaridade">
+            <h3 id="modal-similaridade">Como interpretar a similaridade semântica?</h3>
+            <p>O valor de similaridade indica o grau de proximidade entre a consulta e o trecho recuperado no espaço vetorial utilizado pelo modelo.</p>
+            <p class="modal-help__notice"><strong>Esse valor não representa probabilidade, certeza, precisão estatística ou validação científica do resultado.</strong></p>
+            <p class="mb-0">Quanto maior o limiar definido na V3, mais restritiva tende a ser a recuperação. Limiares menores tornam a busca mais exploratória e podem aumentar também resultados pouco relevantes.</p>
+          </section>
+
+          <section class="modal-help__section" aria-labelledby="modal-metodos">
+            <h3 id="modal-metodos">Qual método escolher?</h3>
+            <div class="modal-help__method-grid">
+              <article class="modal-help__method-card">
+                <h4>V1: Busca lexical detalhada</h4>
+                <p>A V1 utiliza busca lexical e morfológica e é voltada ao exame detalhado das ocorrências encontradas.</p>
+                <p>Ela é indicada quando o pesquisador deseja observar com maior detalhe o contexto textual em que o termo aparece e realizar revisão qualitativa das ocorrências.</p>
+                <ul class="modal-help__list">
+                  <li>busca lexical e morfológica;</li>
+                  <li>maior quantidade de contexto textual;</li>
+                  <li>estrutura detalhada no Excel;</li>
+                  <li>adequada para inspeção e análise qualitativa das ocorrências.</li>
+                </ul>
+                <p class="mb-0"><strong>A V1 não realiza busca semântica.</strong></p>
+              </article>
+              <article class="modal-help__method-card">
+                <h4>V2: Busca lexical (planilha simplificada)</h4>
+                <p>A V2 utiliza a mesma lógica básica de busca lexical e morfológica, mas apresenta os resultados em uma planilha mais enxuta, pensada para codificação e complementação manual.</p>
+                <p><strong>Preenchidos automaticamente:</strong> ID livro, Termo, Página, Contexto sociológico e Descrição.</p>
+                <p><strong>Para preenchimento manual:</strong> Unidade, Capítulo, Seção, Subseção e Tipo de ocorrência.</p>
+                <p>A V2 é indicada quando o pesquisador prefere utilizar os resultados como base para codificação, preenchimento manual ou construção posterior de um banco de dados.</p>
+                <p class="mb-0"><strong>A V2 não realiza busca semântica.</strong></p>
+              </article>
+              <article class="modal-help__method-card">
+                <h4>V3: Busca híbrida (lexical + semântica)</h4>
+                <p>A V3 permite combinar a busca lexical e morfológica com a busca por similaridade semântica.</p>
+                <ul class="modal-help__list">
+                  <li>somente busca lexical e morfológica;</li>
+                  <li>somente busca semântica;</li>
+                  <li>as duas modalidades simultaneamente.</li>
+                </ul>
+                <p>Quando apenas a busca lexical e morfológica estiver ativada, a V3 utiliza a mesma lógica básica de localização lexical da V1. A diferença está na estrutura própria de organização e apresentação dos resultados da V3.</p>
+                <p>Quando a busca semântica estiver ativada, a V3 pode recuperar trechos conceitualmente relacionados mesmo quando o termo pesquisado não aparece literalmente.</p>
+                <p>Para auxiliar a validação qualitativa, a planilha V3 apresenta o trecho recuperado juntamente com o bloco textual anterior e posterior, quando disponíveis.</p>
+                <p class="mb-0"><strong>A V3 mantém separadas as ocorrências lexicais e as correspondências semânticas.</strong></p>
+              </article>
+            </div>
+          </section>
+
+          <section class="modal-help__section" aria-labelledby="modal-tipos-v3">
+            <h3 id="modal-tipos-v3">Tipos de correspondência na V3</h3>
+            <dl class="modal-help__definition-list">
+              <div><dt>Lexical</dt><dd>O termo pesquisado aparece no texto.</dd></div>
+              <div><dt>Morfológica</dt><dd>Uma variação prevista do termo foi localizada.</dd></div>
+              <div><dt>Semântica</dt><dd>O termo não precisa aparecer literalmente; o trecho foi recuperado pela proximidade conceitual com a consulta.</dd></div>
+              <div><dt>Lexical + semântica</dt><dd>O trecho contém uma correspondência lexical e também foi avaliado como semanticamente relacionado.</dd></div>
+            </dl>
+          </section>
+
+          <section class="modal-help__section" aria-labelledby="modal-contagem">
+            <h3 id="modal-contagem">Como os resultados são contados?</h3>
+            <p>Ocorrências lexicais e correspondências semânticas são métricas diferentes e não devem ser interpretadas como a mesma coisa.</p>
+            <p class="modal-help__example">27 ocorrências lexicais<br>20 correspondências semânticas<br>47 resultados recuperados</p>
+            <p class="mb-0">Não seria correto afirmar que existem 47 ocorrências do termo se 20 desses resultados foram recuperados apenas por similaridade semântica.</p>
+          </section>
+
+          <section class="modal-help__section" aria-labelledby="modal-ocr">
+            <h3 id="modal-ocr">O que acontece com PDFs digitalizados?</h3>
+            <p>Quando uma página possui pouco ou nenhum texto extraível, o sistema pode utilizar OCR (reconhecimento óptico de caracteres) para tentar identificar o conteúdo da página.</p>
+            <p>O ambiente atual possui suporte a português e inglês.</p>
+            <p class="mb-0">Como todo reconhecimento automático, o OCR pode produzir erros, especialmente em páginas com baixa resolução, manchas, diagramação complexa ou imagens de texto.</p>
+          </section>
+
+          <section class="modal-help__section" aria-labelledby="modal-contexto">
+            <h3 id="modal-contexto">Contexto sociológico</h3>
+            <p>Depois de localizar um resultado, o sistema procura identificar o contexto sociológico predominante do trecho.</p>
+            <ul class="modal-help__list modal-help__list--columns">
+              <li>Cultura e identidade;</li>
+              <li>Desigualdades sociais e regionais;</li>
+              <li>Migração e mobilidade;</li>
+              <li>Trabalho e relações de produção;</li>
+              <li>Estado, poder e políticas públicas;</li>
+              <li>Raça e relações étnico-raciais;</li>
+              <li>entre outros.</li>
+            </ul>
+            <p class="mb-0">Essa classificação é automática e deve ser revisada pelo pesquisador.</p>
+          </section>
+
+          <section class="modal-help__section" aria-labelledby="modal-descricao">
+            <h3 id="modal-descricao">Descrição</h3>
+            <p>A descrição procura sintetizar como o termo ou trecho participa da passagem, qual assunto está sendo discutido e qual é o foco sociológico do conteúdo.</p>
+            <p class="mb-0">Quando o resultado é exclusivamente semântico, a descrição deve indicar que o trecho foi recuperado por proximidade semântica, sem afirmar que a expressão pesquisada aparece literalmente.</p>
+          </section>
+
+          <section class="modal-help__section" aria-labelledby="modal-limites">
+            <h3 id="modal-limites">O que a ferramenta não faz?</h3>
+            <ul class="modal-help__list mb-0">
+              <li>não substitui a leitura do pesquisador;</li>
+              <li>não determina automaticamente se um trecho é teoricamente relevante;</li>
+              <li>não transforma similaridade semântica em evidência de ocorrência textual;</li>
+              <li>não considera uma classificação automática como validação definitiva;</li>
+              <li>não interpreta os resultados como verdadeiros ou falsos.</li>
+            </ul>
+          </section>
+
+          <p class="modal-help__notice">Os arquivos Excel registram também os parâmetros utilizados na análise, permitindo identificar posteriormente como a varredura foi realizada.</p>
+
+          <aside class="modal-help__methodological-note" aria-label="Aviso metodológico">
+            <strong>Importante:</strong> a ferramenta auxilia a localização, organização e exploração do corpus. OCR, variações linguísticas, classificações de contexto, descrições e correspondências semânticas são procedimentos automáticos e podem exigir revisão e validação pelo pesquisador.
+          </aside>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Fechar</button>
+        </div>
+      </div>
+    </div>
+  </div>
   <div class="loading-overlay" id="overlay-processamento" hidden aria-hidden="true">
     <section class="loading-panel" role="status" aria-live="assertive" aria-labelledby="titulo-processamento">
       <div class="loading-spinner" aria-hidden="true"></div>
@@ -68,7 +307,20 @@
       const botao = document.getElementById('botao-analisar');
       const status = document.getElementById('status-envio');
       const overlay = document.getElementById('overlay-processamento');
+      const campoTermos = document.getElementById('termos');
+      const erroSeparadorTermos = document.getElementById('erro-separador-termos');
       let enviando = false;
+
+      function validarSeparadorDosTermos() {
+        const possuiSeparadorInvalido = /[,.]/.test(campoTermos.value);
+        if (possuiSeparadorInvalido) {
+          campoTermos.setAttribute('aria-invalid', 'true');
+        } else {
+          campoTermos.removeAttribute('aria-invalid');
+        }
+        erroSeparadorTermos.hidden = !possuiSeparadorInvalido;
+        return !possuiSeparadorInvalido;
+      }
 
       function restaurarFormulario() {
         enviando = false;
@@ -82,6 +334,12 @@
       formulario.addEventListener('submit', (evento) => {
         if (enviando) {
           evento.preventDefault();
+          return;
+        }
+        if (!validarSeparadorDosTermos()) {
+          evento.preventDefault();
+          restaurarFormulario();
+          campoTermos.focus();
           return;
         }
         if (!formulario.checkValidity()) {
@@ -100,12 +358,14 @@
         document.body.classList.add('is-processing');
       });
 
+      campoTermos.addEventListener('input', validarSeparadorDosTermos);
       formulario.addEventListener('invalid', restaurarFormulario, true);
       window.addEventListener('pageshow', restaurarFormulario);
       window.addEventListener('error', restaurarFormulario);
       window.addEventListener('unhandledrejection', restaurarFormulario);
     })();
   </script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   <script src="{{ url_for('static', filename='js/interface.js') }}"></script>
 </body>
 </html>

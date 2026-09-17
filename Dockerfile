@@ -2,7 +2,9 @@ FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PORT=5000
+    PORT=5000 \
+    HF_HOME=/app/.cache/huggingface \
+    SENTENCE_TRANSFORMERS_HOME=/app/.cache/sentence-transformers
 
 WORKDIR /app
 
@@ -20,8 +22,8 @@ RUN groupadd --system appuser \
     && useradd --system --gid appuser --create-home appuser
 
 COPY --chown=appuser:appuser . /app
-RUN mkdir -p /app/uploads /app/outputs \
-    && chown -R appuser:appuser /app/uploads /app/outputs
+RUN mkdir -p /app/uploads /app/outputs /app/.cache/huggingface /app/.cache/sentence-transformers \
+    && chown -R appuser:appuser /app/uploads /app/outputs /app/.cache
 
 USER appuser
 

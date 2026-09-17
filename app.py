@@ -1,4 +1,4 @@
-"""Aplicação local Flask para as versões V1 e V2 da Varredura de PDFs."""
+"""Aplicação local Flask para as versões V1, V2 e V3 da Varredura de PDFs."""
 
 from __future__ import annotations
 
@@ -56,6 +56,24 @@ def _nome_disponivel(pasta: Path, nome: str) -> Path:
     return candidato
 
 
+def _configuracoes_v3() -> dict[str, object]:
+    """Lê controles exclusivos da V3 sem afetar as versões lexicais."""
+    try:
+        limiar = float(request.form.get("limiar_semantico", "0.70"))
+    except ValueError:
+        limiar = 0.70
+    return {
+        "incluir_lexical": request.form.get("incluir_lexical") == "on",
+        "incluir_semantica": request.form.get("incluir_semantica") == "on",
+        "limiar_semantico": min(0.90, max(0.50, limiar)),
+    }
+
+
+def _termos_digitados_tem_separador_invalido(texto: str) -> bool:
+    """Impede que o campo manual use separadores diferentes de ponto e vírgula."""
+    return "," in texto or "." in texto
+
+
 @app.errorhandler(413)
 def arquivo_grande(_erro):
     flash("O envio ultrapassa o limite de 1 GB da aplicação local.", "danger")
@@ -67,9 +85,23 @@ def inicio():
     if request.method == "GET":
         return render_template("index.html")
 
-    versao = request.form.get("versao", "v1").casefold()
+    versao = request.form.get("versao", "").casefold()
     if versao not in ANALISADORES:
-        flash("Selecione uma versão de análise válida.", "danger")
+        flash("Escolha a metodologia da varredura antes de iniciar a análise.", "danger")
+        return render_template("index.html")
+
+    texto_termos = request.form.get("termos", "")
+    if _termos_digitados_tem_separador_invalido(texto_termos):
+        flash("Use ponto e vírgula (;) para separar os termos de pesquisa.", "danger")
+        return render_template("index.html")
+
+    configuracoes_v3 = _configuracoes_v3() if versao == "v3" else None
+    if (
+        configuracoes_v3
+        and not configuracoes_v3["incluir_lexical"]
+        and not configuracoes_v3["incluir_semantica"]
+    ):
+        flash("Na V3, selecione a busca lexical, a semântica ou ambas.", "danger")
         return render_template("index.html")
 
     arquivos_pdf = [
@@ -94,7 +126,7 @@ def inicio():
             return render_template("index.html")
         texto_arquivo = ler_arquivo_termos(arquivo_termos.read())
 
-    termos = montar_termos(request.form.get("termos", ""), texto_arquivo, versao)
+    termos = montar_termos(texto_termos, texto_arquivo, versao)
     if not termos:
         flash("Informe pelo menos um termo no campo de texto ou no arquivo TXT.", "danger")
         return render_template("index.html")
@@ -111,7 +143,13 @@ def inicio():
         arquivo.save(destino)
         pdfs_salvos.append(destino)
 
-    resultado = executar_analises(pdfs_salvos, termos, pasta_saida, versao)
+    resultado = executar_analises(
+        pdfs_salvos,
+        termos,
+        pasta_saida,
+        versao,
+        configuracoes_v3,
+    )
     resultado["dashboard"] = criar_dashboard(resultado)
     resultado["pasta_saida"] = pasta_saida
     ANALISES[identificador] = resultado

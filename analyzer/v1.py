@@ -13,6 +13,8 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
 
+from .auditoria import adicionar_aba_parametros, gerar_ids_resultado
+
 
 # O módulo fica em ``analyzer/``; a pasta de trabalho continua sendo a raiz
 # do projeto, como no script de referência.
@@ -1710,7 +1712,8 @@ def formatar_excel(caminho):
                 "Parágrafo anterior",
                 "Parágrafo do termo",
                 "Parágrafo posterior",
-                "Descrição da ocorrência"
+                "Descrição da ocorrência",
+                "Observações do pesquisador",
             }:
                 largura = 70
 
@@ -1724,6 +1727,7 @@ def formatar_excel(caminho):
                 largura = 35
 
             elif titulo in {
+                "ID resultado",
                 "Termo",
                 "Categoria do termo",
                 "Tipo da ocorrência",
@@ -1737,6 +1741,15 @@ def formatar_excel(caminho):
             ws.column_dimensions[
                 get_column_letter(col)
             ].width = largura
+
+        if "ID resultado" in {
+            cell.value for cell in ws[1]
+        }:
+            coluna_id = next(
+                cell.column for cell in ws[1] if cell.value == "ID resultado"
+            )
+            for linha in range(2, ws.max_row + 1):
+                ws.cell(linha, coluna_id).number_format = "@"
 
     if "Ocorrencias" in wb.sheetnames:
         ws = wb["Ocorrencias"]
@@ -1806,9 +1819,12 @@ def salvar_excel_completo(
     arquivo_saida,
     df_completo,
     df_termos,
-    df_diag
+    df_diag,
+    configuracoes=None,
+    indice_livro=1,
 ):
     colunas_saida = [
+        "ID resultado",
         "ID livro",
         "Termo",
         "Parágrafo anterior",
@@ -1823,6 +1839,7 @@ def salvar_excel_completo(
         "Contexto sociológico da ocorrência",
         "Descrição da ocorrência",
         "Validação manual",
+        "Observações do pesquisador",
     ]
 
     if df_completo.empty:
@@ -1830,9 +1847,14 @@ def salvar_excel_completo(
             columns=colunas_saida
         )
     else:
-        df_saida = df_completo[
-            colunas_saida
-        ].copy()
+        df_saida = df_completo.reindex(columns=colunas_saida).copy()
+        df_saida["Observações do pesquisador"] = ""
+
+    df_saida["ID resultado"] = gerar_ids_resultado(
+        df_completo,
+        "V1",
+        indice_livro,
+    )
 
     (
         resumo_termo,
@@ -1887,6 +1909,13 @@ def salvar_excel_completo(
 
     formatar_excel(
         arquivo_saida
+    )
+    adicionar_aba_parametros(
+        arquivo_saida,
+        "v1",
+        df_termos,
+        df_diag,
+        configuracoes,
     )
 
 

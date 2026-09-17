@@ -1,4 +1,4 @@
-"""Orquestração compartilhada para a interface das versões V1 e V2.
+"""Orquestração compartilhada para a interface das versões V1, V2 e V3.
 
 Este módulo só prepara entradas, coordena arquivos e agrega dados para o
 dashboard. A extração, análise e exportação Excel continuam delegadas aos
@@ -12,10 +12,10 @@ from pathlib import Path
 
 import pandas as pd
 
-from . import v1, v2
+from . import v1, v2, v3
 
 
-ANALISADORES = {"v1": v1, "v2": v2}
+ANALISADORES = {"v1": v1, "v2": v2, "v3": v3}
 
 
 def obter_analisador(versao: str):
@@ -97,6 +97,8 @@ def montar_termos(
 def _nome_individual(pdf: Path, versao: str) -> str:
     """Preserva o nome do PDF, aplicando só a sanitização necessária."""
     nome_seguro = re.sub(r'[<>:"/\\|?*]', "_", pdf.stem)
+    if versao == "v3":
+        return f"{nome_seguro}_v3.xlsx"
     return f"resultado_{nome_seguro}_{versao}.xlsx"
 
 
@@ -105,6 +107,7 @@ def executar_analises(
     termos: list[dict[str, str]],
     pasta_saida: Path,
     versao: str = "v1",
+    configuracoes: dict | None = None,
 ) -> dict:
     """Executa a sequência da versão solicitada, sem interação de terminal."""
     analisador = obter_analisador(versao)
@@ -118,12 +121,22 @@ def executar_analises(
     arquivos: list[dict[str, str]] = []
     erros: list[dict[str, str]] = []
 
-    for pdf in pdfs:
+    for indice_livro, pdf in enumerate(pdfs, start=1):
         try:
-            ocorrencias, diagnostico = analisador.analisar_pdf(pdf, termos)
+            if versao == "v3":
+                ocorrencias, diagnostico = analisador.analisar_pdf(
+                    pdf, termos, configuracoes
+                )
+            else:
+                ocorrencias, diagnostico = analisador.analisar_pdf(pdf, termos)
         except Exception as erro:  # permite que os demais PDFs sejam processados
             erros.append({"arquivo": pdf.name, "mensagem": str(erro)})
             continue
+
+        # Metadado interno de exportação: preserva a posição do PDF na análise
+        # para que os IDs individuais e consolidados sejam idênticos e únicos.
+        for ocorrencia in ocorrencias:
+            ocorrencia["_indice_livro"] = indice_livro
 
         df_livro = (
             pd.DataFrame(ocorrencias) if ocorrencias else analisador.dataframe_vazio()
@@ -134,6 +147,8 @@ def executar_analises(
             df_livro,
             df_termos,
             pd.DataFrame([diagnostico]),
+            configuracoes=configuracoes,
+            indice_livro=indice_livro,
         )
 
         arquivos.append(
@@ -155,6 +170,8 @@ def executar_analises(
             df_todos,
             df_termos,
             pd.DataFrame(todos_diagnosticos),
+            configuracoes=configuracoes,
+            indice_livro=1,
         )
         arquivos.append(
             {
@@ -357,7 +374,10 @@ def _dados_sankey(base: pd.DataFrame, livros: list[str]) -> dict:
 
 
 def criar_dashboard(resultado: dict) -> dict:
-    """Converte os dados internos da V1 em payload seguro para a interface."""
+    """Converte dados internos no payload próprio de cada dashboard."""
+    if resultado.get("versao") == "v3":
+        return v3.criar_dashboard(resultado)
+
     df = resultado["ocorrencias"].copy()
     termos = [item["termo"] for item in resultado["termos"]]
     livros = [Path(item["arquivo"]).stem for item in resultado["diagnosticos"].to_dict("records")]

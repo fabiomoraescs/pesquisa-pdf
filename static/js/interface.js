@@ -2,6 +2,14 @@
   const chaveTema = 'varredura-pdf-theme';
   const raiz = document.documentElement;
   const botaoTema = document.getElementById('theme-toggle');
+  const seletorVersao = document.getElementById('versao');
+  const configuracoesV3 = document.getElementById('configuracoes-v3');
+  const opcaoLexical = document.getElementById('incluir-lexical');
+  const opcaoSemantica = document.getElementById('incluir-semantica');
+  const limiarSemantico = document.getElementById('limiar-semantico');
+  const valorLimiar = document.getElementById('valor-limiar');
+  const controleLimiarSemantico = document.getElementById('controle-limiar-semantico');
+  const avisoSemantico = document.getElementById('aviso-semantico');
 
   function temaAtual() {
     return raiz.dataset.theme === 'dark' ? 'dark' : 'light';
@@ -32,6 +40,53 @@
   if (botaoTema) {
     atualizarBotaoTema();
     botaoTema.addEventListener('click', () => aplicarTema(temaAtual() === 'dark' ? 'light' : 'dark'));
+  }
+
+  function atualizarConfiguracoesV3() {
+    if (!configuracoesV3 || !seletorVersao) return;
+    const ativa = seletorVersao.value === 'v3';
+    configuracoesV3.hidden = !ativa;
+    if (opcaoLexical) opcaoLexical.disabled = !ativa;
+    if (opcaoSemantica) opcaoSemantica.disabled = !ativa;
+    atualizarEstadoSemantico();
+  }
+
+  function atualizarEstadoSemantico() {
+    const semanticaAtiva = Boolean(
+      seletorVersao && seletorVersao.value === 'v3' && opcaoSemantica && opcaoSemantica.checked,
+    );
+    if (controleLimiarSemantico) controleLimiarSemantico.hidden = !semanticaAtiva;
+    if (avisoSemantico) avisoSemantico.hidden = !semanticaAtiva;
+    if (limiarSemantico) limiarSemantico.disabled = !semanticaAtiva;
+  }
+
+  function atualizarLimiar() {
+    if (!limiarSemantico || !valorLimiar) return;
+    valorLimiar.value = Number(limiarSemantico.value).toLocaleString('pt-BR', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  }
+
+  function manterUmaModalidade(evento) {
+    if (!opcaoLexical || !opcaoSemantica) return;
+    if (!opcaoLexical.checked && !opcaoSemantica.checked) {
+      evento.currentTarget.checked = true;
+    }
+    atualizarEstadoSemantico();
+  }
+
+  if (seletorVersao) {
+    seletorVersao.addEventListener('change', atualizarConfiguracoesV3);
+    atualizarConfiguracoesV3();
+  }
+  if (opcaoLexical && opcaoSemantica) {
+    opcaoLexical.addEventListener('change', manterUmaModalidade);
+    opcaoSemantica.addEventListener('change', manterUmaModalidade);
+  }
+  if (limiarSemantico) {
+    limiarSemantico.addEventListener('input', atualizarLimiar);
+    atualizarLimiar();
   }
 
   window.addEventListener('resize', () => document.dispatchEvent(new Event('dashboard-redimensionar')));
