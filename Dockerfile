@@ -16,6 +16,16 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt ./
+
+# A V3 utiliza embeddings em CPU. Esta wheel oficial não inclui as bibliotecas
+# CUDA/NVIDIA distribuídas pelas builds aceleradas do PyTorch.
+ARG TORCH_VERSION=2.7.1+cpu
+RUN pip install --no-cache-dir \
+        --index-url https://download.pytorch.org/whl/cpu \
+        "torch==${TORCH_VERSION}"
+
+# requirements.txt não fixa torch; a instalação anterior já satisfaz a
+# dependência de sentence-transformers sem substituir a build CPU-only.
 RUN pip install --no-cache-dir -r requirements.txt
 
 RUN groupadd --system appuser \
