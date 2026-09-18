@@ -10,7 +10,7 @@ from copy import copy
 from openpyxl import load_workbook
 
 from varredura_pdf_v2 import (
-    analisar_pdf,
+    analisar_pdf as _analisar_pdf_referencia,
     carregar_termos_referencia,
     configurar_tesseract,
     contar_ocorrencias,
@@ -29,6 +29,25 @@ from varredura_pdf_v2 import (
 )
 
 from .auditoria import adicionar_aba_parametros, gerar_ids_resultado
+
+
+def analisar_pdf(caminho, termos, progress_callback=None):
+    """Expõe marcos observacionais dos mesmos loops da V2 de referência."""
+    resultado = (
+        _analisar_pdf_referencia(caminho, termos)
+        if progress_callback is None
+        else _analisar_pdf_referencia(
+            caminho, termos, progress_callback=progress_callback
+        )
+    )
+    if progress_callback is not None:
+        progress_callback(
+            {
+                "fase": "analise_v2_concluida",
+                "etapa": "Preparando resultados…",
+            }
+        )
+    return resultado
 
 
 def salvar_excel_completo(

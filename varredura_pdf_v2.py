@@ -615,26 +615,46 @@ def ocr_pagina(pagina, idioma):
 # EXTRAÇÃO E ESTRUTURA DO PDF
 # ============================================================
 
-def estimar_fonte_corpo(documento):
+def _emitir_progresso(progress_callback, **evento):
+    """Publica metadados de unidades já concluídas, quando solicitado."""
+    if progress_callback is not None:
+        progress_callback(evento)
+
+
+def estimar_fonte_corpo(documento, progress_callback=None):
     tamanhos = Counter()
+    total_paginas = len(documento)
+    passo_progresso = max(1, total_paginas // 100)
 
-    for pagina in documento:
+    for numero_pagina, pagina in enumerate(documento, start=1):
         if pagina_precisa_ocr(pagina):
-            continue
+            dados = None
+        else:
+            dados = pagina.get_text("dict")
 
-        dados = pagina.get_text("dict")
+            for bloco in dados.get("blocks", []):
+                if bloco.get("type") != 0:
+                    continue
 
-        for bloco in dados.get("blocks", []):
-            if bloco.get("type") != 0:
-                continue
+                for linha in bloco.get("lines", []):
+                    for span in linha.get("spans", []):
+                        texto = (span.get("text") or "").strip()
 
-            for linha in bloco.get("lines", []):
-                for span in linha.get("spans", []):
-                    texto = (span.get("text") or "").strip()
+                        if texto:
+                            tamanho = round(span.get("size", 0), 1)
+                            tamanhos[tamanho] += len(texto)
 
-                    if texto:
-                        tamanho = round(span.get("size", 0), 1)
-                        tamanhos[tamanho] += len(texto)
+        if (
+            numero_pagina == total_paginas
+            or numero_pagina % passo_progresso == 0
+        ):
+            _emitir_progresso(
+                progress_callback,
+                fase="estimando_fonte",
+                etapa="Lendo PDFs…",
+                pagina_atual=numero_pagina,
+                paginas_total=total_paginas,
+            )
 
     return tamanhos.most_common(1)[0][0] if tamanhos else 11.0
 
@@ -847,9 +867,21 @@ def classificar_tipo_ocorrencia(
     return "outro local"
 
 
-def extrair_pdf(caminho):
+def extrair_pdf(caminho, progress_callback=None):
     documento = pymupdf.open(caminho)
-    fonte_corpo = estimar_fonte_corpo(documento)
+    total_paginas = len(documento)
+    _emitir_progresso(
+        progress_callback,
+        fase="leitura_pdf",
+        etapa="Lendo PDFs…",
+        pagina_atual=0,
+        paginas_total=total_paginas,
+    )
+    fonte_corpo = (
+        estimar_fonte_corpo(documento)
+        if progress_callback is None
+        else estimar_fonte_corpo(documento, progress_callback=progress_callback)
+    )
 
     tesseract = configurar_tesseract()
     idioma_ocr = (
@@ -957,6 +989,14 @@ def extrair_pdf(caminho):
                 "tipo_estrutura": tipo_estrutura or "",
                 "tipo_ocorrencia": tipo_ocorrencia,
             })
+
+        _emitir_progresso(
+            progress_callback,
+            fase="ocr" if usar_ocr else "paginas",
+            etapa="Executando OCR…" if usar_ocr else "Analisando páginas…",
+            pagina_atual=numero_pagina,
+            paginas_total=total_paginas,
+        )
 
     documento.close()
 
@@ -1491,7 +1531,7 @@ def id_livro(caminho):
     return caminho.stem
 
 
-def analisar_pdf(caminho, termos):
+def analisar_pdf(caminho, termos, progress_callback=None):
     print(f"\nAnalisando: {caminho.name}")
 
     (
@@ -1499,9 +1539,22 @@ def analisar_pdf(caminho, termos):
         paginas_texto,
         paginas_ocr,
         idioma_ocr
-    ) = extrair_pdf(caminho)
+    ) = (
+        extrair_pdf(caminho)
+        if progress_callback is None
+        else extrair_pdf(caminho, progress_callback=progress_callback)
+    )
 
     ocorrencias = []
+    total_blocos = len(blocos)
+    passo_progresso = max(1, total_blocos // 100)
+    _emitir_progresso(
+        progress_callback,
+        fase="busca_lexical",
+        etapa="Executando busca lexical…",
+        bloco_atual=0,
+        blocos_total=total_blocos,
+    )
 
     for indice, bloco in enumerate(blocos):
         atual = bloco["texto"]
@@ -1572,6 +1625,18 @@ def analisar_pdf(caminho, termos):
                 "_quantidade_no_registro": quantidade,
                 "_metodo": bloco["metodo"],
             })
+
+        if (
+            indice == total_blocos - 1
+            or (indice + 1) % passo_progresso == 0
+        ):
+            _emitir_progresso(
+                progress_callback,
+                fase="busca_lexical",
+                etapa="Executando busca lexical…",
+                bloco_atual=indice + 1,
+                blocos_total=total_blocos,
+            )
 
     diagnostico = {
         "arquivo": caminho.name,

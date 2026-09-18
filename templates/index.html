@@ -26,7 +26,7 @@
         {% endfor %}
       {% endwith %}
 
-      <form method="post" enctype="multipart/form-data" id="form-analise">
+      <form method="post" enctype="multipart/form-data" id="form-analise" data-job-inicial="{{ job_inicial|default('', true) }}">
         <div class="mb-4">
           <label for="pdfs" class="form-label file-upload-label">Arquivos PDF</label>
           <input class="form-control file-upload-input" id="pdfs" name="pdfs" type="file" accept="application/pdf,.pdf" multiple required>
@@ -298,7 +298,15 @@
     <section class="loading-panel" role="status" aria-live="assertive" aria-labelledby="titulo-processamento">
       <div class="loading-spinner" aria-hidden="true"></div>
       <h2 id="titulo-processamento">Processando os arquivos...</h2>
-      <p>Aguarde enquanto os PDFs são analisados. Esse processo pode levar alguns minutos.</p>
+      <p id="mensagem-processamento">Aguarde enquanto os PDFs são analisados. Esse processo pode levar alguns minutos.</p>
+      <div class="loading-progress" id="progresso-processamento" role="progressbar" aria-label="Progresso da análise" aria-valuemin="0" aria-valuemax="100" aria-valuetext="Progresso ainda não disponível">
+        <div class="loading-progress__bar" id="barra-progresso-processamento"></div>
+      </div>
+      <p class="loading-progress-detail" id="detalhe-processamento">Preparando análise…</p>
+      <div class="loading-time" aria-live="polite">
+        <span id="tempo-decorrido-processamento">Tempo decorrido: 0 s</span>
+        <span id="tempo-restante-processamento">Calculando tempo restante…</span>
+      </div>
     </section>
   </div>
   <script>
@@ -309,7 +317,137 @@
       const overlay = document.getElementById('overlay-processamento');
       const campoTermos = document.getElementById('termos');
       const erroSeparadorTermos = document.getElementById('erro-separador-termos');
+      const tituloProcessamento = document.getElementById('titulo-processamento');
+      const mensagemProcessamento = document.getElementById('mensagem-processamento');
+      const progressoProcessamento = document.getElementById('progresso-processamento');
+      const barraProgresso = document.getElementById('barra-progresso-processamento');
+      const detalheProcessamento = document.getElementById('detalhe-processamento');
+      const tempoDecorrido = document.getElementById('tempo-decorrido-processamento');
+      const tempoRestante = document.getElementById('tempo-restante-processamento');
       let enviando = false;
+      let inicioProcessamento = null;
+      let temporizadorDecorrido = null;
+      let temporizadorPolling = null;
+
+      function formatarDuracao(segundos) {
+        const total = Math.max(0, Math.round(segundos));
+        const minutos = Math.floor(total / 60);
+        const restante = total % 60;
+        if (!minutos) return `${restante} s`;
+        return `${minutos} min${restante ? ` ${restante} s` : ''}`;
+      }
+
+      function atualizarTempoDecorrido() {
+        if (!inicioProcessamento || !tempoDecorrido) return;
+        tempoDecorrido.textContent = `Tempo decorrido: ${formatarDuracao((Date.now() - inicioProcessamento) / 1000)}`;
+      }
+
+      function definirEstadoIndeterminado() {
+        tituloProcessamento.textContent = 'Processando os arquivos...';
+        mensagemProcessamento.textContent = 'Aguarde enquanto os PDFs são analisados. Esse processo pode levar alguns minutos.';
+        detalheProcessamento.textContent = 'Preparando análise…';
+        tempoRestante.textContent = 'Calculando tempo restante…';
+        progressoProcessamento.classList.add('is-indeterminate');
+        progressoProcessamento.removeAttribute('aria-valuenow');
+        progressoProcessamento.setAttribute('aria-valuetext', 'Progresso ainda não disponível');
+        barraProgresso.style.width = '';
+      }
+
+      function resumoDaEtapa(progresso) {
+        if (progresso.preparandoModelo) {
+          mensagemProcessamento.textContent = 'A primeira análise semântica pode levar mais tempo.';
+          return 'Preparando modelo semântico…';
+        }
+        const possuiContagemDeBlocos = Number.isFinite(progresso.blocosProcessados)
+          && Number.isFinite(progresso.totalBlocos)
+          && progresso.blocosProcessados >= 0
+          && progresso.totalBlocos > 0;
+        if (
+          possuiContagemDeBlocos
+          && ['busca_lexical', 'preparando_blocos_semanticos', 'codificando_blocos_semanticos', 'comparando_semantica'].includes(progresso.fase)
+        ) {
+          return `${progresso.blocosProcessados} de ${progresso.totalBlocos} blocos processados`;
+        }
+        if (progresso.pdfAtual && progresso.totalPdfs && progresso.paginaAtual && progresso.totalPaginas) {
+          return `PDF ${progresso.pdfAtual} de ${progresso.totalPdfs} · página ${progresso.paginaAtual} de ${progresso.totalPaginas}`;
+        }
+        if (progresso.blocosProcessados && progresso.totalBlocos) {
+          return `${progresso.blocosProcessados} de ${progresso.totalBlocos} blocos processados`;
+        }
+        return progresso.detalhe || 'Preparando análise…';
+      }
+
+      // Ponto de integração para uma futura fonte de dados real (polling, SSE
+      // ou WebSocket). Nenhum valor é calculado ou simulado no navegador.
+      function atualizarProgressoProcessamento(progresso = {}) {
+        const percentual = progresso.percentual;
+        const percentualDisponivel = typeof percentual === 'number'
+          && Number.isFinite(percentual)
+          && percentual >= 0
+          && percentual <= 100;
+        const etapa = progresso.etapa || (progresso.preparandoModelo ? 'Preparando modelo semântico…' : 'Preparando análise…');
+
+        mensagemProcessamento.textContent = progresso.mensagem
+          || (progresso.preparandoModelo
+            ? 'A primeira análise semântica pode levar mais tempo.'
+            : 'Aguarde enquanto os PDFs são analisados. Esse processo pode levar alguns minutos.');
+        const contextoDaEtapa = resumoDaEtapa(progresso);
+        detalheProcessamento.textContent = (
+          !progresso.preparandoModelo && contextoDaEtapa && contextoDaEtapa !== etapa
+            ? `Etapa: ${etapa}\n${contextoDaEtapa}`
+            : `Etapa: ${etapa}`
+        );
+
+        if (percentualDisponivel) {
+          const valor = Math.round(percentual);
+          tituloProcessamento.textContent = `Processando os arquivos — ${valor}%`;
+          progressoProcessamento.classList.remove('is-indeterminate');
+          progressoProcessamento.setAttribute('aria-valuenow', String(valor));
+          progressoProcessamento.setAttribute('aria-valuetext', `Progresso: ${valor}%`);
+          barraProgresso.style.width = `${valor}%`;
+        } else {
+          tituloProcessamento.textContent = progresso.preparandoModelo ? 'Preparando modelo semântico…' : 'Processando os arquivos...';
+          progressoProcessamento.classList.add('is-indeterminate');
+          progressoProcessamento.removeAttribute('aria-valuenow');
+          progressoProcessamento.setAttribute('aria-valuetext', 'Progresso ainda não disponível');
+          barraProgresso.style.width = '';
+        }
+
+        const etaDisponivel = typeof progresso.etaSegundos === 'number'
+          && Number.isFinite(progresso.etaSegundos)
+          && progresso.etaSegundos >= 0;
+        if (etaDisponivel) {
+          tempoRestante.textContent = `Tempo restante estimado: ~${formatarDuracao(progresso.etaSegundos)}`;
+        } else {
+          tempoRestante.textContent = 'Calculando tempo restante…';
+        }
+
+        const tempoDecorridoDisponivel = typeof progresso.tempoDecorrido === 'number'
+          && Number.isFinite(progresso.tempoDecorrido)
+          && progresso.tempoDecorrido >= 0;
+        if (tempoDecorridoDisponivel) {
+          tempoDecorrido.textContent = `Tempo decorrido: ${formatarDuracao(progresso.tempoDecorrido)}`;
+        }
+      }
+
+      function iniciarProcessamento() {
+        definirEstadoIndeterminado();
+        inicioProcessamento = Date.now();
+        atualizarTempoDecorrido();
+        window.clearInterval(temporizadorDecorrido);
+        temporizadorDecorrido = window.setInterval(atualizarTempoDecorrido, 1000);
+      }
+
+      function concluirProcessamento() {
+        tituloProcessamento.textContent = 'Análise concluída';
+        detalheProcessamento.textContent = 'Abrindo os resultados…';
+        progressoProcessamento.classList.remove('is-indeterminate');
+        progressoProcessamento.setAttribute('aria-valuenow', '100');
+        progressoProcessamento.setAttribute('aria-valuetext', 'Progresso: 100%');
+        barraProgresso.style.width = '100%';
+        tempoRestante.textContent = 'Concluído.';
+        window.clearInterval(temporizadorDecorrido);
+      }
 
       function validarSeparadorDosTermos() {
         const possuiSeparadorInvalido = /[,.]/.test(campoTermos.value);
@@ -327,42 +465,137 @@
         botao.disabled = false;
         formulario.removeAttribute('aria-busy');
         document.body.classList.remove('is-processing');
+        window.clearInterval(temporizadorDecorrido);
+        window.clearTimeout(temporizadorPolling);
+        inicioProcessamento = null;
         overlay.hidden = true;
         overlay.setAttribute('aria-hidden', 'true');
       }
 
-      formulario.addEventListener('submit', (evento) => {
+      function mostrarErro(mensagem) {
+        status.textContent = mensagem;
+        status.classList.remove('text-secondary');
+        status.classList.add('text-danger');
+      }
+
+      function prepararFormularioParaProcessamento() {
+        enviando = true;
+        botao.disabled = true;
+        formulario.setAttribute('aria-busy', 'true');
+        status.classList.remove('text-danger');
+        status.classList.add('text-secondary');
+        status.textContent = 'Processamento iniciado.';
+        iniciarProcessamento();
+        overlay.hidden = false;
+        overlay.setAttribute('aria-hidden', 'false');
+        document.body.classList.add('is-processing');
+      }
+
+      function pararPolling() {
+        window.clearTimeout(temporizadorPolling);
+        temporizadorPolling = null;
+      }
+
+      function iniciarPolling(urlProgresso) {
+        pararPolling();
+
+        const consultar = async () => {
+          try {
+            const resposta = await fetch(urlProgresso, { headers: { Accept: 'application/json' } });
+            const dados = await resposta.json();
+            if (!resposta.ok) throw new Error(dados.erro || 'Não foi possível consultar o andamento da análise.');
+
+            atualizarProgressoProcessamento({
+              percentual: dados.percentual,
+              etapa: dados.etapa,
+              fase: dados.fase,
+              mensagem: dados.mensagem,
+              preparandoModelo: dados.preparando_modelo,
+              pdfAtual: dados.arquivo_indice,
+              totalPdfs: dados.arquivos_total,
+              paginaAtual: dados.pagina_atual,
+              totalPaginas: dados.paginas_total,
+              blocosProcessados: dados.bloco_atual,
+              totalBlocos: dados.blocos_total,
+              etaSegundos: dados.eta_segundos,
+              tempoDecorrido: dados.tempo_decorrido,
+            });
+
+            if (dados.status === 'concluido') {
+              pararPolling();
+              concluirProcessamento();
+              window.setTimeout(() => { window.location.assign(dados.resultado_url); }, 450);
+              return;
+            }
+            if (dados.status === 'erro') {
+              pararPolling();
+              restaurarFormulario();
+              mostrarErro(dados.erro || 'Não foi possível concluir a análise. Tente novamente.');
+              return;
+            }
+            temporizadorPolling = window.setTimeout(consultar, 1000);
+          } catch (erro) {
+            pararPolling();
+            restaurarFormulario();
+            mostrarErro(erro.message || 'Não foi possível acompanhar a análise. Tente novamente.');
+          }
+        };
+
+        consultar();
+      }
+
+      formulario.addEventListener('submit', async (evento) => {
+        evento.preventDefault();
         if (enviando) {
-          evento.preventDefault();
           return;
         }
         if (!validarSeparadorDosTermos()) {
-          evento.preventDefault();
           restaurarFormulario();
           campoTermos.focus();
           return;
         }
         if (!formulario.checkValidity()) {
-          evento.preventDefault();
           restaurarFormulario();
           formulario.reportValidity();
           return;
         }
 
-        enviando = true;
-        botao.disabled = true;
-        formulario.setAttribute('aria-busy', 'true');
-        status.textContent = 'Processamento iniciado.';
-        overlay.hidden = false;
-        overlay.setAttribute('aria-hidden', 'false');
-        document.body.classList.add('is-processing');
+        prepararFormularioParaProcessamento();
+        try {
+          const resposta = await fetch(formulario.action || window.location.href, {
+            method: 'POST',
+            body: new FormData(formulario),
+            headers: {
+              'X-Requested-With': 'XMLHttpRequest',
+              Accept: 'application/json',
+            },
+          });
+          const dados = await resposta.json();
+          if (!resposta.ok || !dados.progresso_url) {
+            throw new Error(dados.erro || 'Não foi possível iniciar a análise.');
+          }
+          iniciarPolling(dados.progresso_url);
+        } catch (erro) {
+          restaurarFormulario();
+          mostrarErro(erro.message || 'Não foi possível iniciar a análise. Tente novamente.');
+        }
       });
 
       campoTermos.addEventListener('input', validarSeparadorDosTermos);
       formulario.addEventListener('invalid', restaurarFormulario, true);
-      window.addEventListener('pageshow', restaurarFormulario);
+      window.addEventListener('pageshow', () => {
+        if (!formulario.dataset.jobInicial) restaurarFormulario();
+      });
       window.addEventListener('error', restaurarFormulario);
       window.addEventListener('unhandledrejection', restaurarFormulario);
+      window.addEventListener('progresso-processamento', (evento) => atualizarProgressoProcessamento(evento.detail));
+      window.atualizarProgressoProcessamento = atualizarProgressoProcessamento;
+      window.concluirProcessamento = concluirProcessamento;
+
+      if (formulario.dataset.jobInicial) {
+        prepararFormularioParaProcessamento();
+        iniciarPolling(`/api/progresso/${encodeURIComponent(formulario.dataset.jobInicial)}`);
+      }
     })();
   </script>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>

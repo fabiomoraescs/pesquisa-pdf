@@ -11,6 +11,7 @@ import re
 from pathlib import Path
 
 import pandas as pd
+import pymupdf
 
 from . import v1, v2, v3
 
@@ -102,14 +103,37 @@ def _nome_individual(pdf: Path, versao: str) -> str:
     return f"resultado_{nome_seguro}_{versao}.xlsx"
 
 
+def _contar_paginas_para_progresso(pdfs: list[Path]) -> list[int | None]:
+    """Lê apenas metadados baratos para ponderar o progresso por PDF."""
+    contagens: list[int | None] = []
+    for pdf in pdfs:
+        documento = None
+        try:
+            documento = pymupdf.open(pdf)
+            contagens.append(len(documento))
+        except Exception:
+            # Uma consulta de metadados não pode impedir o fluxo analítico.
+            contagens.append(None)
+        finally:
+            if documento is not None:
+                documento.close()
+    return contagens
+
+
 def executar_analises(
     pdfs: list[Path],
     termos: list[dict[str, str]],
     pasta_saida: Path,
     versao: str = "v1",
     configuracoes: dict | None = None,
+    progress_callback=None,
 ) -> dict:
-    """Executa a sequência da versão solicitada, sem interação de terminal."""
+    """Executa a sequência da versão solicitada, sem interação de terminal.
+
+    ``progress_callback`` é estritamente observacional: recebe apenas
+    metadados de etapas já executadas. Com ``None`` o fluxo analítico e as
+    chamadas originais permanecem os mesmos.
+    """
     analisador = obter_analisador(versao)
     pasta_saida.mkdir(parents=True, exist_ok=True)
     df_termos = pd.DataFrame(termos).rename(
@@ -120,17 +144,85 @@ def executar_analises(
     todos_diagnosticos: list[dict] = []
     arquivos: list[dict[str, str]] = []
     erros: list[dict[str, str]] = []
+    contagens_paginas = (
+        _contar_paginas_para_progresso(pdfs)
+        if progress_callback is not None
+        else []
+    )
+    total_paginas_global = (
+        sum(contagem for contagem in contagens_paginas if contagem is not None)
+        if contagens_paginas and all(contagem is not None for contagem in contagens_paginas)
+        else None
+    )
+
+    def emitir(evento: dict) -> None:
+        if progress_callback is not None:
+            progress_callback(evento)
 
     for indice_livro, pdf in enumerate(pdfs, start=1):
+        def progresso_do_livro(evento: dict) -> None:
+            metadados_paginas: dict[str, int] = {}
+            if total_paginas_global:
+                paginas_anteriores = sum(
+                    contagem or 0 for contagem in contagens_paginas[: indice_livro - 1]
+                )
+                metadados_paginas = {
+                    "paginas_total_global": total_paginas_global,
+                    "paginas_anteriores": paginas_anteriores,
+                    "paginas_arquivo": contagens_paginas[indice_livro - 1] or 0,
+                }
+                pagina_atual = evento.get("pagina_atual")
+                if isinstance(pagina_atual, int):
+                    metadados_paginas["paginas_processadas_total"] = min(
+                        total_paginas_global,
+                        paginas_anteriores + max(0, pagina_atual),
+                    )
+            emitir(
+                {
+                    **evento,
+                    "arquivo": pdf.name,
+                    "arquivo_indice": indice_livro,
+                    "arquivos_total": len(pdfs),
+                    **metadados_paginas,
+                }
+            )
+
+        if progress_callback is not None:
+            progresso_do_livro(
+                {
+                    "fase": "preparando_pdf",
+                    "etapa": "Preparando análise…",
+                }
+            )
         try:
-            if versao == "v3":
+            if progress_callback is None and versao == "v3":
                 ocorrencias, diagnostico = analisador.analisar_pdf(
                     pdf, termos, configuracoes
                 )
-            else:
+            elif progress_callback is None:
                 ocorrencias, diagnostico = analisador.analisar_pdf(pdf, termos)
+            elif versao == "v3":
+                ocorrencias, diagnostico = analisador.analisar_pdf(
+                    pdf,
+                    termos,
+                    configuracoes,
+                    progress_callback=progresso_do_livro,
+                )
+            else:
+                ocorrencias, diagnostico = analisador.analisar_pdf(
+                    pdf,
+                    termos,
+                    progress_callback=progresso_do_livro,
+                )
         except Exception as erro:  # permite que os demais PDFs sejam processados
             erros.append({"arquivo": pdf.name, "mensagem": str(erro)})
+            if progress_callback is not None:
+                progresso_do_livro(
+                    {
+                        "fase": "pdf_com_erro",
+                        "etapa": "Preparando resultados…",
+                    }
+                )
             continue
 
         # Metadado interno de exportação: preserva a posição do PDF na análise
@@ -142,6 +234,13 @@ def executar_analises(
             pd.DataFrame(ocorrencias) if ocorrencias else analisador.dataframe_vazio()
         )
         arquivo_saida = pasta_saida / _nome_individual(pdf, versao)
+        if progress_callback is not None:
+            progresso_do_livro(
+                {
+                    "fase": "gerando_planilha",
+                    "etapa": "Gerando planilha…",
+                }
+            )
         analisador.salvar_excel_completo(
             arquivo_saida,
             df_livro,
@@ -156,9 +255,24 @@ def executar_analises(
         )
         todos_registros.extend(ocorrencias)
         todos_diagnosticos.append(diagnostico)
+        if progress_callback is not None:
+            progresso_do_livro(
+                {
+                    "fase": "pdf_concluido",
+                    "etapa": "Preparando resultados…",
+                }
+            )
 
     # Cada versão gera o consolidado quando o usuário seleciona mais de um PDF.
     if len(pdfs) > 1:
+        if progress_callback is not None:
+            emitir(
+                {
+                    "fase": "gerando_consolidado",
+                    "etapa": "Gerando planilha consolidada…",
+                    "arquivos_total": len(pdfs),
+                }
+            )
         df_todos = (
             pd.DataFrame(todos_registros)
             if todos_registros
@@ -178,6 +292,15 @@ def executar_analises(
                 "nome": arquivo_consolidado.name,
                 "rotulo": "Baixar Excel consolidado",
                 "consolidado": True,
+            }
+        )
+
+    if progress_callback is not None:
+        emitir(
+            {
+                "fase": "preparando_resultados",
+                "etapa": "Preparando resultados…",
+                "arquivos_total": len(pdfs),
             }
         )
 

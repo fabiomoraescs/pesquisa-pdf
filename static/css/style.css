@@ -427,6 +427,41 @@ html[data-theme="dark"] .form-check-input:checked { background-color: var(--blue
 }
 .loading-panel h2 { font-size: 1.3rem; margin: 1rem 0 .5rem; }
 .loading-panel p { color: var(--muted); margin: 0; }
+.loading-progress {
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  height: .7rem;
+  margin: 1.35rem 0 .85rem;
+  overflow: hidden;
+  position: relative;
+  width: 100%;
+}
+.loading-progress__bar {
+  background: var(--blue);
+  border-radius: inherit;
+  height: 100%;
+  transition: width .25s ease;
+  width: 0;
+}
+.loading-progress.is-indeterminate .loading-progress__bar {
+  animation: loading-progress-indeterminate 1.15s ease-in-out infinite;
+  width: 38%;
+}
+.loading-progress-detail {
+  color: var(--ink) !important;
+  font-size: .94rem;
+  font-weight: 600;
+  min-height: 1.5rem;
+  white-space: pre-line;
+}
+.loading-time {
+  color: var(--muted);
+  display: grid;
+  font-size: .9rem;
+  gap: .2rem;
+  margin-top: .8rem;
+}
 .loading-spinner {
   animation: loading-spin .8s linear infinite;
   border: .3rem solid var(--border);
@@ -438,8 +473,13 @@ html[data-theme="dark"] .form-check-input:checked { background-color: var(--blue
 }
 body.is-processing { overflow: hidden; }
 @keyframes loading-spin { to { transform: rotate(360deg); } }
+@keyframes loading-progress-indeterminate {
+  from { transform: translateX(-125%); }
+  to { transform: translateX(300%); }
+}
 @media (prefers-reduced-motion: reduce) {
   .loading-spinner { animation-duration: 2.5s; }
+  .loading-progress.is-indeterminate .loading-progress__bar { animation-duration: 3s; }
   .btn, .form-control, .form-select { transition: none; }
 }
 

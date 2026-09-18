@@ -8,6 +8,7 @@ analisador concluiu a sua exportação normal.
 from __future__ import annotations
 
 from collections import defaultdict
+from copy import copy
 from datetime import datetime
 from typing import Any
 
@@ -31,6 +32,23 @@ OBSERVACAO_SEMANTICA = (
     "vetoriais dos textos e não corresponde a probabilidade, certeza ou validação "
     "científica."
 )
+
+
+def aplicar_apresentacao_sem_quebra(workbook) -> None:
+    """Remove apenas a quebra visual, preservando conteúdo e demais estilos."""
+    for aba in workbook.worksheets:
+        for linha in aba.iter_rows():
+            for celula in linha:
+                alinhamento = copy(celula.alignment)
+                alinhamento.wrap_text = False
+                celula.alignment = alinhamento
+
+        # Mantém o cabeçalho como definido por cada exportador. Linhas de dados
+        # sem altura explícita recebem a altura compacta padrão do Excel.
+        for indice_linha in range(2, aba.max_row + 1):
+            dimensao = aba.row_dimensions[indice_linha]
+            if dimensao.height is None:
+                dimensao.height = 15
 
 
 def gerar_ids_resultado(
@@ -230,11 +248,12 @@ def adicionar_aba_parametros(
     for celula in aba[1]:
         celula.font = Font(bold=True, color="FFFFFF")
         celula.fill = PatternFill("solid", fgColor="1F4E78")
-        celula.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        celula.alignment = Alignment(horizontal="center", vertical="center", wrap_text=False)
     for linha in aba.iter_rows(min_row=2):
         for celula in linha:
-            celula.alignment = Alignment(vertical="top", wrap_text=True)
+            celula.alignment = Alignment(vertical="top", wrap_text=False)
 
     aba.column_dimensions["A"].width = 34
     aba.column_dimensions["B"].width = 105
+    aplicar_apresentacao_sem_quebra(workbook)
     workbook.save(arquivo_saida)

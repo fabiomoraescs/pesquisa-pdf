@@ -58,6 +58,12 @@ COLUNAS_INTERNAS = [
 ]
 
 
+def _emitir_progresso(progress_callback, **evento: Any) -> None:
+    """Publica apenas metadados de etapas já executadas, quando solicitado."""
+    if progress_callback is not None:
+        progress_callback(evento)
+
+
 def normalizar(texto: str) -> str:
     """Mantém a mesma normalização usada pela V1 para termos e entradas."""
     return v1.normalizar(texto)
@@ -142,11 +148,33 @@ def _frases_do_bloco(
     ]
 
 
-def criar_trechos_semanticos(blocos: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def criar_trechos_semanticos(
+    blocos: list[dict[str, Any]], progress_callback=None
+) -> list[dict[str, Any]]:
     """Agrupa o texto em janelas de 300–500 palavras com sobreposição segura."""
     unidades: list[dict[str, Any]] = []
+    total_blocos = len(blocos)
+    passo_progresso = max(1, total_blocos // 100)
+    _emitir_progresso(
+        progress_callback,
+        fase="preparando_blocos_semanticos",
+        etapa="Preparando blocos semânticos…",
+        bloco_atual=0,
+        blocos_total=total_blocos,
+    )
     for indice_bloco, bloco in enumerate(blocos):
         unidades.extend(_frases_do_bloco(bloco, indice_bloco))
+        if (
+            indice_bloco == total_blocos - 1
+            or (indice_bloco + 1) % passo_progresso == 0
+        ):
+            _emitir_progresso(
+                progress_callback,
+                fase="preparando_blocos_semanticos",
+                etapa="Preparando blocos semânticos…",
+                bloco_atual=indice_bloco + 1,
+                blocos_total=total_blocos,
+            )
 
     trechos: list[dict[str, Any]] = []
     inicio = 0
@@ -248,9 +276,21 @@ def _tipo_lexical(texto: str, consulta: str) -> tuple[str, str]:
 
 
 def _registros_lexicais(
-    caminho: Path, blocos: list[dict[str, Any]], termos: list[dict[str, str]]
+    caminho: Path,
+    blocos: list[dict[str, Any]],
+    termos: list[dict[str, str]],
+    progress_callback=None,
 ) -> list[dict[str, Any]]:
     registros: list[dict[str, Any]] = []
+    total_blocos = len(blocos)
+    passo_progresso = max(1, total_blocos // 100)
+    _emitir_progresso(
+        progress_callback,
+        fase="busca_lexical",
+        etapa="Executando busca lexical…",
+        bloco_atual=0,
+        blocos_total=total_blocos,
+    )
     for indice, bloco in enumerate(blocos):
         atual = str(bloco.get("texto", ""))
         bloco_anterior, bloco_posterior = _blocos_adjacentes(
@@ -292,6 +332,17 @@ def _registros_lexicais(
                     "_pagina_final_pdf": int(bloco.get("pagina_pdf", 0) or 0),
                     "_texto_normalizado": v1.normalizar(trecho),
                 }
+            )
+        if (
+            indice == total_blocos - 1
+            or (indice + 1) % passo_progresso == 0
+        ):
+            _emitir_progresso(
+                progress_callback,
+                fase="busca_lexical",
+                etapa="Executando busca lexical…",
+                bloco_atual=indice + 1,
+                blocos_total=total_blocos,
             )
     return registros
 
@@ -358,25 +409,96 @@ def _descricao_semantica(consulta: str, contexto: str) -> str:
     )
 
 
+def _codificar_trechos_com_progresso(
+    modelo: Any,
+    textos: list[str],
+    progress_callback,
+) -> np.ndarray:
+    """Codifica os mesmos lotes de 32 e publica somente lotes concluídos.
+
+    A V3 já usa ``batch_size=32``. Quando há callback, esta função preserva
+    tamanho e ordem desses lotes e apenas expõe cada lote que o modelo já
+    concluiu. Sem callback, o caminho original de uma única chamada a
+    ``encode`` continua sendo usado literalmente.
+    """
+    vetores: list[np.ndarray] = []
+    total_trechos = len(textos)
+    for inicio in range(0, total_trechos, 32):
+        lote = textos[inicio : inicio + 32]
+        vetores.append(
+            np.asarray(
+                modelo.encode(
+                    lote,
+                    batch_size=32,
+                    show_progress_bar=False,
+                    normalize_embeddings=True,
+                )
+            )
+        )
+        _emitir_progresso(
+            progress_callback,
+            fase="codificando_blocos_semanticos",
+            etapa="Analisando correspondências semânticas…",
+            bloco_atual=min(inicio + len(lote), total_trechos),
+            blocos_total=total_trechos,
+        )
+    return np.concatenate(vetores, axis=0)
+
+
 def _registros_semanticos(
     caminho: Path,
     trechos: list[dict[str, Any]],
     termos: list[dict[str, str]],
     limiar: float,
     blocos: list[dict[str, Any]] | None = None,
+    progress_callback=None,
+    progresso_por_lote: bool = False,
 ) -> list[dict[str, Any]]:
     if not trechos or not termos:
         return []
 
-    modelo = carregar_modelo_semantico()
-    vetores_trechos = np.asarray(
-        modelo.encode(
-            [item["texto"] for item in trechos],
-            batch_size=32,
-            show_progress_bar=False,
-            normalize_embeddings=True,
-        )
+    _emitir_progresso(
+        progress_callback,
+        fase="preparando_modelo_semantico",
+        etapa="Preparando modelo semântico…",
+        preparando_modelo=True,
     )
+    modelo = carregar_modelo_semantico()
+    _emitir_progresso(
+        progress_callback,
+        fase="modelo_semantico_carregado",
+        etapa="Modelo semântico carregado",
+    )
+    total_trechos = len(trechos)
+    _emitir_progresso(
+        progress_callback,
+        fase="codificando_blocos_semanticos",
+        etapa="Analisando correspondências semânticas…",
+        bloco_atual=0,
+        blocos_total=total_trechos,
+    )
+    textos_trechos = [item["texto"] for item in trechos]
+    if progress_callback is not None and progresso_por_lote:
+        vetores_trechos = _codificar_trechos_com_progresso(
+            modelo, textos_trechos, progress_callback
+        )
+    else:
+        # Mantém a chamada única já usada pelo fluxo híbrido validado.
+        vetores_trechos = np.asarray(
+            modelo.encode(
+                textos_trechos,
+                batch_size=32,
+                show_progress_bar=False,
+                normalize_embeddings=True,
+            )
+        )
+        _emitir_progresso(
+            progress_callback,
+            fase="codificando_blocos_semanticos",
+            etapa="Analisando correspondências semânticas…",
+            bloco_atual=total_trechos,
+            blocos_total=total_trechos,
+        )
     consultas = [item["termo"] for item in termos]
     vetores_consultas = np.asarray(
         modelo.encode(
@@ -389,6 +511,7 @@ def _registros_semanticos(
     similaridades = np.matmul(vetores_consultas, vetores_trechos.T)
     registros: list[dict[str, Any]] = []
     livro = v1.id_livro(caminho)
+    total_consultas = len(consultas)
 
     for indice_consulta, consulta in enumerate(consultas):
         for indice_trecho, valor in enumerate(similaridades[indice_consulta]):
@@ -424,6 +547,15 @@ def _registros_semanticos(
                     "_texto_normalizado": v1.normalizar(trecho["texto"]),
                 }
             )
+        _emitir_progresso(
+            progress_callback,
+            fase="comparando_semantica",
+            etapa="Analisando correspondências semânticas…",
+            bloco_atual=total_trechos,
+            blocos_total=total_trechos,
+            consulta_atual=indice_consulta + 1,
+            consultas_total=total_consultas,
+        )
     return _deduplicar_semanticos(registros)
 
 
@@ -431,24 +563,48 @@ def analisar_pdf(
     caminho: Path,
     termos: list[dict[str, str]],
     configuracoes: dict[str, Any] | None = None,
+    progress_callback=None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Executa a V3 sem alterar nenhuma rotina de análise das versões anteriores."""
     configuracao = _configuracao(configuracoes)
-    blocos, paginas_texto, paginas_ocr, idioma_ocr = v1.extrair_pdf(caminho)
-    registros = (
-        _registros_lexicais(caminho, blocos, termos)
-        if configuracao["incluir_lexical"]
-        else []
-    )
+    if progress_callback is None:
+        blocos, paginas_texto, paginas_ocr, idioma_ocr = v1.extrair_pdf(caminho)
+        registros = (
+            _registros_lexicais(caminho, blocos, termos)
+            if configuracao["incluir_lexical"]
+            else []
+        )
+    else:
+        blocos, paginas_texto, paginas_ocr, idioma_ocr = v1.extrair_pdf(
+            caminho, progress_callback=progress_callback
+        )
+        registros = (
+            _registros_lexicais(
+                caminho, blocos, termos, progress_callback=progress_callback
+            )
+            if configuracao["incluir_lexical"]
+            else []
+        )
 
     if configuracao["incluir_semantica"]:
-        candidatos = _registros_semanticos(
-            caminho,
-            criar_trechos_semanticos(blocos),
-            termos,
-            configuracao["limiar_semantico"],
-            blocos,
-        )
+        if progress_callback is None:
+            candidatos = _registros_semanticos(
+                caminho,
+                criar_trechos_semanticos(blocos),
+                termos,
+                configuracao["limiar_semantico"],
+                blocos,
+            )
+        else:
+            candidatos = _registros_semanticos(
+                caminho,
+                criar_trechos_semanticos(blocos, progress_callback=progress_callback),
+                termos,
+                configuracao["limiar_semantico"],
+                blocos,
+                progress_callback=progress_callback,
+                progresso_por_lote=not configuracao["incluir_lexical"],
+            )
         for candidato in candidatos:
             equivalente_lexico = _registro_tem_evidencia_lexical(registros, candidato)
             if equivalente_lexico is not None:
