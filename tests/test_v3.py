@@ -705,7 +705,7 @@ class TesteV3(unittest.TestCase):
                     html_inicio = inicio.get_data(as_text=True)
                     self.assertIn("Incluir busca lexical e morfológica", html_inicio)
                     self.assertIn("Incluir busca semântica", html_inicio)
-                    self.assertIn("Escolha o método de varredura", html_inicio)
+                    self.assertIn("Escolha o método de raspagem", html_inicio)
                     self.assertIn(
                         "Separe os termos por ponto e vírgula ou coloque um termo por linha. Termos compostos devem permanecer inteiros.",
                         html_inicio,
@@ -721,7 +721,7 @@ class TesteV3(unittest.TestCase):
                     self.assertIn("Qual método escolher?", html_inicio)
                     self.assertIn("controle-limiar-semantico", html_inicio)
                     self.assertIn(
-                        "Dependendo do método de varredura escolhido, a busca pode considerar ocorrências lexicais e morfológicas ou também recuperar trechos por similaridade semântica.",
+                        "Dependendo do método de raspagem escolhido, a busca pode considerar ocorrências lexicais e morfológicas ou também recuperar trechos por similaridade semântica.",
                         html_inicio,
                     )
                     self.assertIn(
@@ -733,7 +733,7 @@ class TesteV3(unittest.TestCase):
                         html_inicio,
                     )
                     self.assertIn(
-                        "Os arquivos Excel registram também os parâmetros utilizados na análise, permitindo identificar posteriormente como a varredura foi realizada.",
+                        "Os arquivos Excel registram também os parâmetros utilizados na análise, permitindo identificar posteriormente como a raspagem foi realizada.",
                         html_inicio,
                     )
                     self.assertIn(

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Resultados — Varredura de PDFs</title>
+  <title>Resultados — Ferramenta de Raspagem de Dados</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
   <script>try { document.documentElement.dataset.theme = localStorage.getItem('varredura-pdf-theme') || 'dark'; } catch (_) { document.documentElement.dataset.theme = 'dark'; }</script>
@@ -13,7 +13,7 @@
     <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-4">
       <div>
         <span class="eyebrow">ANÁLISE CONCLUÍDA</span>
-        <h1 class="mb-1">Resultados da varredura</h1>
+        <h1 class="mb-1">Resultados da raspagem</h1>
         <p class="text-secondary mb-0">Os gráficos têm controles interativos e o ícone de câmera na barra do Plotly baixa o gráfico como PNG.</p>
       </div>
       <div class="app-actions">
@@ -129,7 +129,7 @@
 
   </main>
   <footer class="app-footer">
-    Desenvolvido por <a href="http://lattes.cnpq.br/0075160400322127" target="_blank" rel="noopener noreferrer">Fabio Monteiro de Moraes</a> - 2026 | Versão beta
+    Grupo de pesquisa: <a href="http://dgp.cnpq.br/dgp/espelhogrupo/538438" target="_blank" rel="noopener noreferrer">ConsCiências-Sociais</a> | Desenvolvido por <a href="http://lattes.cnpq.br/0075160400322127" target="_blank" rel="noopener noreferrer">Fabio Monteiro de Moraes</a> - 2026 | Versão beta
   </footer>
   <script id="dados-dashboard" type="application/json">{{ resultado.dashboard | tojson }}</script>
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Varredura de PDFs</title>
+  <title>Ferramenta de Raspagem de Dados</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
   <script>try { document.documentElement.dataset.theme = localStorage.getItem('varredura-pdf-theme') || 'dark'; } catch (_) { document.documentElement.dataset.theme = 'dark'; }</script>
@@ -17,8 +17,8 @@
         </button>
         <button class="btn btn-outline-primary theme-icon-button" id="theme-toggle" type="button" aria-label="Alternar tema" title="Alternar tema"></button>
       </div>
-      <h1>Varredura de PDFs</h1>
-      <p class="lead mb-4">Envie seu(s) arquivo(s) em PDF e digite os termos da busca.</p>
+      <h1>Ferramenta de Raspagem de Dados</h1>
+      <p class="lead mb-4">Grupo de pesquisa ConsCiência Sociais.</p>
 
       {% with mensagens = get_flashed_messages(with_categories=true) %}
         {% for categoria, mensagem in mensagens %}
@@ -50,14 +50,14 @@
         </div>
 
         <div class="mb-4">
-          <label for="versao" class="form-label">Método de varredura</label>
+          <label for="versao" class="form-label">Método de raspagem</label>
           <select class="form-select" id="versao" name="versao" required aria-describedby="ajuda-metodo">
-            <option value="" selected disabled>Escolha o método de varredura</option>
+            <option value="" selected disabled>Escolha o método de raspagem</option>
             <option value="v1">V1: Busca lexical detalhada</option>
             <option value="v2">V2: Busca lexical (planilha simplificada)</option>
             <option value="v3">V3: Busca híbrida (lexical + semântica)</option>
           </select>
-          <div class="form-text" id="ajuda-metodo">Escolha o método de varredura conforme o objetivo da sua busca.</div>
+          <div class="form-text" id="ajuda-metodo">Escolha o método de raspagem conforme o objetivo da sua busca.</div>
         </div>
 
         <section class="v3-settings mb-4" id="configuracoes-v3" hidden aria-labelledby="titulo-configuracoes-v3">
@@ -99,7 +99,7 @@
   </main>
 
   <footer class="app-footer">
-    Desenvolvido por <a href="http://lattes.cnpq.br/0075160400322127" target="_blank" rel="noopener noreferrer">Fabio Monteiro de Moraes</a> - 2026 | Versão beta
+    Grupo de pesquisa: <a href="http://dgp.cnpq.br/dgp/espelhogrupo/538438" target="_blank" rel="noopener noreferrer">ConsCiências-Sociais</a> | Desenvolvido por <a href="http://lattes.cnpq.br/0075160400322127" target="_blank" rel="noopener noreferrer">Fabio Monteiro de Moraes</a> - 2026 | Versão beta
   </footer>
 
   <div class="modal fade" id="modal-como-funciona" tabindex="-1" aria-labelledby="titulo-modal-como-funciona" aria-describedby="descricao-modal-como-funciona">
@@ -110,7 +110,7 @@
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
         </div>
         <div class="modal-body modal-help" id="descricao-modal-como-funciona">
-          <p class="modal-help__intro">A ferramenta permite localizar termos e expressões em arquivos PDF e analisar os trechos em que aparecem. Dependendo do método de varredura escolhido, a busca pode considerar ocorrências lexicais e morfológicas ou também recuperar trechos por similaridade semântica.</p>
+          <p class="modal-help__intro">A ferramenta permite localizar termos e expressões em arquivos PDF e analisar os trechos em que aparecem. Dependendo do método de raspagem escolhido, a busca pode considerar ocorrências lexicais e morfológicas ou também recuperar trechos por similaridade semântica.</p>
 
           <section class="modal-help__section" aria-labelledby="modal-termos">
             <h3 id="modal-termos">Como informar os termos</h3>
@@ -282,7 +282,7 @@
             </ul>
           </section>
 
-          <p class="modal-help__notice">Os arquivos Excel registram também os parâmetros utilizados na análise, permitindo identificar posteriormente como a varredura foi realizada.</p>
+          <p class="modal-help__notice">Os arquivos Excel registram também os parâmetros utilizados na análise, permitindo identificar posteriormente como a raspagem foi realizada.</p>
 
           <aside class="modal-help__methodological-note" aria-label="Aviso metodológico">
             <strong>Importante:</strong> a ferramenta auxilia a localização, organização e exploração do corpus. OCR, variações linguísticas, classificações de contexto, descrições e correspondências semânticas são procedimentos automáticos e podem exigir revisão e validação pelo pesquisador.
