@@ -29,6 +29,7 @@ from analyzer.common import (
     ler_arquivo_termos,
     montar_termos,
 )
+from historico_racial.routes import historico_racial_bp
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -42,6 +43,7 @@ app.config.update(
     SECRET_KEY=os.environ.get("FLASK_SECRET_KEY", "varredura-local"),
     MAX_CONTENT_LENGTH=1024 * 1024 * 1024,
 )
+app.register_blueprint(historico_racial_bp)
 
 # A aplicação não possui histórico permanente. O cache só mantém a análise
 # atual enquanto o servidor estiver aberto, para exibir o dashboard e baixar

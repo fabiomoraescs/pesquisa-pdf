@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Raspagem de Dados — Análise histórico-racial</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+  <script>try { document.documentElement.dataset.theme = localStorage.getItem('varredura-pdf-theme') || 'dark'; } catch (_) { document.documentElement.dataset.theme = 'dark'; }</script>
+</head>
+<body>
+  <main class="container-fluid app-shell px-3 px-lg-5 py-4 py-lg-5">
+    <section class="hero-card" aria-labelledby="titulo-historico-racial">
+      <div class="hero-actions" aria-label="Controles da aplicação">
+        <button class="btn btn-outline-primary info-icon-button" type="button" data-bs-toggle="modal" data-bs-target="#modal-sobre-historico-racial" aria-label="Sobre esta ferramenta" title="Sobre esta ferramenta">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 10v6M12 7h.01"></path></svg>
+        </button>
+        <button class="btn btn-outline-primary theme-icon-button" id="theme-toggle" type="button" aria-label="Alternar tema" title="Alternar tema"></button>
+      </div>
+
+      <h1 id="titulo-historico-racial">Raspagem de Dados</h1>
+      <p class="lead mb-4">Análise histórico-racial</p>
+
+      <section class="download-card p-4" aria-labelledby="desenvolvimento-historico-racial">
+        <h2 class="h5" id="desenvolvimento-historico-racial">Ferramenta em desenvolvimento</h2>
+        <p class="text-secondary">Esta área receberá futuramente recursos próprios de análise histórico-racial.</p>
+
+        <div class="mb-4">
+          <label for="pdfs-historico-racial" class="form-label file-upload-label">Arquivos PDF</label>
+          <input class="form-control file-upload-input" id="pdfs-historico-racial" type="file" accept="application/pdf,.pdf" multiple>
+          <div class="form-text">Selecione um ou vários PDFs para preparar uma futura análise.</div>
+        </div>
+
+        <button class="btn btn-primary" type="button" disabled aria-disabled="true">Processamento em desenvolvimento</button>
+      </section>
+    </section>
+  </main>
+
+  <footer class="app-footer">
+    Grupo de pesquisa: <a href="http://dgp.cnpq.br/dgp/espelhogrupo/538438" target="_blank" rel="noopener noreferrer">ConsCiências-Sociais</a> | Desenvolvido por <a href="http://lattes.cnpq.br/0075160400322127" target="_blank" rel="noopener noreferrer">Fabio Monteiro de Moraes</a> - 2026 | Versão beta
+  </footer>
+
+  <div class="modal fade" id="modal-sobre-historico-racial" tabindex="-1" aria-labelledby="titulo-modal-sobre-historico-racial" aria-describedby="descricao-modal-sobre-historico-racial">
+    <div class="modal-dialog modal-dialog-scrollable modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 class="modal-title fs-5" id="titulo-modal-sobre-historico-racial">Sobre esta ferramenta</h2>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+        </div>
+        <div class="modal-body" id="descricao-modal-sobre-historico-racial">
+          <p>A ferramenta Raspagem de Dados — Análise histórico-racial está sendo desenvolvida para apoiar pesquisas histórico-documentais sobre circulação de repertórios intelectuais e políticos, classificações raciais e suas transformações ao longo do tempo.</p>
+          <p>A ferramenta será destinada à localização, organização e pré-codificação de evidências em documentos históricos, preservando a distinção entre ocorrência textual, sugestão automatizada e validação humana.</p>
+          <p class="mb-0">Esta é uma versão inicial da ferramenta. Os recursos analíticos ainda serão implementados gradualmente.</p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Fechar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="{{ url_for('static', filename='js/interface.js') }}"></script>
+</body>
+</html>
