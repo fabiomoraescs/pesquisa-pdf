@@ -1,0 +1,13 @@
+schema_version: "0.1"
+
+# Referência versionada das estruturas futuras; esta etapa não define colunas
+# definitivas nem gera planilhas.
+estruturas:
+  DOCUMENTOS:
+    descricao: "Metadados dos documentos que compõem o corpus."
+  OCORRENCIAS:
+    descricao: "Evidências textuais candidatas localizadas nos documentos."
+  CODIFICACAO:
+    descricao: "Codificação e validação humana das evidências."
+  COOCORRENCIAS:
+    descricao: "Relações entre entidades a serem avaliadas futuramente."

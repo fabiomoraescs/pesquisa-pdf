@@ -1,0 +1,45 @@
+tipos_entidade:
+  - autor
+  - movimento
+  - conceito
+  - obra
+  - categoria_racial
+  - pais_regiao
+  - tradicao
+  - termo_contextual
+  - outro
+
+tradicoes_intelectuais:
+  - afro_estadunidense
+  - negritude
+  - anticolonial
+  - pan_africana
+  - lutas_liberacao_africana
+  - marxista
+  - intelectual_brasileira
+  - outra
+  - indeterminada
+
+formas_referencia:
+  - mencao
+  - citacao
+  - referencia_bibliografica
+  - parafrase
+  - indeterminado
+
+operacoes_repertorio:
+  - comparacao
+  - apropriacao
+  - adaptacao
+  - critica
+  - rejeicao
+  - legitimacao
+  - uso_estrategico
+  - indeterminado
+
+status_validacao:
+  - pendente
+  - em_codificacao
+  - revisar
+  - validado
+  - excluido

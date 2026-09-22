@@ -1,0 +1,437 @@
+# Dicionário de identificação, não de influência intelectual ou validação.
+# Uma entidade pode pertencer a mais de um grupo sem ser cadastrada duas vezes.
+grupos:
+  A_classificacao_racial_brasileira: "Classificação racial brasileira"
+  B_democracia_racial_sistema_racial_brasileiro: "Democracia racial e sistema racial brasileiro"
+  C_afro_estadunidense: "Influências afro-estadunidenses"
+  D_negritude_francofono_caribenho: "Négritude e pensamento francófono/caribenho"
+  E_anticolonial: "Pensamento anticolonial"
+  F_pan_africanismo_libertacao_africana: "Pan-africanismo e libertação africana"
+  G_marxismo_raca_classe: "Marxismo, socialismo e raça/classe"
+  H_intelectuais_brasileiros_externos: "Intelectuais brasileiros externos aos movimentos"
+
+entidades:
+  # A — Classificação racial brasileira
+  - id_entidade: negro
+    forma_canonica: "negro"
+    variantes: ["negro", "negros", "negra", "negras"]
+    tipo_entidade: categoria_racial
+    grupo: A_classificacao_racial_brasileira
+  - id_entidade: preto
+    forma_canonica: "preto"
+    variantes: ["preto", "pretos", "preta", "pretas"]
+    tipo_entidade: categoria_racial
+    grupo: A_classificacao_racial_brasileira
+  - id_entidade: pardo
+    forma_canonica: "pardo"
+    variantes: ["pardo", "pardos", "parda", "pardas"]
+    tipo_entidade: categoria_racial
+    grupo: A_classificacao_racial_brasileira
+  - id_entidade: mulato
+    forma_canonica: "mulato"
+    variantes: ["mulato", "mulatos", "mulata"]
+    tipo_entidade: categoria_racial
+    grupo: A_classificacao_racial_brasileira
+  - id_entidade: mestico
+    forma_canonica: "mestiço"
+    variantes: ["mestiço", "mestiços", "mestiça", "mestiças"]
+    tipo_entidade: categoria_racial
+    grupo: A_classificacao_racial_brasileira
+  - id_entidade: mesticagem
+    forma_canonica: "mestiçagem"
+    variantes: ["mestiçagem"]
+    tipo_entidade: conceito
+    grupo: [A_classificacao_racial_brasileira, B_democracia_racial_sistema_racial_brasileiro]
+  - id_entidade: moreno
+    forma_canonica: "moreno"
+    variantes: ["moreno", "morenos"]
+    tipo_entidade: categoria_racial
+    grupo: A_classificacao_racial_brasileira
+  - id_entidade: homem_de_cor
+    forma_canonica: "homem de cor"
+    variantes: ["homem de cor", "homens de cor"]
+    tipo_entidade: categoria_racial
+    grupo: A_classificacao_racial_brasileira
+  - id_entidade: gente_de_cor
+    forma_canonica: "gente de cor"
+    variantes: ["gente de cor"]
+    tipo_entidade: categoria_racial
+    grupo: A_classificacao_racial_brasileira
+  - id_entidade: populacao_negra
+    forma_canonica: "população negra"
+    variantes: ["população negra"]
+    tipo_entidade: categoria_racial
+    grupo: A_classificacao_racial_brasileira
+  - id_entidade: raca_negra
+    forma_canonica: "raça negra"
+    variantes: ["raça negra"]
+    tipo_entidade: categoria_racial
+    grupo: A_classificacao_racial_brasileira
+  - id_entidade: branco
+    forma_canonica: "branco"
+    variantes: ["branco", "brancos", "branca", "brancas"]
+    tipo_entidade: categoria_racial
+    grupo: A_classificacao_racial_brasileira
+
+  # B — Democracia racial e sistema racial brasileiro
+  - id_entidade: democracia_racial
+    forma_canonica: "democracia racial"
+    variantes: ["democracia racial"]
+    tipo_entidade: conceito
+    grupo: B_democracia_racial_sistema_racial_brasileiro
+  - id_entidade: mito_da_democracia_racial
+    forma_canonica: "mito da democracia racial"
+    variantes: ["mito da democracia racial"]
+    tipo_entidade: conceito
+    grupo: B_democracia_racial_sistema_racial_brasileiro
+  - id_entidade: paraiso_racial
+    forma_canonica: "paraíso racial"
+    variantes: ["paraíso racial"]
+    tipo_entidade: conceito
+    grupo: B_democracia_racial_sistema_racial_brasileiro
+  - id_entidade: preconceito_racial
+    forma_canonica: "preconceito racial"
+    variantes: ["preconceito racial"]
+    tipo_entidade: conceito
+    grupo: B_democracia_racial_sistema_racial_brasileiro
+  - id_entidade: preconceito_de_cor
+    forma_canonica: "preconceito de cor"
+    variantes: ["preconceito de cor"]
+    tipo_entidade: conceito
+    grupo: B_democracia_racial_sistema_racial_brasileiro
+  - id_entidade: discriminacao_racial
+    forma_canonica: "discriminação racial"
+    variantes: ["discriminação racial"]
+    tipo_entidade: conceito
+    grupo: B_democracia_racial_sistema_racial_brasileiro
+  - id_entidade: racismo
+    forma_canonica: "racismo"
+    variantes: ["racismo"]
+    tipo_entidade: conceito
+    grupo: B_democracia_racial_sistema_racial_brasileiro
+  - id_entidade: desigualdade_racial
+    forma_canonica: "desigualdade racial"
+    variantes: ["desigualdade racial"]
+    tipo_entidade: conceito
+    grupo: B_democracia_racial_sistema_racial_brasileiro
+  - id_entidade: miscigenacao
+    forma_canonica: "miscigenação"
+    variantes: ["miscigenação"]
+    tipo_entidade: conceito
+    grupo: B_democracia_racial_sistema_racial_brasileiro
+  - id_entidade: branqueamento
+    forma_canonica: "branqueamento"
+    variantes: ["branqueamento"]
+    tipo_entidade: conceito
+    grupo: B_democracia_racial_sistema_racial_brasileiro
+  - id_entidade: embranquecimento
+    forma_canonica: "embranquecimento"
+    variantes: ["embranquecimento"]
+    tipo_entidade: conceito
+    grupo: B_democracia_racial_sistema_racial_brasileiro
+  - id_entidade: assimilacao
+    forma_canonica: "assimilação"
+    variantes: ["assimilação"]
+    tipo_entidade: conceito
+    grupo: B_democracia_racial_sistema_racial_brasileiro
+  - id_entidade: integracao_racial
+    forma_canonica: "integração racial"
+    variantes: ["integração racial"]
+    tipo_entidade: conceito
+    grupo: B_democracia_racial_sistema_racial_brasileiro
+  - id_entidade: relacoes_raciais
+    forma_canonica: "relações raciais"
+    variantes: ["relações raciais"]
+    tipo_entidade: conceito
+    grupo: B_democracia_racial_sistema_racial_brasileiro
+
+  # C — Influências afro-estadunidenses: nomes identificados, sem inferir influência
+  - id_entidade: du_bois
+    forma_canonica: "W. E. B. Du Bois"
+    variantes: ["W. E. B. Du Bois", "W.E.B. Du Bois", "Du Bois"]
+    tipo_entidade: autor
+    grupo: C_afro_estadunidense
+    tradicao_intelectual: afro_estadunidense
+    pais_regiao: "Estados Unidos"
+  - id_entidade: marcus_garvey
+    forma_canonica: "Marcus Garvey"
+    variantes: ["Marcus Garvey"]
+    tipo_entidade: autor
+    grupo: C_afro_estadunidense
+    tradicao_intelectual: afro_estadunidense
+  - id_entidade: malcolm_x
+    forma_canonica: "Malcolm X"
+    variantes: ["Malcolm X"]
+    tipo_entidade: autor
+    grupo: C_afro_estadunidense
+    tradicao_intelectual: afro_estadunidense
+    pais_regiao: "Estados Unidos"
+  - id_entidade: martin_luther_king
+    forma_canonica: "Martin Luther King"
+    variantes: ["Martin Luther King", "Martin Luther King Jr."]
+    tipo_entidade: autor
+    grupo: C_afro_estadunidense
+    tradicao_intelectual: afro_estadunidense
+    pais_regiao: "Estados Unidos"
+  - id_entidade: stokely_carmichael
+    forma_canonica: "Stokely Carmichael"
+    variantes: ["Stokely Carmichael", "Kwame Ture"]
+    tipo_entidade: autor
+    grupo: C_afro_estadunidense
+    tradicao_intelectual: afro_estadunidense
+  - id_entidade: black_power
+    forma_canonica: "Black Power"
+    variantes: ["Black Power", "Poder Negro"]
+    tipo_entidade: movimento
+    grupo: C_afro_estadunidense
+    tradicao_intelectual: afro_estadunidense
+  - id_entidade: black_panther_party
+    forma_canonica: "Black Panther Party"
+    variantes: ["Black Panther Party", "Black Panthers", "Panteras Negras"]
+    tipo_entidade: movimento
+    grupo: C_afro_estadunidense
+    tradicao_intelectual: afro_estadunidense
+  - id_entidade: black_is_beautiful
+    forma_canonica: "Black is Beautiful"
+    variantes: ["Black is Beautiful"]
+    tipo_entidade: conceito
+    grupo: C_afro_estadunidense
+    tradicao_intelectual: afro_estadunidense
+  - id_entidade: direitos_civis
+    forma_canonica: "direitos civis"
+    variantes: ["direitos civis", "civil rights"]
+    tipo_entidade: conceito
+    grupo: C_afro_estadunidense
+    tradicao_intelectual: afro_estadunidense
+  - id_entidade: estados_unidos
+    forma_canonica: "Estados Unidos"
+    variantes: ["Estados Unidos"]
+    tipo_entidade: pais_regiao
+    grupo: C_afro_estadunidense
+  - id_entidade: negro_norte_americano
+    forma_canonica: "negro norte-americano"
+    variantes: ["negro norte-americano"]
+    tipo_entidade: termo_contextual
+    grupo: C_afro_estadunidense
+  - id_entidade: movimento_negro_norte_americano
+    forma_canonica: "movimento negro norte-americano"
+    variantes: ["movimento negro norte-americano"]
+    tipo_entidade: movimento
+    grupo: C_afro_estadunidense
+  - id_entidade: afro_americano
+    forma_canonica: "afro-americano"
+    variantes: ["afro-americano", "afro-americanos"]
+    tipo_entidade: categoria_racial
+    grupo: C_afro_estadunidense
+
+  # D — Négritude e pensamento francófono/caribenho
+  - id_entidade: aime_cesaire
+    forma_canonica: "Aimé Césaire"
+    variantes: ["Aimé Césaire", "Césaire"]
+    tipo_entidade: autor
+    grupo: D_negritude_francofono_caribenho
+    tradicao_intelectual: negritude
+  - id_entidade: leopold_sedar_senghor
+    forma_canonica: "Léopold Sédar Senghor"
+    variantes: ["Léopold Sédar Senghor", "Senghor"]
+    tipo_entidade: autor
+    grupo: D_negritude_francofono_caribenho
+    tradicao_intelectual: negritude
+  - id_entidade: leon_gontran_damas
+    forma_canonica: "Léon-Gontran Damas"
+    variantes: ["Léon-Gontran Damas", "Damas"]
+    tipo_entidade: autor
+    grupo: D_negritude_francofono_caribenho
+    tradicao_intelectual: negritude
+  - id_entidade: jean_paul_sartre
+    forma_canonica: "Jean-Paul Sartre"
+    variantes: ["Jean-Paul Sartre", "Sartre"]
+    tipo_entidade: autor
+    grupo: D_negritude_francofono_caribenho
+  - id_entidade: orfeu_negro
+    forma_canonica: "Orfeu Negro"
+    variantes: ["Orfeu Negro", "Orphée noir"]
+    tipo_entidade: obra
+    grupo: D_negritude_francofono_caribenho
+  - id_entidade: negritude
+    forma_canonica: "négritude"
+    variantes: ["négritude", "negritude"]
+    tipo_entidade: conceito
+    grupo: D_negritude_francofono_caribenho
+    tradicao_intelectual: negritude
+
+  # E — Pensamento anticolonial
+  - id_entidade: frantz_fanon
+    forma_canonica: "Frantz Fanon"
+    variantes: ["Frantz Fanon", "Fanon"]
+    tipo_entidade: autor
+    grupo: E_anticolonial
+    tradicao_intelectual: anticolonial
+  - id_entidade: pele_negra_mascaras_brancas
+    forma_canonica: "Pele negra, máscaras brancas"
+    variantes: ["Pele negra, máscaras brancas"]
+    tipo_entidade: obra
+    grupo: E_anticolonial
+    tradicao_intelectual: anticolonial
+  - id_entidade: os_condenados_da_terra
+    forma_canonica: "Os condenados da terra"
+    variantes: ["Os condenados da terra"]
+    tipo_entidade: obra
+    grupo: E_anticolonial
+    tradicao_intelectual: anticolonial
+  - id_entidade: colonialismo
+    forma_canonica: "colonialismo"
+    variantes: ["colonialismo"]
+    tipo_entidade: conceito
+    grupo: E_anticolonial
+  - id_entidade: anticolonialismo
+    forma_canonica: "anticolonialismo"
+    variantes: ["anticolonialismo"]
+    tipo_entidade: conceito
+    grupo: E_anticolonial
+    tradicao_intelectual: anticolonial
+  - id_entidade: descolonizacao
+    forma_canonica: "descolonização"
+    variantes: ["descolonização"]
+    tipo_entidade: conceito
+    grupo: E_anticolonial
+    tradicao_intelectual: anticolonial
+
+  # F — Pan-africanismo e libertação africana
+  - id_entidade: pan_africanismo
+    forma_canonica: "pan-africanismo"
+    variantes: ["pan-africanismo", "panafricanismo"]
+    tipo_entidade: tradicao
+    grupo: F_pan_africanismo_libertacao_africana
+    tradicao_intelectual: pan_africana
+  - id_entidade: amilcar_cabral
+    forma_canonica: "Amílcar Cabral"
+    variantes: ["Amílcar Cabral", "Cabral"]
+    tipo_entidade: autor
+    grupo: F_pan_africanismo_libertacao_africana
+    tradicao_intelectual: lutas_liberacao_africana
+  - id_entidade: kwame_nkrumah
+    forma_canonica: "Kwame Nkrumah"
+    variantes: ["Kwame Nkrumah", "Nkrumah"]
+    tipo_entidade: autor
+    grupo: F_pan_africanismo_libertacao_africana
+    tradicao_intelectual: pan_africana
+  - id_entidade: agostinho_neto
+    forma_canonica: "Agostinho Neto"
+    variantes: ["Agostinho Neto"]
+    tipo_entidade: autor
+    grupo: F_pan_africanismo_libertacao_africana
+    tradicao_intelectual: lutas_liberacao_africana
+  - id_entidade: samora_machel
+    forma_canonica: "Samora Machel"
+    variantes: ["Samora Machel"]
+    tipo_entidade: autor
+    grupo: F_pan_africanismo_libertacao_africana
+    tradicao_intelectual: lutas_liberacao_africana
+  - id_entidade: angola
+    forma_canonica: "Angola"
+    variantes: ["Angola"]
+    tipo_entidade: pais_regiao
+    grupo: F_pan_africanismo_libertacao_africana
+  - id_entidade: mocambique
+    forma_canonica: "Moçambique"
+    variantes: ["Moçambique"]
+    tipo_entidade: pais_regiao
+    grupo: F_pan_africanismo_libertacao_africana
+  - id_entidade: guine_bissau
+    forma_canonica: "Guiné-Bissau"
+    variantes: ["Guiné-Bissau"]
+    tipo_entidade: pais_regiao
+    grupo: F_pan_africanismo_libertacao_africana
+  - id_entidade: cabo_verde
+    forma_canonica: "Cabo Verde"
+    variantes: ["Cabo Verde"]
+    tipo_entidade: pais_regiao
+    grupo: F_pan_africanismo_libertacao_africana
+  - id_entidade: libertacao_africana
+    forma_canonica: "libertação africana"
+    variantes: ["libertação africana"]
+    tipo_entidade: conceito
+    grupo: F_pan_africanismo_libertacao_africana
+    tradicao_intelectual: lutas_liberacao_africana
+  - id_entidade: independencia_africana
+    forma_canonica: "independência africana"
+    variantes: ["independência africana"]
+    tipo_entidade: conceito
+    grupo: F_pan_africanismo_libertacao_africana
+    tradicao_intelectual: lutas_liberacao_africana
+  - id_entidade: africa
+    forma_canonica: "África"
+    variantes: ["África"]
+    tipo_entidade: pais_regiao
+    grupo: F_pan_africanismo_libertacao_africana
+
+  # G — Marxismo, socialismo e raça/classe
+  - id_entidade: karl_marx
+    forma_canonica: "Karl Marx"
+    variantes: ["Karl Marx", "Marx"]
+    tipo_entidade: autor
+    grupo: G_marxismo_raca_classe
+    tradicao_intelectual: marxista
+  - id_entidade: marxismo
+    forma_canonica: "marxismo"
+    variantes: ["marxismo", "marxista"]
+    tipo_entidade: tradicao
+    grupo: G_marxismo_raca_classe
+    tradicao_intelectual: marxista
+  - id_entidade: socialismo
+    forma_canonica: "socialismo"
+    variantes: ["socialismo", "socialista"]
+    tipo_entidade: tradicao
+    grupo: G_marxismo_raca_classe
+  - id_entidade: capitalismo
+    forma_canonica: "capitalismo"
+    variantes: ["capitalismo"]
+    tipo_entidade: conceito
+    grupo: G_marxismo_raca_classe
+  - id_entidade: classe_social
+    forma_canonica: "classe social"
+    variantes: ["classe social", "classe"]
+    tipo_entidade: conceito
+    grupo: G_marxismo_raca_classe
+  - id_entidade: luta_de_classes
+    forma_canonica: "luta de classes"
+    variantes: ["luta de classes"]
+    tipo_entidade: conceito
+    grupo: G_marxismo_raca_classe
+  - id_entidade: exploracao
+    forma_canonica: "exploração"
+    variantes: ["exploração"]
+    tipo_entidade: conceito
+    grupo: G_marxismo_raca_classe
+  - id_entidade: imperialismo
+    forma_canonica: "imperialismo"
+    variantes: ["imperialismo"]
+    tipo_entidade: conceito
+    grupo: G_marxismo_raca_classe
+
+  # H — Intelectuais brasileiros externos aos movimentos
+  - id_entidade: florestan_fernandes
+    forma_canonica: "Florestan Fernandes"
+    variantes: ["Florestan Fernandes"]
+    tipo_entidade: autor
+    grupo: H_intelectuais_brasileiros_externos
+    tradicao_intelectual: intelectual_brasileira
+  - id_entidade: roger_bastide
+    forma_canonica: "Roger Bastide"
+    variantes: ["Roger Bastide"]
+    tipo_entidade: autor
+    grupo: H_intelectuais_brasileiros_externos
+    tradicao_intelectual: intelectual_brasileira
+  - id_entidade: oracy_nogueira
+    forma_canonica: "Oracy Nogueira"
+    variantes: ["Oracy Nogueira"]
+    tipo_entidade: autor
+    grupo: H_intelectuais_brasileiros_externos
+    tradicao_intelectual: intelectual_brasileira
+  - id_entidade: gilberto_freyre
+    forma_canonica: "Gilberto Freyre"
+    variantes: ["Gilberto Freyre"]
+    tipo_entidade: autor
+    grupo: H_intelectuais_brasileiros_externos
+    tradicao_intelectual: intelectual_brasileira

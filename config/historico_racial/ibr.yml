@@ -1,0 +1,10 @@
+# Definições conceituais para futura codificação humana. Não há cálculo.
+criterios:
+  B1: "negro utilizado como identidade coletiva abrangente"
+  B2: "pretos, pardos, mestiços ou mulatos explicitamente incorporados ao grupo negro"
+  B3: "oposição negros × brancos utilizada para interpretar as relações raciais"
+  B4: "categorias intermediárias criticadas, rejeitadas ou secundarizadas"
+  B5: "mestiçagem ou democracia racial criticada como mecanismo de ocultação do racismo ou das desigualdades raciais"
+minimo: 0
+maximo: 5
+observacao: "O sistema pode localizar evidências candidatas para B1–B5, mas a atribuição validada depende de análise humana."
