@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Resultados — Raspagem de Dados</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+  <link href="{{ url_for('static', filename='css/historico_racial.css') }}" rel="stylesheet">
+  <script>try { document.documentElement.dataset.theme = localStorage.getItem('varredura-pdf-theme') || 'dark'; } catch (_) { document.documentElement.dataset.theme = 'dark'; }</script>
+</head>
+<body>
+  <main class="container-fluid app-shell px-3 px-lg-5 py-4 py-lg-5">
+    <section class="hero-card" aria-labelledby="titulo-historico-racial">
+      <div class="hero-actions" aria-label="Controles da aplicação">
+        <button class="btn btn-outline-primary info-icon-button" type="button" data-bs-toggle="modal" data-bs-target="#modal-sobre-historico-racial" aria-label="Sobre esta ferramenta" title="Sobre esta ferramenta">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 10v6M12 7h.01"></path></svg>
+        </button>
+        <button class="btn btn-outline-primary theme-icon-button" id="theme-toggle" type="button" aria-label="Alternar tema" title="Alternar tema"></button>
+      </div>
+      <h1 id="titulo-historico-racial">Raspagem de Dados</h1>
+      <p class="lead mb-4">Análise histórico-racial</p>
+      <a class="btn btn-outline-primary mb-4" href="{{ url_for('historico_racial.inicio') }}">Nova análise</a>
+
+      {% if resultado.vocabulario_version %}
+      <p class="hr-vocab-reference">Vocabulário utilizado: <strong>{{ resultado.vocabulario_version }}</strong> <span class="text-secondary">· SHA-256: <code>{{ resultado.vocabulario_hash }}</code></span></p>
+      {% endif %}
+
+      <div class="row g-3 mb-4" aria-label="Resumo do processamento">
+        <div class="col-12 col-md-4"><div class="metric-card p-3 h-100"><span>PDFs processados</span><strong class="d-block fs-3">{{ resultado.total_pdfs }}</strong></div></div>
+        <div class="col-12 col-md-4"><div class="metric-card p-3 h-100"><span>Ocorrências lexicais</span><strong class="d-block fs-3">{{ resultado.total_ocorrencias }}</strong></div></div>
+        <div class="col-12 col-md-4"><div class="metric-card p-3 h-100"><span>Entidades distintas</span><strong class="d-block fs-3">{{ resultado.entidades_distintas }}</strong></div></div>
+      </div>
+
+      {% if resultado.erros %}
+      <div class="alert alert-warning" role="alert">
+        <strong>Alguns arquivos não puderam ser processados:</strong>
+        <ul class="mb-0">
+          {% for erro in resultado.erros %}<li>{{ erro.arquivo_pdf }}: {{ erro.mensagem }}</li>{% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+
+      <section class="download-card p-4" aria-labelledby="titulo-ocorrencias">
+        <h2 class="h5" id="titulo-ocorrencias">Primeiras ocorrências</h2>
+        <p class="text-secondary">As identificações são lexicais e permanecem pendentes de validação humana. Nenhuma influência ou relação conceitual foi inferida.</p>
+        {% if resultado.ocorrencias %}
+        <div class="table-responsive">
+          <table class="table hr-table align-middle">
+            <thead><tr><th scope="col">PDF</th><th scope="col">Página</th><th scope="col">Entidade</th><th scope="col">Forma encontrada</th><th scope="col">Grupo</th><th scope="col">Contexto</th></tr></thead>
+            <tbody>
+              {% for item in resultado.ocorrencias[:50] %}
+              <tr>
+                <td>{{ item.arquivo_pdf }}</td>
+                <td>{{ item.pagina_pdf }}</td>
+                <td>{{ item.entidade_canonica }}</td>
+                <td>{{ item.forma_original_no_texto }}</td>
+                <td>{% for codigo in item.grupo %}{{ resultado.grupos[codigo] }}{% if not loop.last %}; {% endif %}{% endfor %}</td>
+                <td>
+                  <details>
+                    <summary>Ver trechos</summary>
+                    {% if item.trecho_anterior %}<p><strong>Anterior:</strong> {{ item.trecho_anterior }}</p>{% endif %}
+                    <p><strong>Ocorrência:</strong> {{ item.trecho_ocorrencia }}</p>
+                    {% if item.trecho_posterior %}<p><strong>Posterior:</strong> {{ item.trecho_posterior }}</p>{% endif %}
+                  </details>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% if resultado.total_ocorrencias > 50 %}<p class="form-text mb-0">Exibindo as primeiras 50 de {{ resultado.total_ocorrencias }} ocorrências.</p>{% endif %}
+        {% else %}
+        <p class="mb-0">Nenhuma entidade cadastrada foi localizada nos PDFs processados.</p>
+        {% endif %}
+      </section>
+    </section>
+  </main>
+  <footer class="app-footer">
+    Grupo de pesquisa: <a href="http://dgp.cnpq.br/dgp/espelhogrupo/538438" target="_blank" rel="noopener noreferrer">ConsCiências-Sociais</a> | Desenvolvido por <a href="http://lattes.cnpq.br/0075160400322127" target="_blank" rel="noopener noreferrer">Fabio Monteiro de Moraes</a> - 2026 | Versão beta
+  </footer>
+
+  <div class="modal fade" id="modal-sobre-historico-racial" tabindex="-1" aria-labelledby="titulo-modal-sobre-historico-racial" aria-describedby="descricao-modal-sobre-historico-racial">
+    <div class="modal-dialog modal-dialog-scrollable modal-lg"><div class="modal-content">
+      <div class="modal-header"><h2 class="modal-title fs-5" id="titulo-modal-sobre-historico-racial">Sobre esta ferramenta</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button></div>
+      <div class="modal-body" id="descricao-modal-sobre-historico-racial">
+        <p>A ferramenta Raspagem de Dados — Análise histórico-racial está sendo desenvolvida para apoiar pesquisas histórico-documentais sobre circulação de repertórios intelectuais e políticos, classificações raciais e suas transformações ao longo do tempo.</p>
+        <p>A ferramenta será destinada à localização, organização e pré-codificação de evidências em documentos históricos, preservando a distinção entre ocorrência textual, sugestão automatizada e validação humana.</p>
+        <p class="mb-0">Esta é uma versão inicial da ferramenta. Os recursos analíticos ainda serão implementados gradualmente.</p>
+      </div>
+      <div class="modal-footer"><button type="button" class="btn btn-primary" data-bs-dismiss="modal">Fechar</button></div>
+    </div></div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="{{ url_for('static', filename='js/interface.js') }}"></script>
+</body>
+</html>

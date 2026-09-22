@@ -1,0 +1,44 @@
+.hr-progress {
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  border-radius: .75rem;
+  color: var(--ink);
+  padding: 1rem;
+}
+.hr-progress .progress { background: var(--border); }
+.hr-progress .progress-bar { background: var(--blue); transition: width .2s ease; }
+.hr-tempo { color: var(--muted); font-size: .9rem; }
+.hr-table { --bs-table-bg: transparent; --bs-table-color: var(--ink); --bs-table-border-color: var(--border); color: var(--ink); }
+.hr-table th, .hr-table td { border-color: var(--border); overflow-wrap: anywhere; }
+.hr-table th { white-space: nowrap; }
+.hr-table details { min-width: 9rem; max-width: 32rem; }
+.hr-table details p { margin: .75rem 0 0; white-space: pre-wrap; }
+.hr-table summary { color: var(--blue); cursor: pointer; }
+.hr-table summary:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+@media (max-width: 575px) {
+  .hr-table { font-size: .9rem; }
+}
+.hr-vocab-reference { overflow-wrap: anywhere; }
+.hr-vocab-reference code { color: var(--muted); font-size: .78rem; }
+.hr-vocab-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(17rem, 22rem); gap: 1rem; align-items: start; }
+.hr-vocab-grid > * { min-width: 0; }
+.hr-vocab-actions { display: flex; flex-wrap: wrap; gap: .6rem; }
+.hr-vocab-group, .hr-vocab-entity { border: 1px solid var(--border); border-radius: .6rem; margin-top: .7rem; background: var(--surface-muted); }
+.hr-vocab-group > summary, .hr-vocab-entity > summary { cursor: pointer; padding: .75rem 1rem; display: flex; gap: .7rem; align-items: center; flex-wrap: wrap; color: var(--ink); }
+.hr-vocab-group > summary small, .hr-vocab-entity > summary small { color: var(--muted); margin-left: auto; }
+.hr-vocab-group > summary:focus-visible, .hr-vocab-entity > summary:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.hr-vocab-group-body, .hr-vocab-entity-body { border-top: 1px solid var(--border); padding: .8rem 1rem 1rem; }
+.hr-vocab-entity { background: var(--surface); }
+.hr-vocab-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .6rem; margin: .65rem 0; }
+.hr-vocab-fields label, .hr-vocab-entity-body label { min-width: 0; color: var(--ink); }
+.hr-vocab-group-options { display: flex; flex-wrap: wrap; gap: .45rem 1rem; }
+.hr-vocab-check { display: inline-flex; align-items: center; gap: .4rem; margin: .35rem 0; }
+.hr-vocab-check input { accent-color: var(--blue); }
+.hr-vocab-variant { display: flex; align-items: center; gap: .6rem; margin-top: .5rem; }
+.hr-vocab-variant input[type="text"], .hr-vocab-variant .form-control { min-width: 0; flex: 1; }
+.hr-vocab-dialog { width: min(92vw, 38rem); max-height: 85vh; overflow: auto; background: var(--surface); color: var(--ink); border: 1px solid var(--border); border-radius: .8rem; padding: 1.4rem; box-shadow: 0 .8rem 2rem rgba(0,0,0,.25); }
+.hr-vocab-dialog::backdrop { background: rgba(0,0,0,.55); }
+.hr-vocab-dialog-error { color: #a51c30; margin-top: .7rem; }
+html[data-theme="dark"] .hr-vocab-dialog-error { color: #ff9aa7; }
+@media (max-width: 900px) { .hr-vocab-grid { grid-template-columns: 1fr; } }
+@media (max-width: 575px) { .hr-vocab-fields { grid-template-columns: 1fr; } .hr-vocab-variant { flex-wrap: wrap; } }

@@ -17,7 +17,8 @@ class TesteHistoricoRacial(unittest.TestCase):
         pagina = resposta.get_data(as_text=True)
         self.assertIn("Raspagem de Dados", pagina)
         self.assertIn("Análise histórico-racial", pagina)
-        self.assertIn("Processamento em desenvolvimento", pagina)
+        self.assertIn("Processar PDFs", pagina)
+        self.assertIn('action="/historico-racial/analisar"', pagina)
 
     def test_rota_principal_permanece_disponivel(self):
         with app.test_client() as cliente:
