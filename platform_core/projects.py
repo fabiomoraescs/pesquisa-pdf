@@ -13,7 +13,7 @@ from historico_racial.vocabulary import VocabularioError
 from .extensions import db
 from .models import Project, ProjectLibrary, ProjectVocabularyVersion, VocabularyLibrary
 from .project_lifecycle import ProjectActionError, archive, delete_archived, restore
-from .services import can_use_tool, get_project_for_user
+from .services import ACCOUNT_LIFECYCLE_LOCK, account_accepts_new_work, can_use_tool, get_project_for_user
 from .vocabularies import create_project_vocabulary, project_store
 
 projects_bp = Blueprint("projects", __name__)
@@ -85,17 +85,20 @@ def new_project():
         elif len(selected) != len(selected_ids) or not selected:
             flash("Selecione ao menos uma biblioteca disponível.", "danger")
         else:
-            project = Project(owner_user_id=current_user.id, name=name, description=description)
-            db.session.add(project)
-            db.session.flush()
-            try:
-                create_project_vocabulary(project, selected)
-                db.session.commit()
-            except (VocabularioError, OSError) as error:
-                db.session.rollback()
-                flash(str(error), "danger")
-            else:
-                return redirect(url_for("historico_racial.inicio_projeto", project_id=project.id))
+            with ACCOUNT_LIFECYCLE_LOCK:
+                if not account_accepts_new_work(current_user.id):
+                    abort(403)
+                project = Project(owner_user_id=current_user.id, name=name, description=description)
+                db.session.add(project)
+                db.session.flush()
+                try:
+                    create_project_vocabulary(project, selected)
+                    db.session.commit()
+                except (VocabularioError, OSError) as error:
+                    db.session.rollback()
+                    flash(str(error), "danger")
+                else:
+                    return redirect(url_for("historico_racial.inicio_projeto", project_id=project.id))
     return render_template("platform/project_new.html", libraries=libraries)
 
 

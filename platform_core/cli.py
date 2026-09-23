@@ -6,6 +6,7 @@ from sqlalchemy import select
 
 from .extensions import db
 from .models import User
+from .password_policy import TEMPORARY_PASSWORD
 from .services import record_audit, replace_grant, seed_platform
 
 
@@ -23,6 +24,8 @@ def register_cli(app: Flask) -> None:
         email = email.strip().casefold()
         if len(password) < 12:
             raise click.ClickException("A senha precisa ter pelo menos 12 caracteres.")
+        if password == TEMPORARY_PASSWORD:
+            raise click.ClickException("Escolha uma senha diferente da senha temporária administrativa.")
         if db.session.scalar(select(User.id).where(User.email == email)):
             raise click.ClickException("E-mail já cadastrado.")
         seed_platform()

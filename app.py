@@ -33,7 +33,8 @@ from platform_core.admin import admin_bp
 from platform_core.profile import profile_bp
 from platform_core.presentation import register_presentation
 from platform_core.cli import register_cli
-from platform_core.services import access_is_active, can_use_tool
+from platform_core.services import ACCOUNT_LIFECYCLE_LOCK, access_is_active, account_accepts_new_work, can_use_tool
+from platform_core.semantic_threshold import normalize as normalize_semantic_threshold, template_settings
 
 from analyzer.common import (
     ANALISADORES,
@@ -72,6 +73,13 @@ migrate.init_app(app, db)
 csrf.init_app(app)
 register_cli(app)
 register_presentation(app)
+
+
+@app.context_processor
+def _semantic_threshold_template_context():
+    return {"semantic_threshold": template_settings()}
+
+
 app.register_blueprint(auth_bp)
 app.register_blueprint(projects_bp)
 app.register_blueprint(admin_bp)
@@ -94,6 +102,10 @@ def _enforce_platform_access():
         if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.path.startswith("/api/"):
             return jsonify({"erro": "Entre para continuar."}), 401
         return redirect(url_for("auth.login", next=request.full_path if request.method == "GET" else ""))
+    if current_user.must_change_password and request.endpoint not in {"auth.change_password", "auth.logout"}:
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.path.startswith("/api/"):
+            return jsonify({"erro": "Altere sua senha antes de continuar."}), 403
+        return redirect(url_for("auth.change_password"))
     if not access_is_active(current_user):
         if request.endpoint == "auth.logout":
             return None
@@ -577,14 +589,10 @@ def _nome_disponivel(pasta: Path, nome: str) -> Path:
 
 def _configuracoes_v3() -> dict[str, object]:
     """Lê controles exclusivos da V3 sem afetar as versões lexicais."""
-    try:
-        limiar = float(request.form.get("limiar_semantico", "0.70"))
-    except ValueError:
-        limiar = 0.70
     return {
         "incluir_lexical": request.form.get("incluir_lexical") == "on",
         "incluir_semantica": request.form.get("incluir_semantica") == "on",
-        "limiar_semantico": min(0.90, max(0.50, limiar)),
+        "limiar_semantico": normalize_semantic_threshold(request.form.get("limiar_semantico", template_settings()["default"])),
     }
 
 
@@ -656,19 +664,25 @@ def inicio():
         arquivo.save(destino)
         pdfs_salvos.append(destino)
 
-    _novo_progresso(job_id, versao, len(pdfs_salvos), current_user.id)
-    resultado_url = url_for("resultado", identificador=job_id)
-    EXECUTOR_ANALISES.submit(
-        _executar_job,
-        job_id,
-        pdfs_salvos,
-        termos,
-        pasta_saida,
-        versao,
-        configuracoes_v3,
-        resultado_url,
-        current_user.id,
-    )
+    with ACCOUNT_LIFECYCLE_LOCK:
+        if not account_accepts_new_work(current_user.id):
+            for caminho in pdfs_salvos:
+                caminho.unlink(missing_ok=True)
+            pasta_upload.rmdir()
+            return _resposta_erro("A conta não está mais disponível para processamento.")
+        _novo_progresso(job_id, versao, len(pdfs_salvos), current_user.id)
+        resultado_url = url_for("resultado", identificador=job_id)
+        EXECUTOR_ANALISES.submit(
+            _executar_job,
+            job_id,
+            pdfs_salvos,
+            termos,
+            pasta_saida,
+            versao,
+            configuracoes_v3,
+            resultado_url,
+            current_user.id,
+        )
     # O executor já recebeu todos os valores simples necessários; a resposta
     # retorna imediatamente para que o navegador inicie o polling.
     if request.headers.get("X-Requested-With") == "XMLHttpRequest":
@@ -744,6 +758,7 @@ def create_app(test_config: dict | None = None) -> Flask:
     csrf.init_app(isolated)
     register_cli(isolated)
     register_presentation(isolated)
+    isolated.context_processor(_semantic_threshold_template_context)
     isolated.register_blueprint(auth_bp)
     isolated.register_blueprint(projects_bp)
     isolated.register_blueprint(admin_bp)

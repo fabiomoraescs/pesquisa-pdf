@@ -4,12 +4,27 @@
   const arquivos = document.getElementById('pdfs-historico-racial');
   const botao = document.getElementById('hr-analisar');
   const erro = document.getElementById('hr-erro');
-  const progresso = document.getElementById('hr-progress');
-  const etapa = document.getElementById('hr-etapa');
-  const detalhe = document.getElementById('hr-detalhe');
-  const barra = document.getElementById('hr-barra');
-  const barraValor = document.getElementById('hr-barra-valor');
-  const tempo = document.getElementById('hr-tempo');
+  const overlay = document.getElementById('hr-overlay-processamento');
+  const titulo = document.getElementById('hr-titulo-processamento');
+  const mensagem = document.getElementById('hr-mensagem-processamento');
+  const detalhe = document.getElementById('hr-detalhe-processamento');
+  const barra = document.getElementById('hr-progresso-processamento');
+  const barraValor = document.getElementById('hr-barra-progresso-processamento');
+  const tempo = document.getElementById('hr-tempo-decorrido-processamento');
+  const restante = document.getElementById('hr-tempo-restante-processamento');
+  const fechar = document.getElementById('hr-fechar-processamento');
+  const spinner = overlay.querySelector('.loading-spinner');
+  const semanticControls = document.getElementById('hr-controles-semanticos');
+  const semanticThreshold = document.getElementById('hr-limiar');
+  const semanticThresholdValue = document.getElementById('hr-valor-limiar');
+  semanticThreshold.addEventListener('input', () => {
+    semanticThresholdValue.textContent = Number(semanticThreshold.value).toFixed(2).replace('.', ',');
+  });
+  document.querySelectorAll('input[name="metodo_analise"]').forEach((radio) => radio.addEventListener('change', () => {
+    const hybrid = document.querySelector('input[name="metodo_analise"]:checked')?.value === 'hibrido';
+    semanticControls.hidden = !hybrid;
+    semanticThreshold.disabled = !hybrid;
+  }));
   let ocupado = false;
   let temporizador = null;
 
@@ -17,35 +32,77 @@
     return arquivos.files.length > 0 && [...arquivos.files].every((arquivo) => arquivo.name.toLowerCase().endsWith('.pdf'));
   }
 
-  function mostrarErro(mensagem) {
-    erro.textContent = mensagem;
-    erro.hidden = !mensagem;
+  function mostrarErro(texto) {
+    erro.textContent = texto;
+    erro.hidden = !texto;
   }
 
   function atualizarBotao() {
     botao.disabled = ocupado || !selecaoValida();
   }
 
+  function formatarDuracao(segundos) {
+    const total = Math.max(0, Math.round(segundos));
+    const minutos = Math.floor(total / 60);
+    return minutos ? `${minutos} min ${total % 60} s` : `${total} s`;
+  }
+
+  function exibirOverlay(visivel) {
+    overlay.hidden = !visivel;
+    overlay.setAttribute('aria-hidden', String(!visivel));
+    document.body.classList.toggle('is-processing', visivel);
+  }
+
+  function atualizarProgresso(dados) {
+    const percentual = Number.isFinite(dados.percentual) ? Math.max(0, Math.min(100, dados.percentual)) : null;
+    const etapa = dados.etapa || 'Preparando arquivos…';
+    titulo.textContent = percentual === null ? 'Processando os arquivos...' : `Processando os arquivos — ${percentual}%`;
+    mensagem.textContent = `Etapa: ${etapa}`;
+    detalhe.textContent = dados.bloco_atual != null && dados.blocos_total
+      ? `PDF ${dados.arquivo_indice} de ${dados.arquivos_total} · ${dados.bloco_atual} de ${dados.blocos_total} blocos processados`
+      : dados.arquivo_indice && dados.paginas_total
+      ? `PDF ${dados.arquivo_indice} de ${dados.arquivos_total} · página ${dados.pagina_atual} de ${dados.paginas_total}`
+      : dados.arquivo_atual || 'Preparando análise…';
+    if (percentual === null) {
+      barra.classList.add('is-indeterminate');
+      barra.removeAttribute('aria-valuenow');
+      barra.setAttribute('aria-valuetext', 'Progresso ainda não disponível');
+      barraValor.style.width = '';
+    } else {
+      barra.classList.remove('is-indeterminate');
+      barra.setAttribute('aria-valuenow', String(percentual));
+      barra.setAttribute('aria-valuetext', `Progresso: ${percentual}%`);
+      barraValor.style.width = `${percentual}%`;
+    }
+    tempo.textContent = `Tempo decorrido: ${formatarDuracao(dados.tempo_decorrido || 0)}`;
+    restante.textContent = Number.isFinite(dados.eta_segundos)
+      ? `Tempo restante estimado: ~${formatarDuracao(dados.eta_segundos)}`
+      : 'Calculando tempo restante…';
+  }
+
+  function falhaProcessamento(texto) {
+    if (temporizador) window.clearTimeout(temporizador);
+    temporizador = null;
+    ocupado = false;
+    atualizarBotao();
+    mostrarErro(texto);
+    titulo.textContent = 'Erro durante o processamento';
+    mensagem.textContent = texto;
+    detalhe.textContent = '';
+    barra.classList.remove('is-indeterminate');
+    barra.removeAttribute('aria-valuenow');
+    barraValor.style.width = '0%';
+    restante.textContent = '';
+    spinner.hidden = true;
+    fechar.hidden = false;
+    fechar.focus();
+  }
+
   arquivos.addEventListener('change', () => {
     mostrarErro(arquivos.files.length && !selecaoValida() ? 'Selecione apenas arquivos PDF.' : '');
     atualizarBotao();
   });
-
-  function atualizarProgresso(dados) {
-    etapa.textContent = dados.etapa || 'Preparando arquivos…';
-    detalhe.textContent = dados.arquivo_indice && dados.paginas_total
-      ? `PDF ${dados.arquivo_indice} de ${dados.arquivos_total} · página ${dados.pagina_atual} de ${dados.paginas_total}`
-      : 'Preparando análise…';
-    if (Number.isFinite(dados.percentual)) {
-      barra.setAttribute('aria-valuenow', String(dados.percentual));
-      barraValor.style.width = `${dados.percentual}%`;
-      etapa.textContent += ` — ${dados.percentual}%`;
-    } else {
-      barra.removeAttribute('aria-valuenow');
-      barraValor.style.width = '0%';
-    }
-    tempo.textContent = `Tempo decorrido: ${dados.tempo_decorrido || 0} s`;
-  }
+  fechar.addEventListener('click', () => exibirOverlay(false));
 
   async function consultarProgresso(url) {
     try {
@@ -54,17 +111,17 @@
       if (!resposta.ok) throw new Error(dados.erro || 'Não foi possível consultar o progresso.');
       atualizarProgresso(dados);
       if (dados.status === 'concluido') {
-        etapa.textContent = 'Processamento concluído — 100%';
+        titulo.textContent = 'Análise concluída — 100%';
         window.location.assign(dados.resultado_url);
         return;
       }
-      if (dados.status === 'erro') throw new Error(dados.erro || 'Não foi possível processar os PDFs.');
+      if (dados.status === 'erro') {
+        falhaProcessamento(dados.erro || 'Não foi possível processar os PDFs.');
+        return;
+      }
       temporizador = window.setTimeout(() => consultarProgresso(url), 1000);
     } catch (falha) {
-      ocupado = false;
-      progresso.hidden = true;
-      atualizarBotao();
-      mostrarErro(falha.message || 'Não foi possível processar os PDFs.');
+      falhaProcessamento(falha.message || 'Não foi possível processar os PDFs.');
     }
   }
 
@@ -79,11 +136,10 @@
     ocupado = true;
     atualizarBotao();
     mostrarErro('');
-    progresso.hidden = false;
-    etapa.textContent = 'Preparando arquivos…';
-    detalhe.textContent = 'Enviando PDFs…';
-    barra.removeAttribute('aria-valuenow');
-    barraValor.style.width = '0%';
+    fechar.hidden = true;
+    spinner.hidden = false;
+    exibirOverlay(true);
+    atualizarProgresso({ etapa: 'Preparando arquivos…', percentual: null });
     try {
       const resposta = await fetch(formulario.action, {
         method: 'POST', body: new FormData(formulario),
@@ -93,11 +149,7 @@
       if (!resposta.ok) throw new Error(dados.erro || 'Não foi possível enviar os PDFs.');
       consultarProgresso(dados.progresso_url);
     } catch (falha) {
-      if (temporizador) window.clearTimeout(temporizador);
-      ocupado = false;
-      progresso.hidden = true;
-      atualizarBotao();
-      mostrarErro(falha.message || 'Não foi possível enviar os PDFs.');
+      falhaProcessamento(falha.message || 'Não foi possível enviar os PDFs.');
     }
   });
   atualizarBotao();

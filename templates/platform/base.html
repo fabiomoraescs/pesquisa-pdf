@@ -13,7 +13,7 @@
   {% include 'platform/_header.html' %}
   <main class="platform-main{% if mode in ('login', 'register') %} platform-main-auth{% endif %}">
     <div class="app-content-container">
-    {% if mode not in ('login', 'register') %}<div class="platform-page-heading"><h1>{% block heading %}Raspagem de Dados{% endblock %}</h1><p>Análise documental em Ciências Sociais</p></div>{% endif %}
+    {% block page_intro %}{% endblock %}
     {% with messages = get_flashed_messages(with_categories=true) %}{% for category, message in messages %}<div class="alert alert-{{ category }}" role="alert">{{ message }}</div>{% endfor %}{% endwith %}
     {% block body %}{% endblock %}
     </div>

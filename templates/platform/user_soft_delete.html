@@ -1,0 +1,17 @@
+{% extends 'platform/base.html' %}
+{% block title %}Excluir usuário — Raspagem de Dados{% endblock %}
+{% block body %}
+<section class="platform-panel platform-user-delete-confirm">
+  <h1 class="h4">Excluir usuário</h1>
+  <p><strong>Nome:</strong> {{ user.name }}<br><strong>E-mail:</strong> {{ user.email }}</p>
+  <p>Excluir logicamente este usuário? A conta deixará de acessar a plataforma, mas poderá ser restaurada. Perfil, projetos e histórico serão preservados.</p>
+  <form method="post" action="{{ url_for('admin.delete_user', user_id=user.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="confirm" value="yes">
+    <div class="d-flex flex-wrap gap-2">
+      <a class="btn btn-outline-primary" href="{{ url_for('admin.users') }}">Cancelar</a>
+      <button class="btn btn-outline-danger" type="submit">Excluir conta</button>
+    </div>
+  </form>
+</section>
+{% endblock %}

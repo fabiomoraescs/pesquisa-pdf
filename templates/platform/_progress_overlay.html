@@ -1,0 +1,17 @@
+{% set progress_prefix = progress_prefix|default('') %}
+<div class="loading-overlay" id="{{ progress_prefix }}overlay-processamento" hidden aria-hidden="true">
+  <section class="loading-panel" role="status" aria-live="assertive" aria-labelledby="{{ progress_prefix }}titulo-processamento">
+    <div class="loading-spinner" aria-hidden="true"></div>
+    <h2 id="{{ progress_prefix }}titulo-processamento">Processando os arquivos...</h2>
+    <p id="{{ progress_prefix }}mensagem-processamento">Aguarde enquanto os PDFs são analisados. Esse processo pode levar alguns minutos.</p>
+    <div class="loading-progress is-indeterminate" id="{{ progress_prefix }}progresso-processamento" role="progressbar" aria-label="Progresso da análise" aria-valuemin="0" aria-valuemax="100" aria-valuetext="Progresso ainda não disponível">
+      <div class="loading-progress__bar" id="{{ progress_prefix }}barra-progresso-processamento"></div>
+    </div>
+    <p class="loading-progress-detail" id="{{ progress_prefix }}detalhe-processamento">Preparando análise…</p>
+    <div class="loading-time" aria-live="polite">
+      <span id="{{ progress_prefix }}tempo-decorrido-processamento">Tempo decorrido: 0 s</span>
+      <span id="{{ progress_prefix }}tempo-restante-processamento">Calculando tempo restante…</span>
+    </div>
+    {% if progress_allow_close|default(false) %}<button class="btn btn-outline-primary mt-3" id="{{ progress_prefix }}fechar-processamento" type="button" hidden>Fechar</button>{% endif %}
+  </section>
+</div>

@@ -1,4 +1,30 @@
 (() => {
+  document.querySelectorAll('[data-view-container]').forEach((container) => {
+    const buttons = document.querySelectorAll(`[data-view-target="${container.id}"]`);
+    const key = 'pesquisapdf-view-mode';
+    let saved = 'list';
+    try { saved = localStorage.getItem(key) === 'cardbox' ? 'cardbox' : 'list'; } catch (_) { /* armazenamento indisponível */ }
+    const setView = (mode) => {
+      container.classList.toggle('platform-view-list', mode === 'list');
+      container.classList.toggle('platform-view-cardbox', mode === 'cardbox');
+      buttons.forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.viewMode === mode)));
+    };
+    setView(saved);
+    buttons.forEach((button) => button.addEventListener('click', () => {
+      const mode = button.dataset.viewMode;
+      setView(mode);
+      try { localStorage.setItem(key, mode); } catch (_) { /* modo apenas nesta página */ }
+    }));
+  });
+  const adminToggle = document.getElementById('platform-admin-toggle');
+  const adminSubmenu = document.getElementById('platform-admin-submenu');
+  if (adminToggle && adminSubmenu) {
+    adminToggle.addEventListener('click', () => {
+      const expanded = adminToggle.getAttribute('aria-expanded') !== 'true';
+      adminToggle.setAttribute('aria-expanded', String(expanded));
+      adminSubmenu.hidden = !expanded;
+    });
+  }
   document.querySelectorAll('[data-password-toggle]').forEach((button) => {
     const input = document.getElementById(button.dataset.passwordToggle);
     if (!input) return;

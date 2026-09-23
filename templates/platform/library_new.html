@@ -1,7 +1,13 @@
 {% extends 'platform/base.html' %}
 {% block title %}Nova biblioteca — Raspagem de Dados{% endblock %}
 {% block heading %}Nova biblioteca oficial{% endblock %}
+{% block page_intro %}<div class="platform-page-heading"><h1>Nova biblioteca oficial</h1></div>{% endblock %}
 {% block body %}
+<nav class="d-flex flex-wrap gap-2 mb-3" aria-label="Forma de criação da biblioteca">
+  <a class="btn btn-primary" aria-current="page" href="{{ url_for('admin.new_library') }}">Criar manualmente</a>
+  <a class="btn btn-outline-primary" href="{{ url_for('admin.library_import') }}">Importar de planilha</a>
+  <a class="btn btn-outline-primary" href="{{ url_for('admin.library_template') }}">Baixar modelo de planilha</a>
+</nav>
 <section class="platform-panel">
   <p class="platform-muted">A biblioteca começa como rascunho vazio. Grupos, entidades e variantes serão cadastrados manualmente antes da publicação.</p>
   <form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

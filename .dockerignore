@@ -14,3 +14,4 @@ outputs/*
 !outputs/.gitkeep
 *.pdf
 *.xlsx
+!resources/modelo_biblioteca.xlsx

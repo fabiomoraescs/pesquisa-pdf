@@ -1,0 +1,13 @@
+{% from 'platform/_icons.html' import icon %}
+{% macro toggle(target) %}
+<div class="platform-view-toggle" role="group" aria-label="Visualização">
+  <button type="button" data-view-target="{{ target }}" data-view-mode="list" aria-label="Visualização em lista" aria-pressed="true">{{ icon('lista') }}<span>Lista</span></button>
+  <button type="button" data-view-target="{{ target }}" data-view-mode="cardbox" aria-label="Visualização em cartões" aria-pressed="false">{{ icon('grade') }}<span>Cardbox</span></button>
+</div>
+{% endmacro %}
+{% macro ficha(url, label='Abrir ficha') %}
+<a class="btn btn-outline-primary btn-sm platform-action-button platform-open-record" href="{{ url }}" title="{{ label }}" aria-label="{{ label }}">{{ icon('ficha') }}</a>
+{% endmacro %}
+{% macro action_link(url, label, icon_name, danger=false) %}
+<a class="btn {{ 'btn-outline-danger' if danger else 'btn-outline-primary' }} btn-sm platform-action-button" href="{{ url }}" title="{{ label }}" aria-label="{{ label }}">{{ icon(icon_name) }}</a>
+{% endmacro %}

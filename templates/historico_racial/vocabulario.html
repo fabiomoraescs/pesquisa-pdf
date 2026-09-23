@@ -15,9 +15,8 @@
   {% include 'platform/_header.html' %}
   <main class="platform-main">
     <section class="hero-card" aria-labelledby="titulo-vocabulario">
-      <h1 id="titulo-vocabulario">Vocabulário da pesquisa</h1>
-      <p class="lead mb-3">Raspagem de Dados · Análise documental em Ciências Sociais</p>
-      <p>Projeto: <strong>{{ project.name }}</strong></p>
+      <h1 class="hr-vocab-page-title" id="titulo-vocabulario">Vocabulário da pesquisa</h1>
+      <p class="platform-muted">Projeto: <strong>{{ project.name }}</strong></p>
       <a class="btn btn-outline-primary mb-4" href="{{ url_for('historico_racial.inicio_projeto', project_id=project.id) }}">Voltar à análise</a>
 
       <div class="download-card p-4 mb-4">
@@ -79,6 +78,7 @@
   <script id="vocab-categorias" type="application/json">{{ categorias | tojson }}</script>
   <script id="vocab-rotulos" type="application/json">{{ presentation_labels | tojson }}</script>
   <script src="{{ url_for('static', filename='js/interface.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/platform.js') }}"></script>
   <script src="{{ url_for('static', filename='js/historico_racial_vocabulario.js') }}"></script>
 </body>
 </html>

@@ -45,6 +45,13 @@ def create_draft(name: str, description: str) -> VocabularyLibrary:
     return library
 
 
+def create_imported_draft(name: str, description: str, snapshot: dict) -> VocabularyLibrary:
+    """Cria a biblioteca inteira em uma única transação controlada pela rota."""
+    library = create_draft(name, description)
+    _save(library, snapshot)
+    return library
+
+
 def _draft(library: VocabularyLibrary, base_hash: str) -> dict:
     if library.status != "draft":
         raise LibraryError("Bibliotecas publicadas ou inativas não podem ser editadas diretamente.")

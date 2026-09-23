@@ -1,0 +1,21 @@
+{% extends 'platform/base.html' %}
+{% block title %}Excluir usuário permanentemente — Raspagem de Dados{% endblock %}
+{% block body %}
+<section class="platform-panel platform-user-delete-confirm">
+  <h1 class="h4">Excluir usuário permanentemente</h1>
+  <p><strong>Nome:</strong> {{ user.name }}<br><strong>E-mail:</strong> {{ user.email }}</p>
+  <p class="platform-danger-note">Esta operação é irreversível. A conta, o perfil pessoal e as permissões próprias serão removidos. Projetos e registros de auditoria não serão apagados automaticamente.</p>
+  {% if block_reason %}
+  <div class="alert alert-danger" role="alert">{{ block_reason }}</div>
+  {% else %}
+  <form method="post" action="{{ url_for('admin.permanently_delete_user', user_id=user.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label class="form-label" for="confirmation">Digite <strong>excluir</strong> para confirmar</label>
+    <input class="form-control mb-3" id="confirmation" name="confirmation" autocomplete="off" required aria-describedby="delete-warning" style="max-width: 22rem">
+    <p class="visually-hidden" id="delete-warning">A exclusão da conta é permanente.</p>
+    <button class="btn btn-danger" type="submit">Excluir usuário permanentemente</button>
+  </form>
+  {% endif %}
+  <a class="btn btn-outline-primary mt-3" href="{{ url_for('admin.deleted_users') if user.deleted_at else url_for('admin.user_detail', user_id=user.id) }}">Voltar</a>
+</section>
+{% endblock %}

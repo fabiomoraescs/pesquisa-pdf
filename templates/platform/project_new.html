@@ -1,6 +1,7 @@
 {% extends 'platform/base.html' %}
 {% block title %}Novo projeto — Raspagem de Dados{% endblock %}
 {% block heading %}Novo projeto{% endblock %}
+{% block page_intro %}<div class="platform-page-heading"><h1>Novo projeto</h1></div>{% endblock %}
 {% block body %}
 <section class="platform-panel">
   <form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

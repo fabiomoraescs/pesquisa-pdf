@@ -1,0 +1,13 @@
+{% extends 'platform/base.html' %}
+{% block title %}Excluir biblioteca — Raspagem de Dados{% endblock %}
+{% block body %}
+<section class="platform-panel">
+  <h1 class="h4">Excluir biblioteca</h1>
+  <p>Esta ação remove permanentemente a biblioteca <strong>{{ library.name }}</strong>. Bibliotecas vinculadas a projetos e a biblioteca padrão não podem ser excluídas.</p>
+  <form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="base_hash" value="{{ library.content_hash }}">
+    <label class="form-label" for="library-delete-confirmation">Digite o nome exato da biblioteca para confirmar</label>
+    <input class="form-control mb-3" id="library-delete-confirmation" name="confirmation" required autocomplete="off">
+    <button class="btn btn-danger" type="submit">Excluir biblioteca</button> <a class="btn btn-outline-primary" href="{{ url_for('admin.library_detail', library_id=library.id) }}">Cancelar</a>
+  </form>
+</section>
+{% endblock %}

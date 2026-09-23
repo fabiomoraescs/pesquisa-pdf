@@ -1,0 +1,27 @@
+{% extends 'platform/base.html' %}
+{% block title %}Restaurar usuário — Raspagem de Dados{% endblock %}
+{% block body %}
+<section class="platform-panel platform-user-delete-confirm">
+  <h1 class="h4">Restaurar usuário</h1>
+  <p><strong>Nome:</strong> {{ user.name }}<br><strong>E-mail:</strong> {{ user.email }}</p>
+  {% if previous_status %}
+    <p>Restaurar este usuário? A conta voltará ao estado <strong>{{ previous_status | rotulo }}</strong>. O acesso dependerá também das concessões e permissões existentes.</p>
+  {% else %}
+    <p>Esta conta foi excluída antes de o estado anterior ser registrado. Selecione explicitamente o estado a restaurar; não é possível recuperá-lo com segurança.</p>
+  {% endif %}
+  <form method="post" action="{{ url_for('admin.restore_user', user_id=user.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="confirm" value="yes">
+    {% if previous_status %}<input type="hidden" name="restore_status" value="{{ previous_status }}">
+    {% else %}<label class="form-label" for="restore-status">Estado após restauração</label>
+      <select class="form-select mb-3" id="restore-status" name="restore_status" required>
+        <option value="">Selecione</option>
+        {% for status in ['active', 'suspended', 'blocked'] %}<option value="{{ status }}">{{ status | rotulo }}</option>{% endfor %}
+      </select>{% endif %}
+    <div class="d-flex flex-wrap gap-2">
+      <a class="btn btn-outline-primary" href="{{ url_for('admin.deleted_users') }}">Cancelar</a>
+      <button class="btn btn-primary" type="submit">Restaurar usuário</button>
+    </div>
+  </form>
+</section>
+{% endblock %}

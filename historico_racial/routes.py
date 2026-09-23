@@ -4,20 +4,22 @@ from __future__ import annotations
 
 import logging
 import time
+from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from threading import RLock
 from uuid import UUID, uuid4
 
-from flask import Blueprint, abort, flash, jsonify, redirect, render_template, request, url_for
+from flask import Blueprint, abort, flash, jsonify, redirect, render_template, request, send_file, url_for
 from flask_login import current_user, login_required
 from sqlalchemy import select
 from werkzeug.utils import secure_filename
 
 from platform_core.extensions import db
 from platform_core.models import Project, ProjectLibrary, ProjectVocabularyVersion, VocabularyLibrary
-from platform_core.services import can_use_tool, get_project_for_user
+from platform_core.services import ACCOUNT_LIFECYCLE_LOCK, account_accepts_new_work, can_use_tool, get_project_for_user
+from platform_core.semantic_threshold import DEFAULT as SEMANTIC_THRESHOLD_DEFAULT, normalize as normalize_semantic_threshold
 from platform_core.vocabularies import project_store, register_version
 
 from .dictionaries import ConfiguracaoInvalidaError, carregar_categorias
@@ -79,6 +81,7 @@ def _executar_job(
     job_id: str, arquivos: list[ArquivoPDF], temporario: TemporaryDirectory[str],
     resultado_url: str, vocabulario: dict, project_id: str, user_id: str,
     project_name: str, library_names: list[str],
+    metodo_analise: str = "lexical", limiar_semantico: float | None = None,
 ) -> None:
     def atualizar(evento: dict) -> None:
         with JOBS_LOCK:
@@ -96,8 +99,10 @@ def _executar_job(
             arquivos, progress_callback=atualizar, vocabulario=vocabulario,
             project_id=project_id, vocabulary_version=vocabulario["version"],
             vocabulary_hash=vocabulario["hash"],
+            metodo_analise=metodo_analise, limiar_semantico=limiar_semantico,
         )
-        resultado.update({"project_name": project_name, "library_names": library_names, "owner_user_id": user_id})
+        resultado.update({"project_name": project_name, "library_names": library_names, "owner_user_id": user_id,
+                          "data_processamento": datetime.now(timezone.utc).isoformat(timespec="seconds")})
         with JOBS_LOCK:
             RESULTADOS_HR[job_id] = resultado
             PROGRESSOS_HR[job_id].update({
@@ -210,6 +215,14 @@ def salvar_vocabulario(project_id: UUID):
 @login_required
 def analisar(project_id: UUID):
     project = _require_project(project_id)
+    metodo_analise = request.form.get("metodo_analise", "lexical")
+    if metodo_analise not in {"lexical", "hibrido"}:
+        return _resposta_erro("Selecione Lexical ou Híbrido.", project_id)
+    limiar_semantico = None
+    if metodo_analise == "hibrido":
+        limiar_semantico = normalize_semantic_threshold(
+            request.form.get("limiar_semantico", SEMANTIC_THRESHOLD_DEFAULT)
+        )
     enviados = [file for file in request.files.getlist("pdfs") if file and file.filename]
     if not enviados:
         return _resposta_erro("Selecione ao menos um arquivo PDF.", project_id)
@@ -234,33 +247,39 @@ def analisar(project_id: UUID):
     except (OSError, ValueError):
         temporary.cleanup()
         return _resposta_erro("Não foi possível salvar os PDFs enviados. Tente novamente.", project_id)
-    with JOBS_LOCK:
-        # Uma requisição que começou antes do arquivamento não pode registrar um
-        # novo job depois que o projeto mudou de estado ou foi excluído.
-        current_project = db.session.get(Project, project.id, populate_existing=True)
-        if current_project is None or current_project.status != "active" or current_project.deleted_at is not None:
-            temporary.cleanup()
-            return jsonify({"erro": "O projeto não está mais ativo para processamento."}), 409
-        PROGRESSOS_HR[job_id] = {
-            "status": "processando", "etapa": "Preparando arquivos…",
-            "percentual": None, "percentual_anterior": None,
-            "arquivo_atual": None, "arquivo_indice": 0, "arquivos_total": len(files),
-            "pagina_atual": 0, "paginas_total": 0, "tempo_inicio": time.monotonic(),
-            "resultado_url": None, "erro": None, "terminado_em": None,
-            "vocabulario_version": vocabulary["version"], "vocabulario_hash": vocabulary["hash"],
-            "project_id": project.id, "owner_user_id": current_user.id,
-        }
-    try:
-        result_url = url_for("historico_racial.resultado", project_id=project.id, job_id=job_id)
-        EXECUTOR_HR.submit(
-            _executar_job, job_id, files, temporary, result_url, vocabulary,
-            project.id, current_user.id, project.name, [item.name for item in _libraries(project.id)],
-        )
-    except RuntimeError:
-        temporary.cleanup()
+    with ACCOUNT_LIFECYCLE_LOCK:
         with JOBS_LOCK:
-            PROGRESSOS_HR.pop(job_id, None)
-        return _resposta_erro("O processamento não pôde ser iniciado. Tente novamente.", project_id, 503)
+            # Uma requisição iniciada antes da exclusão da conta ou do
+            # arquivamento não pode registrar um job depois dessa mudança.
+            current_project = db.session.get(Project, project.id, populate_existing=True)
+            if not account_accepts_new_work(current_user.id):
+                temporary.cleanup()
+                return jsonify({"erro": "A conta não está mais disponível para processamento."}), 409
+            if current_project is None or current_project.status != "active" or current_project.deleted_at is not None:
+                temporary.cleanup()
+                return jsonify({"erro": "O projeto não está mais ativo para processamento."}), 409
+            PROGRESSOS_HR[job_id] = {
+                "status": "processando", "etapa": "Preparando arquivos…",
+                "percentual": None, "percentual_anterior": None,
+                "arquivo_atual": None, "arquivo_indice": 0, "arquivos_total": len(files),
+                "pagina_atual": 0, "paginas_total": 0, "tempo_inicio": time.monotonic(),
+                "resultado_url": None, "erro": None, "terminado_em": None,
+                "vocabulario_version": vocabulary["version"], "vocabulario_hash": vocabulary["hash"],
+                "metodo_analise": metodo_analise,
+                "project_id": project.id, "owner_user_id": current_user.id,
+            }
+        try:
+            result_url = url_for("historico_racial.resultado", project_id=project.id, job_id=job_id)
+            EXECUTOR_HR.submit(
+                _executar_job, job_id, files, temporary, result_url, vocabulary,
+                project.id, current_user.id, project.name, [item.name for item in _libraries(project.id)],
+                metodo_analise, limiar_semantico,
+            )
+        except RuntimeError:
+            temporary.cleanup()
+            with JOBS_LOCK:
+                PROGRESSOS_HR.pop(job_id, None)
+            return _resposta_erro("O processamento não pôde ser iniciado. Tente novamente.", project_id, 503)
     return jsonify({
         "job_id": job_id, "status": "processando",
         "progresso_url": url_for("historico_racial.progresso", project_id=project.id, job_id=job_id),
@@ -280,8 +299,16 @@ def progresso(project_id: UUID, job_id: UUID):
             "status", "etapa", "percentual", "arquivo_atual", "arquivo_indice",
             "arquivos_total", "pagina_atual", "paginas_total", "resultado_url", "erro",
             "vocabulario_version", "vocabulario_hash",
+            "metodo_analise", "bloco_atual", "blocos_total",
         )}
         public["tempo_decorrido"] = round(time.monotonic() - data["tempo_inicio"])
+        percentual = public["percentual"]
+        # Estimativa visual baseada em unidades reais já concluídas pelo processor.
+        public["eta_segundos"] = (
+            round(public["tempo_decorrido"] * (100 - percentual) / percentual)
+            if isinstance(percentual, int) and 15 <= percentual < 100
+            and public["tempo_decorrido"] >= 10 else None
+        )
     return jsonify(public)
 
 
@@ -295,6 +322,23 @@ def resultado(project_id: UUID, job_id: UUID):
     if data is None or data["project_id"] != project.id or (data["owner_user_id"] != current_user.id and current_user.role != "admin"):
         abort(404)
     return render_template("historico_racial/resultado.html", resultado=data, project=project)
+
+
+@historico_racial_bp.get("/analise-documental/projetos/<uuid:project_id>/resultado/<uuid:job_id>/xlsx")
+@login_required
+def baixar_resultado(project_id: UUID, job_id: UUID):
+    project = _require_project(project_id)
+    _limpar_jobs()
+    with JOBS_LOCK:
+        data = RESULTADOS_HR.get(str(job_id))
+    if data is None or data["project_id"] != project.id or (data["owner_user_id"] != current_user.id and current_user.role != "admin"):
+        abort(404)
+    from .exporter import gerar_xlsx
+    return send_file(
+        gerar_xlsx(data), as_attachment=True,
+        download_name=f"analise_documental_{job_id}.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
 
 
 @historico_racial_bp.get("/historico-racial/resultado/<uuid:job_id>")

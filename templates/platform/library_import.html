@@ -1,0 +1,33 @@
+{% extends 'platform/base.html' %}
+{% block title %}Importar biblioteca — Raspagem de Dados{% endblock %}
+{% block page_intro %}<div class="platform-page-heading"><h1>Nova biblioteca oficial</h1></div>{% endblock %}
+{% block body %}
+<nav class="d-flex flex-wrap gap-2 mb-3" aria-label="Forma de criação da biblioteca">
+  <a class="btn btn-outline-primary" href="{{ url_for('admin.new_library') }}">Criar manualmente</a>
+  <a class="btn btn-primary" aria-current="page" href="{{ url_for('admin.library_import') }}">Importar de planilha</a>
+  <a class="btn btn-outline-primary" href="{{ url_for('admin.library_template') }}">Baixar modelo de planilha</a>
+</nav>
+<section class="platform-panel mb-3">
+  <h2 class="h5">Importar planilha XLSX</h2>
+  <p class="platform-muted">Preencha o modelo nas abas BIBLIOTECA, GRUPOS, ENTIDADES e VARIANTES. A planilha será validada integralmente antes da criação.</p>
+  <form method="post" enctype="multipart/form-data" action="{{ url_for('admin.library_import') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="platform-form-group"><label class="form-label file-upload-label" for="library-spreadsheet">Arquivo XLSX</label><input class="form-control file-upload-input" id="library-spreadsheet" type="file" name="spreadsheet" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required aria-describedby="library-upload-help"><p class="form-text" id="library-upload-help">Tamanho máximo: 2 MB. Fórmulas, macros e links externos não são aceitos.</p></div>
+    <button class="btn btn-primary" type="submit">Validar e pré-visualizar</button>
+  </form>
+</section>
+{% if preview %}
+<section class="platform-panel" aria-labelledby="library-preview-title">
+  <h2 class="h5" id="library-preview-title">Pré-visualização da importação</h2>
+  <p><strong>{{ preview.name }}</strong></p>
+  {% if preview.description %}<p class="platform-muted">{{ preview.description }}</p>{% endif %}
+  <p>{{ preview.counts.grupos }} grupos · {{ preview.counts.entidades }} entidades · {{ preview.counts.variantes }} variantes</p>
+  <p class="platform-muted">Nenhuma biblioteca foi criada ainda. Confirme para salvar como Rascunho; a publicação será uma etapa separada.</p>
+  <form method="post" action="{{ url_for('admin.library_import_confirm') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="preview_token" value="{{ preview_token }}">
+    <button class="btn btn-primary" type="submit">Criar biblioteca como rascunho</button>
+  </form>
+</section>
+{% endif %}
+{% endblock %}

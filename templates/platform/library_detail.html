@@ -1,6 +1,7 @@
 {% extends 'platform/base.html' %}
 {% block title %}{{ library.name }} — Bibliotecas{% endblock %}
 {% block heading %}{{ library.name }}{% endblock %}
+{% block page_intro %}<div class="platform-page-heading"><h1>{{ library.name }}</h1></div>{% endblock %}
 {% block body %}
 <p><a href="{{ url_for('admin.libraries') }}">← Bibliotecas oficiais</a></p>
 <section class="platform-panel mb-3">
@@ -8,6 +9,7 @@
   <p>{{ library.description or 'Sem descrição.' }}</p>
   <p>{{ library.counts_json.grupos }} grupos · {{ library.counts_json.entidades }} entidades · {{ library.counts_json.variantes }} variantes</p>
   <p class="platform-muted">ID: <code>{{ library.id }}</code> · SHA-256: <code>{{ library.content_hash }}</code></p>
+  {% if library.id != 'relacoes_raciais' and not linked %}<p><a class="btn btn-outline-danger btn-sm" href="{{ url_for('admin.delete_library', library_id=library.id) }}">Excluir biblioteca</a></p>{% endif %}
   {% if library.status == 'draft' %}
   <p>Rascunhos não aparecem para seleção em novos projetos. A publicação congela este snapshot; alterações posteriores exigirão nova versão oficial.</p>
   <form method="post" action="{{ url_for('admin.publish_library', library_id=library.id) }}" onsubmit="return confirm('Publicar esta biblioteca? O conteúdo ficará imutável nesta versão.')"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="base_hash" value="{{ library.content_hash }}"><input type="hidden" name="confirm" value="yes"><button class="btn btn-primary" type="submit">Publicar biblioteca</button></form>
@@ -26,7 +28,7 @@
   <section class="platform-panel"><h2 class="h5">+ Nova entidade</h2>
     <form method="post" action="{{ url_for('admin.library_add_entity', library_id=library.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="base_hash" value="{{ library.content_hash }}">
       <div class="platform-form-group"><label class="form-label" for="entity-canonical">Forma canônica</label><input class="form-control" id="entity-canonical" name="canonical" required maxlength="200"></div>
-      <div class="platform-form-group"><label class="form-label" for="entity-key">ID técnico / entity_key (opcional)</label><input class="form-control" id="entity-key" name="entity_key" maxlength="80"><small class="form-text">Se vazio, será gerado a partir da forma canônica.</small></div>
+      <div class="platform-form-group"><label class="form-label" for="entity-key">Identificador da entidade (opcional)</label><input class="form-control" id="entity-key" name="entity_key" maxlength="80"><small class="form-text">Se vazio, será gerado a partir da forma canônica.</small></div>
       <fieldset class="platform-form-section"><legend>Grupo(s)</legend>{% for code, group in library.snapshot_json.grupos.items() %}<label class="d-block"><input class="form-check-input" type="checkbox" name="groups" value="{{ code }}"> {{ group.nome }}</label>{% else %}<p>Cadastre um grupo primeiro.</p>{% endfor %}</fieldset>
       <div class="platform-form-group"><label class="form-label" for="entity-type">Tipo</label><select class="form-select" id="entity-type" name="entity_type">{% for item in categories.tipos_entidade %}<option value="{{ item }}">{{ item | rotulo }}</option>{% endfor %}</select></div>
       <div class="platform-form-group"><label class="form-label" for="entity-tradition">Tradição intelectual (opcional)</label><select class="form-select" id="entity-tradition" name="tradition"><option value="">Não informada</option>{% for item in categories.tradicoes_intelectuais %}<option value="{{ item }}">{{ item | rotulo }}</option>{% endfor %}</select></div>

@@ -11,3 +11,4 @@ outputs/*
 .env
 *.pdf
 *.xlsx
+!resources/modelo_biblioteca.xlsx

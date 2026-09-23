@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from threading import RLock
 
 from flask import abort
 from sqlalchemy import select
@@ -22,9 +23,17 @@ PLANOS = (
     ("institutional", "Institucional", "Plano institucional"),
 )
 FERRAMENTAS = (
-    ("pdf_scraper", "Ferramenta de raspagem de PDFs", "/"),
+    ("pdf_scraper", "Raspagem padrão", "/"),
     ("document_analysis", "Raspagem de Dados — Análise documental em Ciências Sociais", "/analise-documental"),
 )
+ACCOUNT_LIFECYCLE_LOCK = RLock()
+
+
+def account_accepts_new_work(user_id: str) -> bool:
+    """Consulta o banco, não o usuário em cache da requisição concorrente."""
+    return db.session.scalar(select(User.id).where(
+        User.id == user_id, User.status == "active", User.deleted_at.is_(None)
+    )) is not None
 
 
 def seed_platform() -> None:
@@ -114,17 +123,22 @@ def get_project_for_user(project_id: str, user: User, *, include_inactive: bool 
 def record_audit(admin: User | None, action: str, target_type: str, target_id: str, before: dict | None = None, after: dict | None = None) -> None:
     db.session.add(AuditLog(
         admin_user_id=admin.id if admin else None, action=action, target_type=target_type,
+        admin_name_snapshot=admin.name if admin else None,
         target_id=target_id, before_json=before or {}, after_json=after or {},
     ))
 
 
 def replace_grant(user: User, plan_id: str, access_mode: str, status: str, admin: User | None = None, expires_at: datetime | None = None) -> AccessGrant:
+    plan = db.session.get(Plan, plan_id)
+    if plan is None or not plan.active:
+        raise ValueError("Este plano está inativo e não pode receber novas concessões.")
     previous = current_grant(user)
     if previous:
         previous.ended_at = utcnow()
     grant = AccessGrant(
         user_id=user.id, plan_id=plan_id, access_mode=access_mode,
         status=status, granted_by_id=admin.id if admin else None,
+        granted_by_name_snapshot=admin.name if admin else None,
         expires_at=expires_at,
     )
     db.session.add(grant)
