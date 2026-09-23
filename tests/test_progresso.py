@@ -15,6 +15,7 @@ import pandas as pd
 import pymupdf
 
 import app as aplicacao_web
+from platform_helpers import create_user, csrf_from, isolated_platform, login
 from analyzer import v1, v2, v3
 
 
@@ -89,10 +90,18 @@ def blocos_controlados():
 
 class TesteProgresso(unittest.TestCase):
     def setUp(self):
+        self.scope = isolated_platform()
+        self.test_app = self.scope.__enter__()
+        self.user = create_user()
+        self.client = self.test_app.test_client()
+        login(self.client)
         with aplicacao_web.PROGRESSOS_LOCK:
             aplicacao_web.PROGRESSOS.clear()
         with aplicacao_web.ANALISES_LOCK:
             aplicacao_web.ANALISES.clear()
+
+    def tearDown(self):
+        self.scope.__exit__(None, None, None)
 
     def tearDown(self):
         with aplicacao_web.PROGRESSOS_LOCK:
@@ -102,7 +111,7 @@ class TesteProgresso(unittest.TestCase):
 
     def test_endpoint_informa_processamento_monotono_e_conclusao(self):
         job_id = "f8f2a0bf-5d71-42d1-baf0-5c4a5f8e2ef1"
-        aplicacao_web._novo_progresso(job_id, "v1", 1)
+        aplicacao_web._novo_progresso(job_id, "v1", 1, self.user.id)
         relator = aplicacao_web.RelatorDeProgresso(job_id, "v1", None)
 
         relator(
@@ -132,8 +141,7 @@ class TesteProgresso(unittest.TestCase):
         self.assertGreaterEqual(segundo["percentual"], primeiro["percentual"])
 
         relator.concluir("/resultado/" + job_id)
-        with aplicacao_web.app.test_client() as cliente:
-            resposta = cliente.get("/api/progresso/" + job_id)
+        resposta = self.client.get("/api/progresso/" + job_id)
         dados = resposta.get_json()
         self.assertEqual(resposta.status_code, 200)
         self.assertEqual(dados["status"], "concluido")
@@ -142,13 +150,12 @@ class TesteProgresso(unittest.TestCase):
 
     def test_endpoint_trata_erro_e_job_inexistente_sem_traceback(self):
         job_id = "1e2dca18-4a86-4a15-bbb1-029d463d4b7f"
-        aplicacao_web._novo_progresso(job_id, "v2", 1)
+        aplicacao_web._novo_progresso(job_id, "v2", 1, self.user.id)
         aplicacao_web.RelatorDeProgresso(job_id, "v2", None).erro(
             "Não foi possível concluir a análise."
         )
-        with aplicacao_web.app.test_client() as cliente:
-            erro = cliente.get("/api/progresso/" + job_id)
-            ausente = cliente.get("/api/progresso/inexistente")
+        erro = self.client.get("/api/progresso/" + job_id)
+        ausente = self.client.get("/api/progresso/inexistente")
         self.assertEqual(erro.status_code, 200)
         self.assertEqual(erro.get_json()["status"], "erro")
         self.assertNotIn("Traceback", erro.get_json()["erro"])
@@ -183,10 +190,11 @@ class TesteProgresso(unittest.TestCase):
     def test_post_cria_job_uuid_e_retorna_endpoint_sem_executar_no_request(self):
         executor = MagicMock()
         with patch.object(aplicacao_web.EXECUTOR_ANALISES, "submit", executor):
-            with aplicacao_web.app.test_client() as cliente:
+            with self.client as cliente:
                 resposta = cliente.post(
                     "/",
                     data={
+                        "csrf_token": csrf_from(cliente.get("/")),
                         "versao": "v1",
                         "termos": "São Paulo",
                         "pdfs": (BytesIO(b"%PDF-1.4\n%teste"), "livro.pdf"),
@@ -460,8 +468,7 @@ class TesteProgresso(unittest.TestCase):
         self.assertEqual(sem_callback_v3, com_callback_v3)
 
     def test_frontend_mantem_polling_e_bloqueio_de_reenvio(self):
-        with aplicacao_web.app.test_client() as cliente:
-            html = cliente.get("/").get_data(as_text=True)
+        html = self.client.get("/").get_data(as_text=True)
         self.assertIn("iniciarPolling", html)
         self.assertIn("X-Requested-With", html)
         self.assertIn("if (enviando)", html)

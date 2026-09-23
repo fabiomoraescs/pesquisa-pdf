@@ -9,9 +9,12 @@
 .hr-progress .progress-bar { background: var(--blue); transition: width .2s ease; }
 .hr-tempo { color: var(--muted); font-size: .9rem; }
 .hr-table { --bs-table-bg: transparent; --bs-table-color: var(--ink); --bs-table-border-color: var(--border); color: var(--ink); }
-.hr-table th, .hr-table td { border-color: var(--border); overflow-wrap: anywhere; }
+.hr-table th, .hr-table td { border-color: var(--border); overflow-wrap: break-word; }
 .hr-table th { white-space: nowrap; }
+.hr-table td:nth-child(5) { min-width: 12rem; }
+.hr-table td:nth-child(6) { min-width: 16rem; }
 .hr-table details { min-width: 9rem; max-width: 32rem; }
+.hr-table details[open] { max-height: 17rem; overflow: auto; padding: .45rem .7rem; border: 1px solid var(--border); border-radius: .6rem; background: var(--surface-muted); }
 .hr-table details p { margin: .75rem 0 0; white-space: pre-wrap; }
 .hr-table summary { color: var(--blue); cursor: pointer; }
 .hr-table summary:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }

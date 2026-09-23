@@ -18,6 +18,8 @@
       </div>
       <div class="app-actions">
         <a href="{{ url_for('inicio') }}" class="btn btn-outline-primary">Nova análise</a>
+        <a href="{{ url_for('projects.list_projects') }}" class="btn btn-outline-primary">Meus projetos</a>
+        <form method="post" action="{{ url_for('auth.logout') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-outline-primary" type="submit">Sair</button></form>
       </div>
     </div>
 

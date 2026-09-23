@@ -39,4 +39,6 @@ USER appuser
 
 EXPOSE 5000
 
-CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:${PORT:-5000} --workers 1 --threads 2 --timeout 900 app:app"]
+# O banco e os snapshots ficam em /app/outputs; monte um volume persistente.
+# A migração e o seed são idempotentes e rodam antes de aceitar requisições.
+CMD ["sh", "-c", "flask --app app db upgrade && flask --app app seed-platform && gunicorn --bind 0.0.0.0:${PORT:-5000} --workers 1 --threads 2 --timeout 900 app:app"]

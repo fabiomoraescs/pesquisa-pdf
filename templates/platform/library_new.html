@@ -1,0 +1,14 @@
+{% extends 'platform/base.html' %}
+{% block title %}Nova biblioteca — Raspagem de Dados{% endblock %}
+{% block heading %}Nova biblioteca oficial{% endblock %}
+{% block body %}
+<section class="platform-panel">
+  <p class="platform-muted">A biblioteca começa como rascunho vazio. Grupos, entidades e variantes serão cadastrados manualmente antes da publicação.</p>
+  <form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="platform-form-group"><label class="form-label" for="library-name">Nome da biblioteca</label><input class="form-control" id="library-name" name="name" required maxlength="160" value="{{ request.form.get('name', '') }}"></div>
+    <div class="platform-form-group"><label class="form-label" for="library-description">Descrição</label><textarea class="form-control" id="library-description" name="description" maxlength="4000" rows="3">{{ request.form.get('description', '') }}</textarea></div>
+    <p class="form-text">O identificador técnico será gerado a partir do nome e permanecerá estável.</p>
+    <div class="d-flex flex-wrap gap-2"><button class="btn btn-primary" type="submit">Criar rascunho</button><a class="btn btn-outline-primary" href="{{ url_for('admin.libraries') }}">Cancelar</a></div>
+  </form>
+</section>
+{% endblock %}

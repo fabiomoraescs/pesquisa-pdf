@@ -1,4 +1,4 @@
-# Varredura de PDFs — aplicação local V1, V2 e V3
+# PesquisaPDF — V1/V2/V3 e análise documental por projetos
 
 Interface local em Flask para as lógicas preservadas de `varredura_pdf_v1.py`
 `varredura_pdf_v2.py`. A interface, os gráficos e o tema são compartilhados;
@@ -9,10 +9,23 @@ cada versão mantém seu próprio analisador e sua própria geração de Excel.
 No PowerShell, dentro desta pasta, use o ambiente virtual já preparado:
 
 ```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m flask --app app db upgrade
+.\.venv\Scripts\python.exe -m flask --app app seed-platform
+.\.venv\Scripts\python.exe -m flask --app app create-admin
 .\.venv\Scripts\python.exe app.py
 ```
 
-Abra [http://127.0.0.1:5000](http://127.0.0.1:5000).
+Abra [http://127.0.0.1:5000/login](http://127.0.0.1:5000/login). O comando
+`create-admin` solicita nome, e-mail e senha (mínimo 12 caracteres) sem gravá-la
+no projeto. Execute-o somente uma vez para cada conta administrativa.
+
+Defina `FLASK_SECRET_KEY` como segredo aleatório e estável antes de iniciar em
+produção. Sem essa variável, cada processo usa um segredo efêmero para
+desenvolvimento e as sessões são encerradas ao reiniciar. O banco e os
+snapshots usam por padrão `outputs/platform/`; altere esse diretório com
+`PESQUISAPDF_DATA_DIR` e a URL do banco com `PESQUISAPDF_DATABASE_URL`.
+Defina `PESQUISAPDF_HTTPS=1` somente sob HTTPS para exigir cookie `Secure`.
 
 Para preparar o projeto em outro computador, crie o ambiente virtual com uma
 instalação local de Python 3.10 ou superior e instale as dependências antes de
@@ -24,6 +37,27 @@ executar o comando acima:
 ```
 
 ## Uso
+
+O cadastro comum cria uma conta `user` ativa no Plano Estudante, com acesso
+gratuito às duas ferramentas inicialmente incluídas nesse plano. O admin pode
+alterar plano, forma de acesso, validade e permissões individuais em `/admin`.
+Planos e formas de acesso são registros distintos; concessões anteriores são
+preservadas para auditoria. Ainda não há cobrança real.
+
+Após entrar, abra `/projetos`, crie um projeto e selecione uma ou mais
+bibliotecas. A biblioteca oficial **Relações raciais** contém exatamente o seed
+original de 8 grupos, 75 entidades e 117 variantes. Ela não é editável pelo
+usuário. O projeto recebe sua própria versão `v1.0`, cujo histórico é
+independente dos demais projetos. A análise documental fica em
+`/analise-documental`; `/historico-racial` redireciona para a nova entrada.
+
+O vocabulário global anterior em `outputs/historico_racial/vocabulario/` não é
+apagado nem migrado automaticamente, pois não possui proprietário associado.
+Novos jobs usam somente o snapshot do projeto capturado no início do
+processamento. Resultados e progresso continuam temporários em memória; não
+constituem ainda um corpus persistente.
+
+Na ferramenta legada em `/`, após autenticação e permissão:
 
 1. Selecione um ou vários PDFs.
 2. Informe termos separados por ponto e vírgula, envie um `.txt`, ou use ambos.
@@ -69,7 +103,7 @@ Para PDFs escaneados, instale o [Tesseract OCR](https://github.com/tesseract-ocr
 - `uploads/`: PDFs enviados durante a análise atual.
 - `outputs/`: planilhas Excel produzidas.
 
-Não há login, banco de dados, histórico de análises ou deploy nesta primeira versão. Os arquivos `varredura_pdf_v1.py` e `varredura_pdf_v2.py` permanecem intactos como referências. Os módulos `analyzer/v1.py`, `analyzer/v2.py` e `analyzer/v3.py` mantêm as versões separadas para a interface.
+Os arquivos `varredura_pdf_v1.py` e `varredura_pdf_v2.py` permanecem intactos como referências. Os módulos `analyzer/v1.py`, `analyzer/v2.py` e `analyzer/v3.py` mantêm as versões separadas para a interface.
 
 ## Docker
 
@@ -79,5 +113,13 @@ semântico. Após instalar o Docker, a imagem pode ser construída com:
 
 ```powershell
 docker build -t varredura-pdfs .
-docker run --rm -p 5000:5000 varredura-pdfs
+docker run --rm -p 5000:5000 -v "${PWD}/outputs:/app/outputs" -e FLASK_SECRET_KEY="<segredo-aleatorio-estavel>" varredura-pdfs
 ```
+
+O container aplica a migração e confere os seeds antes do Gunicorn iniciar.
+Monte `/app/outputs` como volume persistente: nele ficam banco, snapshots e
+planilhas. O padrão atual de um worker e jobs em memória **não** é adequado a
+múltiplas instâncias; antes de escalar em AWS, planeje PostgreSQL,
+armazenamento compartilhado para resultados e uma fila de jobs persistente.
+Não há integração de pagamento, reprocessamento automático nem exportador
+padronizado da ferramenta documental nesta etapa.

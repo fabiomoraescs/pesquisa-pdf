@@ -19,6 +19,10 @@
       </div>
       <h1>Ferramenta de Raspagem de Dados</h1>
       <p class="lead mb-4">Grupo de pesquisa ConsCiência Sociais.</p>
+      <nav class="d-flex flex-wrap gap-2 mb-4" aria-label="Conta e projetos">
+        <a class="btn btn-outline-primary" href="{{ url_for('projects.list_projects') }}">Meus projetos</a>
+        <form method="post" action="{{ url_for('auth.logout') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-outline-primary" type="submit">Sair</button></form>
+      </nav>
 
       {% with mensagens = get_flashed_messages(with_categories=true) %}
         {% for categoria, mensagem in mensagens %}
@@ -27,6 +31,7 @@
       {% endwith %}
 
       <form method="post" enctype="multipart/form-data" id="form-analise" data-job-inicial="{{ job_inicial|default('', true) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="mb-4">
           <label for="pdfs" class="form-label file-upload-label">Arquivos PDF</label>
           <input class="form-control file-upload-input" id="pdfs" name="pdfs" type="file" accept="application/pdf,.pdf" multiple required>

@@ -1,0 +1,31 @@
+{% if current_user.is_authenticated %}
+<aside class="platform-sidebar" id="platform-sidebar" aria-label="Menu da plataforma">
+  <a class="platform-brand" href="{{ url_for('projects.list_projects') }}" aria-label="Raspagem de Dados — página inicial">
+    <strong>Raspagem de Dados</strong><small>Análise documental em Ciências Sociais</small>
+  </a>
+  <nav class="platform-nav" aria-label="Navegação principal">
+    <a class="{{ 'is-current' if request.endpoint == 'projects.list_projects' else '' }}" {% if request.endpoint == 'projects.list_projects' %}aria-current="page"{% endif %} href="{{ url_for('projects.list_projects') }}">Projetos</a>
+    <a class="{{ 'is-current' if request.endpoint == 'projects.new_project' else '' }}" {% if request.endpoint == 'projects.new_project' %}aria-current="page"{% endif %} href="{{ url_for('projects.new_project') }}">Novo projeto</a>
+    <a class="{{ 'is-current' if request.endpoint in ('projects.archived_projects', 'projects.delete_project', 'projects.confirm_batch_delete') else '' }}" {% if request.endpoint == 'projects.archived_projects' %}aria-current="page"{% endif %} href="{{ url_for('projects.archived_projects') }}">Projetos arquivados</a>
+    <a class="{{ 'is-current' if request.endpoint == 'profile.my_profile' else '' }}" {% if request.endpoint == 'profile.my_profile' %}aria-current="page"{% endif %} href="{{ url_for('profile.my_profile') }}">Meu perfil</a>
+    <a href="{{ url_for('inicio') }}">Raspagem de PDFs</a>
+    {% if current_user.role == 'admin' %}<a class="{{ 'is-current' if request.blueprint == 'admin' else '' }}" {% if request.blueprint == 'admin' %}aria-current="page"{% endif %} href="{{ url_for('admin.home') }}">Administração</a>{% endif %}
+  </nav>
+  <div class="platform-sidebar-footer">
+    <button class="btn btn-outline-primary theme-icon-button" id="theme-toggle" type="button" aria-label="Alternar tema" title="Alternar tema"></button>
+    <span class="platform-account-name">{{ current_user.name }}</span>
+    <form method="post" action="{{ url_for('auth.logout') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-outline-primary btn-sm" type="submit">Sair</button></form>
+  </div>
+</aside>
+<button class="platform-menu-backdrop" id="platform-menu-backdrop" type="button" aria-label="Fechar menu" hidden></button>
+<header class="platform-header platform-header-authenticated">
+  <button class="platform-menu-toggle" id="platform-menu-toggle" type="button" aria-label="Abrir menu" aria-controls="platform-sidebar" aria-expanded="false"><span></span><span></span><span></span></button>
+  <span class="platform-header-context">Raspagem de Dados</span>
+  <span class="platform-header-user">{{ current_user.name }}</span>
+</header>
+{% else %}
+<header class="platform-header platform-header-public">
+  <a class="platform-brand" href="{{ url_for('auth.login') }}" aria-label="Raspagem de Dados — página inicial"><strong>Raspagem de Dados</strong><small>Análise documental em Ciências Sociais</small></a>
+  <button class="btn btn-outline-primary theme-icon-button" id="theme-toggle" type="button" aria-label="Alternar tema" title="Alternar tema"></button>
+</header>
+{% endif %}

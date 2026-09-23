@@ -1,0 +1,125 @@
+"""Arquivamento e exclusão explícita dos dados exclusivos de projetos."""
+
+from __future__ import annotations
+
+import logging
+import os
+import shutil
+from pathlib import Path
+from uuid import UUID, uuid4
+
+from flask import current_app
+from sqlalchemy import delete
+
+from .extensions import db
+from .models import Project, ProjectLibrary, ProjectVocabularyVersion, User, utcnow
+from .services import record_audit
+from .vocabularies import forget_project_store
+
+
+class ProjectActionError(ValueError):
+    """A ação não satisfaz o estado ou a confirmação exigida."""
+
+
+def archive(project: Project, actor: User) -> None:
+    if project.status != "active" or project.deleted_at is not None:
+        raise ProjectActionError("Somente projetos ativos podem ser arquivados.")
+    project.status = "archived"
+    project.archived_at = utcnow()
+    record_audit(actor, "project_archived", "project", project.id,
+                 {"status": "active", "owner_user_id": project.owner_user_id},
+                 {"status": "archived", "owner_user_id": project.owner_user_id})
+    db.session.commit()
+
+
+def restore(project: Project, actor: User) -> None:
+    if project.status != "archived" or project.deleted_at is not None:
+        raise ProjectActionError("Somente projetos arquivados podem ser desarquivados.")
+    project.status = "active"
+    project.archived_at = None
+    record_audit(actor, "project_restored", "project", project.id,
+                 {"status": "archived", "owner_user_id": project.owner_user_id},
+                 {"status": "active", "owner_user_id": project.owner_user_id})
+    db.session.commit()
+
+
+def _project_directory(project_id: str) -> Path:
+    # UUID validado antes de formar qualquer caminho de remoção.
+    UUID(project_id)
+    root = (Path(current_app.config["PLATFORM_DATA_DIR"]) / "projects").resolve()
+    target = root / project_id
+    if target.parent != root or target.is_symlink() or target.resolve().parent != root:
+        raise ProjectActionError("Diretório do projeto inválido; exclusão cancelada.")
+    return target
+
+
+def delete_archived(projects: list[Project], actor: User, confirmation: str) -> int:
+    """Valida o lote inteiro; snapshots são isolados antes do commit SQL.
+
+    Se o commit falhar, os diretórios são restaurados. Após o commit, uma falha
+    excepcional na limpeza deixa apenas uma quarentena recuperável e é logada.
+    """
+    if confirmation.strip() != "deletar":
+        raise ProjectActionError('Digite exatamente "deletar" para confirmar a exclusão.')
+    if not projects or len({project.id for project in projects}) != len(projects):
+        raise ProjectActionError("Selecione ao menos um projeto arquivado válido.")
+    if any(project.status != "archived" or project.deleted_at is not None for project in projects):
+        raise ProjectActionError("Todos os projetos selecionados precisam estar arquivados.")
+    if actor.role != "admin" and any(project.owner_user_id != actor.id for project in projects):
+        raise ProjectActionError("Um dos projetos não pertence à sua conta.")
+    from historico_racial.routes import JOBS_LOCK, PROGRESSOS_HR, RESULTADOS_HR
+
+    root = Path(current_app.config["PLATFORM_DATA_DIR"]).resolve()
+    deletion_root = root / "deletions"
+    if deletion_root.is_symlink() or deletion_root.resolve().parent != root:
+        raise ProjectActionError("Diretório de quarentena inválido; exclusão cancelada.")
+    quarantine = deletion_root / str(uuid4())
+    if quarantine.exists() or quarantine.is_symlink() or quarantine.resolve().parent != deletion_root:
+        raise ProjectActionError("Diretório de quarentena inválido; exclusão cancelada.")
+    staged: list[tuple[Path, Path]] = []
+    selected = {project.id for project in projects}
+    with JOBS_LOCK:
+        if any(data.get("project_id") in selected and data.get("status") == "processando"
+               for data in PROGRESSOS_HR.values()):
+            raise ProjectActionError("Aguarde o término do processamento antes de excluir o projeto.")
+        try:
+            for project in projects:
+                source = _project_directory(project.id)
+                if source.exists():
+                    quarantine.mkdir(parents=True, exist_ok=True)
+                    destination = quarantine / project.id
+                    os.replace(source, destination)
+                    staged.append((source, destination))
+            for project in projects:
+                db.session.execute(delete(ProjectVocabularyVersion).where(ProjectVocabularyVersion.project_id == project.id))
+                db.session.execute(delete(ProjectLibrary).where(ProjectLibrary.project_id == project.id))
+                record_audit(actor, "project_permanently_deleted", "project", project.id,
+                             {"status": "archived", "owner_user_id": project.owner_user_id, "name": project.name},
+                             {"deleted": True})
+                db.session.delete(project)
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            for source, destination in reversed(staged):
+                if destination.exists():
+                    os.replace(destination, source)
+            if quarantine.exists():
+                quarantine.rmdir()
+            raise
+        for project_id in selected:
+            forget_project_store(project_id)
+        for job_id, data in list(PROGRESSOS_HR.items()):
+            if data.get("project_id") in selected:
+                PROGRESSOS_HR.pop(job_id, None)
+                RESULTADOS_HR.pop(job_id, None)
+    if quarantine.exists():
+        if quarantine.is_symlink() or quarantine.resolve().parent != deletion_root:
+            logging.getLogger(__name__).error("Quarentena fora do diretório previsto: %s", quarantine)
+            return len(projects)
+        try:
+            shutil.rmtree(quarantine)
+        except OSError:
+            logging.getLogger(__name__).exception("Quarentena de projeto não pôde ser limpa: %s", quarantine)
+            # Os dados já não são acessíveis pela plataforma; a quarentena pode
+            # ser inspecionada e removida manualmente, sem tocar em outros projetos.
+    return len(projects)

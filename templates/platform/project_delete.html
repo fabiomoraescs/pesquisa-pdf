@@ -1,0 +1,17 @@
+{% extends 'platform/base.html' %}
+{% block title %}Confirmar exclusão — Raspagem de Dados{% endblock %}
+{% block heading %}Confirmar exclusão permanente{% endblock %}
+{% block body %}
+<section class="platform-panel">
+  <p class="platform-danger-note"><strong>Esta ação não pode ser desfeita.</strong> Você está prestes a excluir permanentemente {{ projects | length }} projeto(s), seus vínculos e todas as versões físicas do vocabulário.</p>
+  <ul>{% for project in projects %}<li>{{ project.name }}</li>{% endfor %}</ul>
+  <form method="post" action="{{ action }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% if batch %}{% for project in projects %}<input type="hidden" name="project_ids" value="{{ project.id }}">{% endfor %}{% endif %}
+    <label class="form-label" for="delete-confirmation">Digite <strong>deletar</strong> para confirmar</label>
+    <input class="form-control mb-3" id="delete-confirmation" name="confirmation" type="text" required autocomplete="off" data-delete-confirm="final-delete-button" aria-describedby="delete-rule">
+    <p class="form-text" id="delete-rule">Aceita-se somente “deletar”, com espaços antes ou depois ignorados.</p>
+    <div class="d-flex flex-wrap gap-2"><button class="btn btn-danger" id="final-delete-button" type="submit" disabled>Excluir permanentemente</button><a class="btn btn-outline-primary" href="{{ url_for('admin.projects') if current_user.role == 'admin' and request.blueprint == 'admin' else url_for('projects.archived_projects') }}">Cancelar</a></div>
+  </form>
+</section>
+{% endblock %}

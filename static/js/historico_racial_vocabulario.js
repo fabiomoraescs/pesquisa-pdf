@@ -1,6 +1,9 @@
 (() => {
   const dado = JSON.parse(document.getElementById('vocab-data').textContent);
   const categorias = JSON.parse(document.getElementById('vocab-categorias').textContent);
+  const rotulos = JSON.parse(document.getElementById('vocab-rotulos').textContent);
+  const rotulo = (valor) => rotulos[valor] || valor;
+  const dataBrUtc = (valor) => new Date(valor).toLocaleString('pt-BR', {timeZone: 'UTC', dateStyle: 'short', timeStyle: 'short'});
   let baseVersion = dado.version;
   let original = structuredClone(dado.vocabulario);
   let rascunho = structuredClone(original);
@@ -53,10 +56,10 @@
             <label class="hr-vocab-check"><input type="checkbox" data-action="variante-ativo" data-id="${escapar(e.id_entidade)}" data-index="${indice}" ${v.ativo ? 'checked' : ''}> Ativa</label>
             <input class="form-control form-control-sm" aria-label="Texto da variante" data-action="variante-texto" data-id="${escapar(e.id_entidade)}" data-index="${indice}" value="${escapar(v.texto)}">
           </div>`).join('');
-        const tipos = categorias.tipos_entidade.map((tipo) => `<option value="${escapar(tipo)}" ${e.tipo_entidade === tipo ? 'selected' : ''}>${escapar(tipo)}</option>`).join('');
-        const tradicoes = [''].concat(categorias.tradicoes_intelectuais).map((t) => `<option value="${escapar(t)}" ${e.tradicao_intelectual === t ? 'selected' : ''}>${escapar(t || 'Não informada')}</option>`).join('');
+        const tipos = categorias.tipos_entidade.map((tipo) => `<option value="${escapar(tipo)}" ${e.tipo_entidade === tipo ? 'selected' : ''}>${escapar(rotulo(tipo))}</option>`).join('');
+        const tradicoes = [''].concat(categorias.tradicoes_intelectuais).map((t) => `<option value="${escapar(t)}" ${e.tradicao_intelectual === t ? 'selected' : ''}>${escapar(t ? rotulo(t) : 'Não informada')}</option>`).join('');
         return `<details class="hr-vocab-entity" data-open-key="entidade:${escapar(e.id_entidade)}" ${abertos.has(`entidade:${e.id_entidade}`) ? 'open' : ''}>
-          <summary><span>${escapar(e.forma_canonica)}</span><small>${escapar(e.tipo_entidade)} · ${e.variantes.length} variante(s) · ${e.ativo ? 'Ativa' : 'Inativa'}</small></summary>
+          <summary><span>${escapar(e.forma_canonica)}</span><small>${escapar(rotulo(e.tipo_entidade))} · ${e.variantes.length} variante(s) · ${e.ativo ? 'Ativa' : 'Inativa'}</small></summary>
           <div class="hr-vocab-entity-body">
             <label class="hr-vocab-check"><input type="checkbox" data-action="entidade-ativo" data-id="${escapar(e.id_entidade)}" ${e.ativo ? 'checked' : ''}> Entidade ativa</label>
             <div class="hr-vocab-fields"><label>Forma canônica<input class="form-control form-control-sm" data-action="entidade-canonica" data-id="${escapar(e.id_entidade)}" value="${escapar(e.forma_canonica)}"></label>
@@ -104,8 +107,8 @@
   function dialogEntidade(grupoPreselecionado) {
     const grupos = Object.entries(rascunho.grupos).map(([id, grupo]) =>
       `<label class="hr-vocab-check"><input type="checkbox" name="grupo" value="${escapar(id)}" ${id === grupoPreselecionado ? 'checked' : ''}> ${escapar(grupo.nome)}</label>`).join('');
-    const tipos = categorias.tipos_entidade.map((tipo) => `<option value="${escapar(tipo)}">${escapar(tipo)}</option>`).join('');
-    const tradicoes = [''].concat(categorias.tradicoes_intelectuais).map((t) => `<option value="${escapar(t)}">${escapar(t || 'Não informada')}</option>`).join('');
+    const tipos = categorias.tipos_entidade.map((tipo) => `<option value="${escapar(tipo)}">${escapar(rotulo(tipo))}</option>`).join('');
+    const tradicoes = [''].concat(categorias.tradicoes_intelectuais).map((t) => `<option value="${escapar(t)}">${escapar(t ? rotulo(t) : 'Não informada')}</option>`).join('');
     abrirDialog('Adicionar entidade', `<label class="form-label d-block">Forma canônica<input class="form-control" name="canonica" required maxlength="200"></label>
       <fieldset class="mt-3"><legend class="fs-6">Grupo(s)</legend><div class="hr-vocab-group-options">${grupos}</div></fieldset>
       <label class="form-label d-block mt-3">Variantes (uma por linha; a forma canônica será incluída)<textarea class="form-control" name="variantes" rows="4"></textarea></label>
@@ -193,8 +196,8 @@
     salvarEl.disabled = true;
     mensagemEl.hidden = true;
     try {
-      const resposta = await fetch('/historico-racial/vocabulario/versoes', {
-        method: 'POST', headers: {'Content-Type': 'application/json'},
+      const resposta = await fetch(document.getElementById('vocab-data').dataset.saveUrl, {
+        method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content},
         body: JSON.stringify({base_version: baseVersion, vocabulario: rascunho, nota: document.getElementById('vocab-nota').value}),
       });
       const dados = await resposta.json();
@@ -204,7 +207,7 @@
       document.getElementById('vocab-versao').textContent = dados.version;
       document.querySelectorAll('#vocab-historico-corpo .badge').forEach((badge) => badge.remove());
       document.getElementById('vocab-historico-corpo').insertAdjacentHTML('afterbegin',
-        `<tr><td>${escapar(dados.version)} <span class="badge text-bg-primary">ativa</span></td><td>${escapar(dados.created_at)}</td><td>${dados.counts.grupos}</td><td>${dados.counts.entidades}</td><td>${dados.counts.variantes}</td><td>${escapar(dados.note)}</td></tr>`);
+        `<tr><td>${escapar(dados.version)} <span class="badge text-bg-primary">ativa</span></td><td>${escapar(dataBrUtc(dados.created_at))}</td><td>${dados.counts.grupos}</td><td>${dados.counts.entidades}</td><td>${dados.counts.variantes}</td><td>${escapar(dados.note)}</td></tr>`);
       document.getElementById('vocab-nota').value = '';
       mensagemEl.className = 'alert alert-success mt-3';
       mensagemEl.textContent = dados.aviso;

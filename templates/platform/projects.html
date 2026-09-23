@@ -1,0 +1,22 @@
+{% extends 'platform/base.html' %}
+{% block title %}Meus projetos — Raspagem de Dados{% endblock %}
+{% block heading %}Meus projetos{% endblock %}
+{% block body %}
+<div class="platform-toolbar"><div><h2 class="h5 mb-1">Olá, {{ current_user.name }}</h2><p>Organize cada pesquisa com bibliotecas e vocabulário próprios.</p></div><a class="btn btn-primary" href="{{ url_for('projects.new_project') }}">+ Novo projeto</a></div>
+{% if projects %}
+<div class="platform-project-grid">
+  {% for project in projects %}
+  <section class="platform-project-card">
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2"><h2>{{ project.name }}</h2><span class="platform-badge{% if project.status != 'active' %} platform-badge-inactive{% endif %}">{{ project.status | rotulo }}</span></div>
+    <p>{{ project.description or 'Sem descrição.' }}</p>
+    <p class="platform-muted"><strong>Bibliotecas:</strong> {{ summaries[project.id].libraries | join(', ') or 'Nenhuma' }}</p>
+    <p class="platform-muted"><strong>Vocabulário:</strong> {{ summaries[project.id].version or 'Indisponível' }} · <strong>Atualizado em:</strong> {{ project.updated_at.strftime('%d/%m/%Y') }}</p>
+    <div class="platform-card-actions">{% if project.status == 'active' %}<a class="btn btn-primary" href="{{ url_for('historico_racial.inicio_projeto', project_id=project.id) }}">Abrir projeto</a>
+    <form method="post" action="{{ url_for('projects.archive_project', project_id=project.id) }}" onsubmit="return confirm('Arquivar este projeto? Os dados serão preservados.')"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="confirm" value="yes"><button class="btn btn-outline-primary" type="submit">Arquivar</button></form>{% endif %}</div>
+  </section>
+  {% endfor %}
+</div>
+{% else %}
+<div class="platform-empty-state"><h2 class="h5">Você ainda não possui projetos.</h2><p>Crie um projeto para começar a análise documental.</p><a class="btn btn-primary" href="{{ url_for('projects.new_project') }}">Criar primeiro projeto</a></div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,16 @@
+{% extends 'platform/base.html' %}
+{% block title %}Novo projeto — Raspagem de Dados{% endblock %}
+{% block heading %}Novo projeto{% endblock %}
+{% block body %}
+<section class="platform-panel">
+  <form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="platform-form-group"><label class="form-label" for="name">Nome do projeto</label><input class="form-control" id="name" name="name" maxlength="200" required value="{{ request.form.get('name', '') }}"></div>
+    <div class="platform-form-group"><label class="form-label" for="description">Descrição (opcional)</label><textarea class="form-control" id="description" name="description" rows="3" maxlength="4000">{{ request.form.get('description', '') }}</textarea></div>
+    <fieldset class="platform-form-section"><legend>Bibliotecas de vocabulário</legend><p class="platform-muted">Selecione pelo menos uma biblioteca para a versão inicial do projeto.</p>
+      <div class="platform-library-grid">{% for library in libraries %}<label class="platform-library-option"><input class="form-check-input" type="checkbox" name="libraries" value="{{ library.id }}" {% if library.id in request.form.getlist('libraries') or (not request.form and library.id == 'relacoes_raciais') %}checked{% endif %}><span><strong>{{ library.name }}</strong><small>{{ library.counts_json.grupos }} grupos · {{ library.counts_json.entidades }} entidades · {{ library.counts_json.variantes }} variantes · {{ library.version }}</small>{% if library.description %}<small>{{ library.description }}</small>{% endif %}</span></label>{% else %}<p>Nenhuma biblioteca publicada está disponível no momento.</p>{% endfor %}</div>
+    </fieldset>
+    <p class="form-text">Uma cópia das bibliotecas selecionadas formará a versão v1.0 deste projeto. Depois, você poderá criar versões próprias.</p>
+    <div class="d-flex flex-wrap gap-2"><button class="btn btn-primary" type="submit">Criar projeto</button><a class="btn btn-outline-primary" href="{{ url_for('projects.list_projects') }}">Cancelar</a></div>
+  </form>
+</section>
+{% endblock %}

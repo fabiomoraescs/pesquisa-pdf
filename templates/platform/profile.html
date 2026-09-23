@@ -1,0 +1,20 @@
+{% extends 'platform/base.html' %}
+{% from 'platform/_fields.html' import profile_fields %}
+{% block title %}Meu perfil — Raspagem de Dados{% endblock %}
+{% block heading %}Meu perfil{% endblock %}
+{% block body %}
+<section class="platform-panel platform-profile-panel">
+  <form method="post" novalidate>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <fieldset class="platform-form-section"><legend>Dados da conta</legend>
+      <div class="platform-form-group"><label class="form-label" for="name">Nome completo</label><input class="form-control" id="name" name="name" maxlength="160" required autocomplete="name" value="{{ current_user.name }}"></div>
+      <div class="platform-form-group"><label class="form-label" for="email">E-mail</label><input class="form-control" id="email" type="email" value="{{ current_user.email }}" disabled><p class="form-text">O e-mail não pode ser alterado nesta etapa.</p></div>
+    </fieldset>
+    <fieldset class="platform-form-section"><legend>Perfil acadêmico e profissional</legend>
+      <p class="platform-muted">As informações de perfil são opcionais e podem ser atualizadas posteriormente.</p>
+      {{ profile_fields(profile) }}
+    </fieldset>
+    <button class="btn btn-primary" type="submit">Salvar alterações</button>
+  </form>
+</section>
+{% endblock %}

@@ -1,0 +1,22 @@
+{% macro password_field(field_id, title, autocomplete, required_length=false) %}
+<div class="platform-form-group">
+  <label class="form-label" for="{{ field_id }}">{{ title }}</label>
+  <div class="platform-password-wrapper">
+    <input class="form-control" id="{{ field_id }}" name="{{ field_id }}" type="password" autocomplete="{{ autocomplete }}" required {% if required_length %}minlength="12"{% endif %}>
+    <button class="platform-password-toggle" type="button" data-password-toggle="{{ field_id }}" aria-label="Mostrar senha" aria-pressed="false" title="Mostrar senha">
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>
+    </button>
+  </div>
+</div>
+{% endmacro %}
+
+{% macro profile_fields(profile=none) %}
+<div class="platform-form-grid">
+  <div class="platform-form-group"><label class="form-label" for="education_level">Grau de instrução</label><select class="form-select" id="education_level" name="education_level"><option value="">Não informado</option>{% for value, title in education_options.items() %}<option value="{{ value }}" {% if profile and profile.education_level == value %}selected{% endif %}>{{ title }}</option>{% endfor %}</select></div>
+  <div class="platform-form-group"><label class="form-label" for="formation_area">Área de formação</label><input class="form-control" id="formation_area" name="formation_area" maxlength="160" value="{{ profile.formation_area or '' if profile else '' }}" placeholder="Ex.: Ciências Sociais"></div>
+  <div class="platform-form-group"><label class="form-label" for="occupation">Ocupação</label><input class="form-control" id="occupation" name="occupation" maxlength="160" value="{{ profile.occupation or '' if profile else '' }}" placeholder="Ex.: Pesquisador"></div>
+  <div class="platform-form-group"><label class="form-label" for="institutional_affiliation">Vínculo institucional</label><input class="form-control" id="institutional_affiliation" name="institutional_affiliation" maxlength="200" value="{{ profile.institutional_affiliation or '' if profile else '' }}" placeholder="Ex.: Universidade"></div>
+  <div class="platform-form-group"><label class="form-label" for="gender">Gênero</label><select class="form-select" id="gender" name="gender"><option value="">Não informado</option>{% for value, title in gender_options.items() %}<option value="{{ value }}" {% if profile and profile.gender == value %}selected{% endif %}>{{ title }}</option>{% endfor %}</select></div>
+  <div class="platform-form-group"><label class="form-label" for="race_color">Raça/cor</label><select class="form-select" id="race_color" name="race_color"><option value="">Não informado</option>{% for value, title in race_options.items() %}<option value="{{ value }}" {% if profile and profile.race_color == value %}selected{% endif %}>{{ title }}</option>{% endfor %}</select></div>
+</div>
+{% endmacro %}

@@ -188,11 +188,12 @@ def entidades_pesquisaveis(vocabulario: dict[str, Any]) -> tuple[Entidade, ...]:
 
 
 class VocabularyStore:
-    def __init__(self, data_dir: Path | str | None = None):
+    def __init__(self, data_dir: Path | str | None = None, initial_vocabulary: dict | None = None):
         self.root = Path(data_dir) if data_dir is not None else _diretorio_padrao()
         self.versions = self.root / "vocabulario" / "versions"
         self.active = self.root / "vocabulario" / "active.json"
         self.lock = RLock()
+        self.initial_vocabulary = copy.deepcopy(initial_vocabulary) if initial_vocabulary is not None else None
 
     @staticmethod
     def _ler(caminho: Path) -> dict[str, Any]:
@@ -258,7 +259,9 @@ class VocabularyStore:
             return
         if self.versions.is_dir() and any(self.versions.glob("v*.json")):
             raise VocabularioError("A referência à versão ativa está ausente; verifique o armazenamento.")
-        self._criar_versao("v1.0", None, "Vocabulário inicial importado de entities.yml", _seed())
+        initial = self.initial_vocabulary if self.initial_vocabulary is not None else _seed()
+        self._criar_versao("v1.0", None, "Vocabulário inicial do projeto" if self.initial_vocabulary is not None else "Vocabulário inicial importado de entities.yml", initial)
+        self.initial_vocabulary = None
 
     def carregar(self, versao: str) -> dict:
         if not re.fullmatch(r"v1\.\d+", versao):

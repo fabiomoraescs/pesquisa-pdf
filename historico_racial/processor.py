@@ -37,6 +37,10 @@ def processar_documentos(
     arquivos: list[ArquivoPDF],
     progress_callback: Callable[[dict[str, Any]], None] | None = None,
     vocabulario: dict[str, Any] | None = None,
+    *,
+    project_id: str | None = None,
+    vocabulary_version: str | None = None,
+    vocabulary_hash: str | None = None,
 ) -> dict[str, Any]:
     """Um PDF = um documento; resultados são candidatos lexicais à revisão.
 
@@ -51,12 +55,14 @@ def processar_documentos(
         grupos = configuracao_entidades["grupos"]
         vocabulario_version = None
         vocabulario_hash = None
+        entity_sources: dict[str, dict[str, Any]] = {}
     else:
         conteudo = vocabulario["vocabulario"]
         buscador = BuscadorLexical(entidades_pesquisaveis(conteudo))
         grupos = {codigo: grupo["nome"] for codigo, grupo in conteudo["grupos"].items()}
         vocabulario_version = vocabulario["version"]
         vocabulario_hash = vocabulario["hash"]
+        entity_sources = {item["id_entidade"]: item for item in conteudo["entidades"]}
     erros: list[dict[str, str]] = []
     validos: list[tuple[int, ArquivoPDF, int]] = []
     for indice, arquivo in enumerate(arquivos, start=1):
@@ -127,6 +133,7 @@ def processar_documentos(
 
         id_documento = str(uuid4())
         documentos.append({
+            "id_project": project_id,
             "id_documento": id_documento,
             "arquivo_pdf": arquivo.nome_original,
             "id_arquivo": arquivo.id_arquivo,
@@ -152,7 +159,9 @@ def processar_documentos(
                 contexto = obter_contexto(paragrafos, indice_paragrafo)
                 for correspondencia in buscador.localizar(texto):
                     entidade = correspondencia.entidade
+                    source = entity_sources.get(entidade.id_entidade, {})
                     ocorrencias.append({
+                        "id_project": project_id,
                         "id_ocorrencia": str(uuid4()),
                         "id_documento": id_documento,
                         "arquivo_pdf": arquivo.nome_original,
@@ -160,6 +169,8 @@ def processar_documentos(
                         "categoria_busca": "entidades",
                         "tipo_entidade": entidade.tipo_entidade,
                         "id_entidade": entidade.id_entidade,
+                        "entity_key": source.get("entity_key", entidade.id_entidade),
+                        "bibliotecas_origem": list(source.get("source_libraries", [])),
                         "entidade_canonica": entidade.forma_canonica,
                         "variantes": list(entidade.variantes),
                         "grupo": list(entidade.grupo),
@@ -190,6 +201,7 @@ def processar_documentos(
     if not documentos:
         raise ProcessamentoError("Nenhum PDF com texto recuperável pôde ser processado.")
     return {
+        "project_id": project_id,
         "documentos": documentos,
         "ocorrencias": ocorrencias,
         "grupos": grupos,
@@ -197,6 +209,6 @@ def processar_documentos(
         "total_pdfs": len(documentos),
         "total_ocorrencias": len(ocorrencias),
         "entidades_distintas": len({item["id_entidade"] for item in ocorrencias}),
-        "vocabulario_version": vocabulario_version,
-        "vocabulario_hash": vocabulario_hash,
+        "vocabulario_version": vocabulary_version or vocabulario_version,
+        "vocabulario_hash": vocabulary_hash or vocabulario_hash,
     }

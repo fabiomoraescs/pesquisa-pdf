@@ -1,0 +1,31 @@
+{% extends 'platform/base.html' %}
+{% from 'platform/_fields.html' import password_field, profile_fields %}
+{% block title %}{{ 'Entrar' if mode == 'login' else 'Criar conta' }} — Raspagem de Dados{% endblock %}
+{% block body %}
+<div class="platform-auth-wrap">
+  <div class="platform-auth-intro"><h1>Raspagem de Dados</h1><p>Análise documental em Ciências Sociais</p></div>
+  <section class="platform-auth-card{% if mode == 'register' %} platform-auth-card-wide{% endif %}">
+    <h2>{{ 'Entrar' if mode == 'login' else 'Criar conta' }}</h2>
+    <form method="post" novalidate>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {% if mode == 'register' %}
+      <fieldset class="platform-form-section"><legend>Conta</legend>
+        <div class="platform-form-group"><label class="form-label" for="name">Nome completo</label><input class="form-control" id="name" name="name" autocomplete="name" maxlength="160" required value="{{ request.form.get('name', '') }}"></div>
+      {% endif %}
+      <div class="platform-form-group"><label class="form-label" for="email">E-mail</label><input class="form-control" id="email" name="email" type="email" autocomplete="email" required value="{{ request.form.get('email', '') }}"></div>
+      {{ password_field('password', 'Senha', 'current-password' if mode == 'login' else 'new-password', mode == 'register') }}
+      {% if mode == 'register' %}
+        {{ password_field('confirm', 'Confirmar senha', 'new-password', true) }}
+        <p class="form-text">Use entre 12 e 256 caracteres. O cadastro inicia no Plano Estudante gratuito.</p>
+      </fieldset>
+      <fieldset class="platform-form-section"><legend>Perfil</legend>
+        <p class="platform-muted">As informações de perfil ajudam a caracterizar os usuários da plataforma e podem ser atualizadas posteriormente.</p>
+        {{ profile_fields(request.form) }}
+      </fieldset>
+      {% endif %}
+      <button class="btn btn-primary platform-submit" type="submit">{{ 'Entrar' if mode == 'login' else 'Criar conta' }}</button>
+    </form>
+    <p class="platform-auth-switch">{% if mode == 'login' %}Ainda não possui conta? <a href="{{ url_for('auth.register') }}">Criar conta</a>{% else %}Já possui conta? <a href="{{ url_for('auth.login') }}">Entrar</a>{% endif %}</p>
+  </section>
+</div>
+{% endblock %}

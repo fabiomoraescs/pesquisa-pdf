@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import re
+import secrets
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -21,6 +22,18 @@ from flask import (
     send_from_directory,
     url_for,
 )
+from flask_login import current_user, logout_user
+from flask_wtf.csrf import CSRFError
+
+from platform_core.extensions import csrf, db, login_manager, migrate
+from platform_core.models import User
+from platform_core.auth import auth_bp
+from platform_core.projects import projects_bp
+from platform_core.admin import admin_bp
+from platform_core.profile import profile_bp
+from platform_core.presentation import register_presentation
+from platform_core.cli import register_cli
+from platform_core.services import access_is_active, can_use_tool
 
 from analyzer.common import (
     ANALISADORES,
@@ -39,11 +52,69 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 OUTPUT_DIR.mkdir(exist_ok=True)
 
 app = Flask(__name__)
+PLATFORM_DATA_DIR = Path(os.environ.get("PESQUISAPDF_DATA_DIR", str(OUTPUT_DIR / "platform")))
+PLATFORM_DATA_DIR.mkdir(parents=True, exist_ok=True)
+DATABASE_URI = os.environ.get("PESQUISAPDF_DATABASE_URL") or f"sqlite:///{(PLATFORM_DATA_DIR / 'platform.sqlite3').as_posix()}"
 app.config.update(
-    SECRET_KEY=os.environ.get("FLASK_SECRET_KEY", "varredura-local"),
+    SECRET_KEY=os.environ.get("FLASK_SECRET_KEY") or secrets.token_hex(32),
     MAX_CONTENT_LENGTH=1024 * 1024 * 1024,
+    SQLALCHEMY_DATABASE_URI=DATABASE_URI,
+    SQLALCHEMY_ENGINE_OPTIONS={"connect_args": {"timeout": 30}} if DATABASE_URI.startswith("sqlite:") else {},
+    SQLALCHEMY_TRACK_MODIFICATIONS=False,
+    PLATFORM_DATA_DIR=str(PLATFORM_DATA_DIR),
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=os.environ.get("PESQUISAPDF_HTTPS") == "1",
 )
+db.init_app(app)
+login_manager.init_app(app)
+migrate.init_app(app, db)
+csrf.init_app(app)
+register_cli(app)
+register_presentation(app)
+app.register_blueprint(auth_bp)
+app.register_blueprint(projects_bp)
+app.register_blueprint(admin_bp)
+app.register_blueprint(profile_bp)
 app.register_blueprint(historico_racial_bp)
+
+
+@login_manager.user_loader
+def _load_user(user_id: str):
+    return db.session.get(User, user_id)
+
+
+@app.before_request
+def _enforce_platform_access():
+    if request.endpoint in {"static", "auth.login", "auth.register"}:
+        return None
+    if not current_user.is_authenticated or not current_user.is_active:
+        if current_user.is_authenticated:
+            logout_user()
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.path.startswith("/api/"):
+            return jsonify({"erro": "Entre para continuar."}), 401
+        return redirect(url_for("auth.login", next=request.full_path if request.method == "GET" else ""))
+    if not access_is_active(current_user):
+        if request.endpoint == "auth.logout":
+            return None
+        abort(403)
+    if request.path.startswith("/admin"):
+        if current_user.role != "admin":
+            abort(403)
+    elif request.path == "/" or request.path.startswith(("/resultado/", "/download/", "/api/progresso/")):
+        if not can_use_tool(current_user, "pdf_scraper"):
+            abort(403)
+    elif request.path.startswith(("/historico-racial", "/analise-documental", "/projetos")):
+        if not can_use_tool(current_user, "document_analysis"):
+            abort(403)
+    return None
+
+
+@app.errorhandler(CSRFError)
+def _csrf_error(_error):
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+        return jsonify({"erro": "Sessão expirada ou token de segurança inválido. Recarregue a página."}), 400
+    return "Sessão expirada ou token de segurança inválido. Recarregue a página.", 400
 
 # A aplicação não possui histórico permanente. O cache só mantém a análise
 # atual enquanto o servidor estiver aberto, para exibir o dashboard e baixar
@@ -360,10 +431,11 @@ class RelatorDeProgresso:
             )
 
 
-def _novo_progresso(job_id: str, versao: str, total_arquivos: int) -> None:
+def _novo_progresso(job_id: str, versao: str, total_arquivos: int, owner_user_id: str | None = None) -> None:
     _limpar_progressos_expirados()
     with PROGRESSOS_LOCK:
         PROGRESSOS[job_id] = {
+            "owner_user_id": owner_user_id,
             "status": "processando",
             "metodo": versao,
             "etapa": "Preparando análise…",
@@ -455,6 +527,7 @@ def _executar_job(
     versao: str,
     configuracoes_v3: dict | None,
     resultado_url: str,
+    owner_user_id: str | None = None,
 ) -> None:
     relator = RelatorDeProgresso(job_id, versao, configuracoes_v3)
     try:
@@ -471,6 +544,7 @@ def _executar_job(
         )
         resultado["dashboard"] = criar_dashboard(resultado)
         resultado["pasta_saida"] = pasta_saida
+        resultado["owner_user_id"] = owner_user_id
         with ANALISES_LOCK:
             ANALISES[job_id] = resultado
         relator.concluir(resultado_url)
@@ -582,7 +656,7 @@ def inicio():
         arquivo.save(destino)
         pdfs_salvos.append(destino)
 
-    _novo_progresso(job_id, versao, len(pdfs_salvos))
+    _novo_progresso(job_id, versao, len(pdfs_salvos), current_user.id)
     resultado_url = url_for("resultado", identificador=job_id)
     EXECUTOR_ANALISES.submit(
         _executar_job,
@@ -593,6 +667,7 @@ def inicio():
         versao,
         configuracoes_v3,
         resultado_url,
+        current_user.id,
     )
     # O executor já recebeu todos os valores simples necessários; a resposta
     # retorna imediatamente para que o navegador inicie o polling.
@@ -614,6 +689,8 @@ def resultado(identificador: str):
         dados = ANALISES.get(identificador)
     if not dados:
         abort(404)
+    if dados.get("owner_user_id") != current_user.id and current_user.role != "admin":
+        abort(404)
     return render_template("resultado.html", resultado=dados, identificador=identificador)
 
 
@@ -622,6 +699,8 @@ def download(identificador: str, nome_arquivo: str):
     with ANALISES_LOCK:
         dados = ANALISES.get(identificador)
     if not dados or nome_arquivo != Path(nome_arquivo).name:
+        abort(404)
+    if dados.get("owner_user_id") != current_user.id and current_user.role != "admin":
         abort(404)
 
     nomes_permitidos = {arquivo["nome"] for arquivo in dados["arquivos"]}
@@ -633,10 +712,54 @@ def download(identificador: str, nome_arquivo: str):
 
 @app.get("/api/progresso/<job_id>")
 def progresso(job_id: str):
+    with PROGRESSOS_LOCK:
+        owner = PROGRESSOS.get(job_id, {}).get("owner_user_id")
+    if owner is None or (owner != current_user.id and current_user.role != "admin"):
+        return jsonify({"erro": "Análise não encontrada."}), 404
     dados = _progresso_publico(job_id)
     if dados is None:
         return jsonify({"erro": "Análise não encontrada."}), 404
     return jsonify(dados)
+
+
+def create_app(test_config: dict | None = None) -> Flask:
+    """Cria instância isolada para testes sem tocar no banco/dados reais.
+
+    A instância de produção continua sendo ``app`` para Gunicorn. Os handlers
+    legados são registrados na nova instância sem duplicar sua lógica.
+    """
+    if test_config is None:
+        return app
+    isolated = Flask(__name__, template_folder="templates", static_folder="static")
+    isolated.config.update(app.config)
+    isolated.config.update(test_config)
+    if "SQLALCHEMY_ENGINE_OPTIONS" not in test_config:
+        isolated.config["SQLALCHEMY_ENGINE_OPTIONS"] = (
+            {"connect_args": {"timeout": 30}}
+            if isolated.config["SQLALCHEMY_DATABASE_URI"].startswith("sqlite:") else {}
+        )
+    db.init_app(isolated)
+    login_manager.init_app(isolated)
+    migrate.init_app(isolated, db)
+    csrf.init_app(isolated)
+    register_cli(isolated)
+    register_presentation(isolated)
+    isolated.register_blueprint(auth_bp)
+    isolated.register_blueprint(projects_bp)
+    isolated.register_blueprint(admin_bp)
+    isolated.register_blueprint(profile_bp)
+    isolated.register_blueprint(historico_racial_bp)
+    isolated.before_request(_enforce_platform_access)
+    isolated.register_error_handler(CSRFError, _csrf_error)
+    isolated.register_error_handler(413, arquivo_grande)
+    for rule in app.url_map.iter_rules():
+        if rule.endpoint in {"static"} or "." in rule.endpoint:
+            continue
+        isolated.add_url_rule(
+            rule.rule, endpoint=rule.endpoint, view_func=app.view_functions[rule.endpoint],
+            methods=rule.methods,
+        )
+    return isolated
 
 
 if __name__ == "__main__":

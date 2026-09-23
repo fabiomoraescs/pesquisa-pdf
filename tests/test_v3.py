@@ -13,6 +13,7 @@ import pandas as pd
 from openpyxl import load_workbook
 
 import app as aplicacao_web
+from platform_helpers import create_user, csrf_from, isolated_platform, login
 from analyzer import v3
 from analyzer import v1, v2
 from analyzer.common import criar_dashboard, executar_analises, montar_termos
@@ -694,11 +695,15 @@ class TesteV3(unittest.TestCase):
             self.assertNotIn("destaques_semanticos", resultado["dashboard"])
             resultado["pasta_saida"] = Path(diretorio)
             identificador = "teste-v3"
-            aplicacao_web.ANALISES[identificador] = resultado
-            try:
-                with aplicacao_web.app.test_client() as cliente:
-                    inicio = cliente.get("/")
-                    pagina_v3 = cliente.get(f"/resultado/{identificador}")
+            with isolated_platform() as test_app:
+                user = create_user()
+                resultado["owner_user_id"] = user.id
+                aplicacao_web.ANALISES[identificador] = resultado
+                try:
+                    with test_app.test_client() as cliente:
+                        login(cliente)
+                        inicio = cliente.get("/")
+                        pagina_v3 = cliente.get(f"/resultado/{identificador}")
                     self.assertEqual(inicio.status_code, 200)
                     self.assertIn(b"V3: Busca h", inicio.data)
                     self.assertIn(b"Fabio Monteiro de Moraes</a> - 2026 | Vers", inicio.data)
@@ -747,8 +752,8 @@ class TesteV3(unittest.TestCase):
                     self.assertNotIn(b"Principais correspond", pagina_v3.data)
                     self.assertNotIn(b"destaques-v3", pagina_v3.data)
                     self.assertIn(b"dashboard-v3.js", pagina_v3.data)
-            finally:
-                aplicacao_web.ANALISES.pop(identificador, None)
+                finally:
+                    aplicacao_web.ANALISES.pop(identificador, None)
 
         # A V3 não alterou os dataframes que alimentam as estruturas V1/V2.
         self.assertIn("Parágrafo do termo", v1.dataframe_vazio().columns)
@@ -779,16 +784,20 @@ class TesteV3(unittest.TestCase):
             }
             resultado["dashboard"] = criar_dashboard(resultado)
             identificador = f"teste-{versao}"
-            aplicacao_web.ANALISES[identificador] = resultado
-            try:
-                with aplicacao_web.app.test_client() as cliente:
-                    pagina = cliente.get(f"/resultado/{identificador}")
+            with isolated_platform() as test_app:
+                user = create_user()
+                resultado["owner_user_id"] = user.id
+                aplicacao_web.ANALISES[identificador] = resultado
+                try:
+                    with test_app.test_client() as cliente:
+                        login(cliente)
+                        pagina = cliente.get(f"/resultado/{identificador}")
                     self.assertEqual(pagina.status_code, 200)
                     self.assertIn(b"Fabio Monteiro de Moraes</a> - 2026 | Vers", pagina.data)
                     self.assertIn(b"dashboard.js", pagina.data)
                     self.assertNotIn(b"dashboard-v3.js", pagina.data)
-            finally:
-                aplicacao_web.ANALISES.pop(identificador, None)
+                finally:
+                    aplicacao_web.ANALISES.pop(identificador, None)
 
     @patch("app.executar_analises")
     def test_backend_rejeita_virgula_e_ponto_no_campo_manual(self, executar):
@@ -800,11 +809,16 @@ class TesteV3(unittest.TestCase):
             "São Paulo, Rio de Janeiro, João Pessoa",
             "São Paulo. Rio de Janeiro. João Pessoa",
         )
-        with aplicacao_web.app.test_client() as cliente:
+        with isolated_platform() as test_app:
+            create_user()
+            cliente = test_app.test_client()
+            login(cliente)
+            token = csrf_from(cliente.get("/"))
             for termos in entradas_invalidas:
                 resposta = cliente.post(
                     "/",
                     data={
+                        "csrf_token": token,
                         "versao": "v1",
                         "termos": termos,
                         "pdfs": (BytesIO(b"%PDF-teste"), "livro.pdf"),
@@ -819,7 +833,7 @@ class TesteV3(unittest.TestCase):
 
             resposta_valida = cliente.post(
                 "/",
-                data={"versao": "v1", "termos": "Nordeste; Recife; sertão"},
+                data={"csrf_token": token, "versao": "v1", "termos": "Nordeste; Recife; sertão"},
                 content_type="multipart/form-data",
             )
             self.assertEqual(resposta_valida.status_code, 200)

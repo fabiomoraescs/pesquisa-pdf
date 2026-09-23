@@ -13,7 +13,8 @@ from unittest.mock import patch
 
 import pymupdf
 
-from app import app
+from platform_helpers import create_project, create_user, csrf_from, isolated_platform, login
+from platform_core.vocabularies import project_store
 from historico_racial.dictionaries import carregar_entidades
 from historico_racial.occurrences import BuscadorLexical
 from historico_racial.processor import ArquivoPDF, processar_documentos
@@ -251,56 +252,73 @@ class TesteVocabularioHistoricoRacial(unittest.TestCase):
         from historico_racial import routes
         chamadas = []
         pdf = _pdf("Du Bois foi citado em debates sobre a população negra e outros temas sociais relevantes.")
-        app.config.update(TESTING=True)
-        with patch.object(routes, "VOCABULARIO_STORE", self.store), patch.object(routes.EXECUTOR_HR, "submit", side_effect=lambda *args: chamadas.append(args)):
-            with app.test_client() as cliente:
-                resposta = cliente.post("/historico-racial/analisar", data={"pdfs": (io.BytesIO(pdf), "a.pdf")}, content_type="multipart/form-data", headers={"X-Requested-With": "XMLHttpRequest"})
+        with isolated_platform() as test_app:
+            create_user()
+            with test_app.test_client() as cliente, patch.object(routes.EXECUTOR_HR, "submit", side_effect=lambda *args: chamadas.append(args)):
+                login(cliente)
+                project_id = create_project(cliente)
+                path = f"/analise-documental/projetos/{project_id}"
+                token = csrf_from(cliente.get(path))
+                original = project_store(project_id).capturar_ativa()
+                resposta = cliente.post(f"{path}/analisar", data={"pdfs": (io.BytesIO(pdf), "a.pdf"), "csrf_token": token}, content_type="multipart/form-data", headers={"X-Requested-With": "XMLHttpRequest"})
                 self.assertEqual(resposta.status_code, 202)
                 job_id = resposta.json["job_id"]
                 self.assertEqual(PROGRESSOS_HR[job_id]["vocabulario_version"], "v1.0")
-                self.assertEqual(PROGRESSOS_HR[job_id]["vocabulario_hash"], self.inicial["hash"])
-                self._salvar(lambda v: next(e for e in v["entidades"] if e["id_entidade"] == "du_bois").update(ativo=False))
+                self.assertEqual(PROGRESSOS_HR[job_id]["vocabulario_hash"], original["hash"])
+                edited = copy.deepcopy(original["vocabulario"])
+                next(e for e in edited["entidades"] if e["id_entidade"] == "du_bois")["ativo"] = False
+                project_store(project_id).salvar("v1.0", edited)
                 funcao, *args = chamadas[0]
                 funcao(*args)
                 self.assertEqual(RESULTADOS_HR[job_id]["vocabulario_version"], "v1.0")
                 self.assertTrue(any(e["id_entidade"] == "du_bois" for e in RESULTADOS_HR[job_id]["ocorrencias"]))
 
     def test_rotas_principal_gerenciador_salvamento_resultado(self):
-        from historico_racial import routes
-        app.config.update(TESTING=True)
-        with patch.object(routes, "VOCABULARIO_STORE", self.store), app.test_client() as cliente:
-            inicio = cliente.get("/historico-racial")
-            gerente = cliente.get("/historico-racial/vocabulario")
-            self.assertEqual(inicio.status_code, 200)
-            self.assertEqual(gerente.status_code, 200)
-            self.assertIn("Versão ativa:", inicio.get_data(as_text=True))
-            self.assertIn("Gerenciar vocabulário", inicio.get_data(as_text=True))
-            self.assertIn("Histórico de versões", gerente.get_data(as_text=True))
-            rascunho = copy.deepcopy(self.inicial["vocabulario"])
-            rascunho["grupos"]["A_classificacao_racial_brasileira"]["ativo"] = False
-            salvo = cliente.post("/historico-racial/vocabulario/versoes", json={"base_version": "v1.0", "vocabulario": rascunho, "nota": "Teste da rota"})
-            self.assertEqual(salvo.status_code, 201)
-            self.assertEqual(salvo.json["version"], "v1.1")
-            self.assertIn("reprocessados", salvo.json["aviso"])
-            obsoleto = cliente.post("/historico-racial/vocabulario/versoes", json={"base_version": "v1.0", "vocabulario": rascunho})
-            self.assertEqual(obsoleto.status_code, 409)
+        with isolated_platform() as test_app:
+            create_user()
+            with test_app.test_client() as cliente:
+                login(cliente)
+                project_id = create_project(cliente)
+                path = f"/analise-documental/projetos/{project_id}"
+                inicio = cliente.get(path)
+                gerente = cliente.get(f"{path}/vocabulario")
+                self.assertEqual(inicio.status_code, 200)
+                self.assertEqual(gerente.status_code, 200)
+                self.assertIn("Versão ativa:", inicio.get_data(as_text=True))
+                self.assertIn("Gerenciar vocabulário", inicio.get_data(as_text=True))
+                self.assertIn("Histórico de versões", gerente.get_data(as_text=True))
+                rascunho = copy.deepcopy(project_store(project_id).capturar_ativa()["vocabulario"])
+                rascunho["grupos"]["A_classificacao_racial_brasileira"]["ativo"] = False
+                token = csrf_from(gerente)
+                salvo = cliente.post(f"{path}/vocabulario/versoes", json={"base_version": "v1.0", "vocabulario": rascunho, "nota": "Teste da rota"}, headers={"X-CSRFToken": token})
+                self.assertEqual(salvo.status_code, 201)
+                self.assertEqual(salvo.json["version"], "v1.1")
+                self.assertIn("reprocessados", salvo.json["aviso"])
+                obsoleto = cliente.post(f"{path}/vocabulario/versoes", json={"base_version": "v1.0", "vocabulario": rascunho}, headers={"X-CSRFToken": token})
+                self.assertEqual(obsoleto.status_code, 409)
 
     def test_resultado_da_rota_mostra_versao_utilizada_nao_ativa_atual(self):
-        from historico_racial import routes
         job_id = "00000000-0000-4000-8000-000000000001"
-        RESULTADOS_HR[job_id] = {
-            "documentos": [], "ocorrencias": [], "grupos": {}, "erros": [],
-            "total_pdfs": 1, "total_ocorrencias": 0, "entidades_distintas": 0,
-            "vocabulario_version": "v1.0", "vocabulario_hash": self.inicial["hash"],
-        }
-        self.addCleanup(lambda: RESULTADOS_HR.pop(job_id, None))
-        self._salvar(lambda v: v["grupos"]["A_classificacao_racial_brasileira"].update(ativo=False))
-        app.config.update(TESTING=True)
-        with patch.object(routes, "VOCABULARIO_STORE", self.store), app.test_client() as cliente:
-            resposta = cliente.get(f"/historico-racial/resultado/{job_id}")
+        with isolated_platform() as test_app:
+            user = create_user()
+            with test_app.test_client() as cliente:
+                login(cliente)
+                project_id = create_project(cliente)
+                original = project_store(project_id).capturar_ativa()
+                RESULTADOS_HR[job_id] = {
+                    "documentos": [], "ocorrencias": [], "grupos": {}, "erros": [],
+                    "total_pdfs": 1, "total_ocorrencias": 0, "entidades_distintas": 0,
+                    "vocabulario_version": "v1.0", "vocabulario_hash": original["hash"],
+                    "project_id": project_id, "owner_user_id": user.id, "library_names": ["Relações raciais"],
+                }
+                self.addCleanup(lambda: RESULTADOS_HR.pop(job_id, None))
+                edited = copy.deepcopy(original["vocabulario"])
+                edited["grupos"]["A_classificacao_racial_brasileira"]["ativo"] = False
+                project_store(project_id).salvar("v1.0", edited)
+                resposta = cliente.get(f"/analise-documental/projetos/{project_id}/resultado/{job_id}")
         self.assertEqual(resposta.status_code, 200)
         self.assertIn("Vocabulário utilizado: <strong>v1.0</strong>", resposta.get_data(as_text=True))
-        self.assertIn(self.inicial["hash"], resposta.get_data(as_text=True))
+        self.assertIn(original["hash"], resposta.get_data(as_text=True))
 
     def test_ocr_registra_idioma_e_preserva_fallback(self):
         from historico_racial import pdf as modulo_pdf

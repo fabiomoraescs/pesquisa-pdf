@@ -1,0 +1,28 @@
+{% extends 'platform/base.html' %}
+{% block title %}Projetos arquivados — Raspagem de Dados{% endblock %}
+{% block heading %}Projetos arquivados{% endblock %}
+{% block body %}
+<p class="platform-muted">Projetos arquivados ficam fora da lista principal, mas preservam dados, bibliotecas e histórico até que você os desarquive ou exclua definitivamente.</p>
+{% if projects %}
+<form id="bulk-delete-form" method="post" action="{{ url_for('projects.confirm_batch_delete') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+</form>
+<div class="platform-project-grid">
+{% for project in projects %}
+<section class="platform-project-card">
+  <div class="platform-project-select"><input class="form-check-input" type="checkbox" form="bulk-delete-form" name="project_ids" value="{{ project.id }}" id="project-{{ project.id }}"><label for="project-{{ project.id }}"><strong>{{ project.name }}</strong></label></div>
+  <p>{{ project.description or 'Sem descrição.' }}</p>
+  <p class="platform-muted"><strong>Bibliotecas:</strong> {{ summaries[project.id].libraries | join(', ') or 'Nenhuma' }} · <strong>Vocabulário:</strong> {{ summaries[project.id].version or 'Indisponível' }}</p>
+  <p class="platform-muted"><strong>Arquivado em:</strong> {{ (project.archived_at or project.updated_at) | data_br }}</p>
+  <div class="platform-card-actions">
+    <form method="post" action="{{ url_for('projects.restore_project', project_id=project.id) }}" onsubmit="return confirm('Desarquivar este projeto e restaurar o acesso?')"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="confirm" value="yes"><button class="btn btn-outline-primary" type="submit">Desarquivar projeto</button></form>
+    <a class="btn btn-outline-danger" href="{{ url_for('projects.delete_project', project_id=project.id) }}">Excluir permanentemente</a>
+  </div>
+</section>
+{% endfor %}
+</div>
+<button class="btn btn-danger mt-3" type="submit" form="bulk-delete-form">Excluir permanentemente selecionados</button>
+{% else %}
+<div class="platform-empty-state"><h2 class="h5">Nenhum projeto arquivado.</h2><p>Projetos arquivados aparecerão aqui.</p><a class="btn btn-outline-primary" href="{{ url_for('projects.list_projects') }}">Voltar aos projetos</a></div>
+{% endif %}
+{% endblock %}

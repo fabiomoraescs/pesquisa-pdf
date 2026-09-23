@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+from contextlib import contextmanager
 import tempfile
 import time
 import unittest
@@ -12,13 +13,25 @@ from uuid import UUID
 
 import pymupdf
 
-from app import app
+from platform_helpers import create_project, create_user, csrf_from, isolated_platform, login
 from historico_racial.context import construir_paragrafos, obter_contexto
 from historico_racial.entities import listar_entidades
 from historico_racial.occurrences import BuscadorLexical
 from historico_racial.pdf import PDFInvalidoError, contar_paginas
 from historico_racial.processor import ArquivoPDF, ProcessamentoError, processar_documentos
 from historico_racial.routes import RESULTADOS_HR
+
+
+@contextmanager
+def client_with_project():
+    with isolated_platform() as test_app:
+        create_user()
+        with test_app.test_client() as client:
+            login(client)
+            project_id = create_project(client)
+            path = f"/analise-documental/projetos/{project_id}"
+            token = csrf_from(client.get(path))
+            yield client, path, token
 
 
 def pdf_controlado(paragrafos: list[str]) -> bytes:
@@ -161,11 +174,10 @@ class TesteProcessamentoHistoricoRacial(unittest.TestCase):
             "Du Bois participou de importantes debates sobre a população negra e a democracia racial brasileira.",
             "Os movimentos discutiam democracia racial e mestiçagem em um contexto histórico amplo.",
         ])
-        app.config.update(TESTING=True)
-        with app.test_client() as cliente:
+        with client_with_project() as (cliente, path, token):
             resposta = cliente.post(
-                "/historico-racial/analisar",
-                data={"pdfs": (io.BytesIO(pdf), "corpus.pdf")},
+                f"{path}/analisar",
+                data={"pdfs": (io.BytesIO(pdf), "corpus.pdf"), "csrf_token": token},
                 content_type="multipart/form-data",
                 headers={"X-Requested-With": "XMLHttpRequest"},
             )
@@ -188,12 +200,11 @@ class TesteProcessamentoHistoricoRacial(unittest.TestCase):
             self.assertIn("Contexto", conteudo)
 
     def test_upload_ausente_ou_extensao_invalida_e_rejeitado(self):
-        app.config.update(TESTING=True)
-        with app.test_client() as cliente:
-            vazio = cliente.post("/historico-racial/analisar", headers={"X-Requested-With": "XMLHttpRequest"})
+        with client_with_project() as (cliente, path, token):
+            vazio = cliente.post(f"{path}/analisar", data={"csrf_token": token}, headers={"X-Requested-With": "XMLHttpRequest"})
             errado = cliente.post(
-                "/historico-racial/analisar",
-                data={"pdfs": (io.BytesIO(b"texto"), "termos.txt")},
+                f"{path}/analisar",
+                data={"pdfs": (io.BytesIO(b"texto"), "termos.txt"), "csrf_token": token},
                 content_type="multipart/form-data",
                 headers={"X-Requested-With": "XMLHttpRequest"},
             )
@@ -202,11 +213,10 @@ class TesteProcessamentoHistoricoRacial(unittest.TestCase):
         self.assertIn(".pdf", errado.json["erro"])
 
     def test_upload_pdf_corrompido_retorna_erro_no_job_sem_http_500(self):
-        app.config.update(TESTING=True)
-        with app.test_client() as cliente:
+        with client_with_project() as (cliente, path, token):
             resposta = cliente.post(
-                "/historico-racial/analisar",
-                data={"pdfs": (io.BytesIO(b"nao e pdf"), "corrompido.pdf")},
+                f"{path}/analisar",
+                data={"pdfs": (io.BytesIO(b"nao e pdf"), "corrompido.pdf"), "csrf_token": token},
                 content_type="multipart/form-data",
                 headers={"X-Requested-With": "XMLHttpRequest"},
             )
@@ -223,11 +233,10 @@ class TesteProcessamentoHistoricoRacial(unittest.TestCase):
     def test_upload_de_dois_pdfs_cria_dois_documentos_no_mesmo_job(self):
         pdf_a = pdf_controlado(["Du Bois foi citado em debates sobre questões sociais e políticas no Brasil."])
         pdf_b = pdf_controlado(["Frantz Fanon foi citado em debates sobre questões sociais e políticas no Brasil."])
-        app.config.update(TESTING=True)
-        with app.test_client() as cliente:
+        with client_with_project() as (cliente, path, token):
             resposta = cliente.post(
-                "/historico-racial/analisar",
-                data={"pdfs": [(io.BytesIO(pdf_a), "um.pdf"), (io.BytesIO(pdf_b), "dois.pdf")]},
+                f"{path}/analisar",
+                data={"pdfs": [(io.BytesIO(pdf_a), "um.pdf"), (io.BytesIO(pdf_b), "dois.pdf")], "csrf_token": token},
                 content_type="multipart/form-data",
                 headers={"X-Requested-With": "XMLHttpRequest"},
             )
