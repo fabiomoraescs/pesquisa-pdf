@@ -54,6 +54,15 @@ def _project_directory(project_id: str) -> Path:
 
 
 def delete_archived(projects: list[Project], actor: User, confirmation: str) -> int:
+    return _delete_projects(projects, actor, confirmation, legacy_cleanup=False)
+
+
+def purge_legacy_deleted(projects: list[Project], actor: User | None, confirmation: str) -> int:
+    """Remove registros legados já excluídos, sem atribuir manutenção local a uma conta."""
+    return _delete_projects(projects, actor, confirmation, legacy_cleanup=True)
+
+
+def _delete_projects(projects: list[Project], actor: User | None, confirmation: str, *, legacy_cleanup: bool) -> int:
     """Valida o lote inteiro; snapshots são isolados antes do commit SQL.
 
     Se o commit falhar, os diretórios são restaurados. Após o commit, uma falha
@@ -63,9 +72,16 @@ def delete_archived(projects: list[Project], actor: User, confirmation: str) -> 
         raise ProjectActionError('Digite exatamente "deletar" para confirmar a exclusão.')
     if not projects or len({project.id for project in projects}) != len(projects):
         raise ProjectActionError("Selecione ao menos um projeto arquivado válido.")
-    if any(project.status != "archived" or project.deleted_at is not None for project in projects):
+    if legacy_cleanup:
+        if (actor is not None and actor.role != "admin") or any(
+            project.status != "deleted" or project.deleted_at is None for project in projects
+        ):
+            raise ProjectActionError("Somente administradores podem limpar projetos legados já excluídos.")
+    elif any(project.status != "archived" or project.deleted_at is not None for project in projects):
         raise ProjectActionError("Todos os projetos selecionados precisam estar arquivados.")
-    if actor.role != "admin" and any(project.owner_user_id != actor.id for project in projects):
+    if not legacy_cleanup and actor is None:
+        raise ProjectActionError("A exclusão exige uma conta autenticada.")
+    if actor is not None and actor.role != "admin" and any(project.owner_user_id != actor.id for project in projects):
         raise ProjectActionError("Um dos projetos não pertence à sua conta.")
     from historico_racial.routes import JOBS_LOCK, PROGRESSOS_HR, RESULTADOS_HR
 
@@ -94,7 +110,7 @@ def delete_archived(projects: list[Project], actor: User, confirmation: str) -> 
                 db.session.execute(delete(ProjectVocabularyVersion).where(ProjectVocabularyVersion.project_id == project.id))
                 db.session.execute(delete(ProjectLibrary).where(ProjectLibrary.project_id == project.id))
                 record_audit(actor, "project_permanently_deleted", "project", project.id,
-                             {"status": "archived", "owner_user_id": project.owner_user_id, "name": project.name},
+                             {"status": project.status, "owner_user_id": project.owner_user_id, "name": project.name},
                              {"deleted": True})
                 db.session.delete(project)
             db.session.commit()

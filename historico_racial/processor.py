@@ -54,8 +54,8 @@ def processar_documentos(
     if metodo_analise not in {"lexical", "hibrido"}:
         raise ProcessamentoError("Selecione um método de análise válido.")
     if metodo_analise == "hibrido" and limiar_semantico is None:
-        from analyzer.v3 import LIMIAR_PADRAO
-        limiar_semantico = LIMIAR_PADRAO
+        from platform_core.semantic_threshold import DEFAULT
+        limiar_semantico = DEFAULT
     if vocabulario is None:
         configuracao_entidades = carregar_entidades()
         buscador = BuscadorLexical(listar_entidades())

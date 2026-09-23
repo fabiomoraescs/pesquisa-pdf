@@ -4,15 +4,17 @@ from __future__ import annotations
 
 import re
 
-from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
+from flask import Blueprint, abort, current_app, flash, make_response, redirect, render_template, request, url_for
 from flask_login import current_user, login_user, logout_user
 from sqlalchemy import select
 
 from .extensions import db
+from .mail import MailDeliveryError, send_password_recovery
 from .models import Plan, User, UserProfile
 from .password_policy import RETIRED_TEMPORARY_PASSWORD, TEMPORARY_PASSWORD
+from .password_recovery import consume_token, issue_token, revoke_token, valid_token
 from .profile import validated_profile
-from .services import can_use_tool, record_audit, replace_grant
+from .services import access_is_active, can_use_tool, record_audit, replace_grant
 
 auth_bp = Blueprint("auth", __name__)
 
@@ -49,6 +51,52 @@ def login():
             return redirect(_next_url())
         flash("E-mail ou senha inválidos, ou conta indisponível.", "danger")
     return render_template("platform/auth.html", mode="login")
+
+
+@auth_bp.route("/esqueci-senha", methods=["GET", "POST"])
+def forgot_password():
+    if request.method == "POST":
+        email = request.form.get("email", "").strip().casefold()
+        if len(email) > 320:
+            email = ""
+        user = db.session.scalar(select(User).where(User.email == email)) if email else None
+        if user is not None and access_is_active(user):
+            ttl_seconds = int(current_app.config["PASSWORD_RECOVERY_TTL_SECONDS"])
+            token = issue_token(user, ttl_seconds)
+            try:
+                send_password_recovery(user.email, token, ttl_seconds // 60)
+            except MailDeliveryError:
+                revoke_token(token)
+                current_app.logger.warning("Envio de recuperação de senha indisponível; confira a configuração SMTP.")
+            else:
+                record_audit(None, "password_recovery_requested", "user", user.id)
+                db.session.commit()
+        return render_template("platform/forgot_password.html", submitted=True)
+    return render_template("platform/forgot_password.html", submitted=False)
+
+
+@auth_bp.route("/redefinir-senha/<token>", methods=["GET", "POST"])
+def reset_password(token: str):
+    pair = valid_token(token)
+    if request.method == "POST" and pair is not None:
+        password = request.form.get("password", "")
+        confirm = request.form.get("confirm", "")
+        if password == TEMPORARY_PASSWORD or len(password) < 12 or len(password) > 256:
+            flash("Escolha uma senha definitiva de 12 a 256 caracteres, diferente da senha temporária.", "danger")
+        elif password != confirm:
+            flash("A confirmação da nova senha não confere.", "danger")
+        elif consume_token(token, password):
+            logout_user()
+            flash("Senha redefinida. Entre com sua nova senha.", "success")
+            return redirect(url_for("auth.login"))
+        else:
+            pair = None
+    response = make_response(render_template("platform/reset_password.html", valid=pair is not None),
+                             200 if pair is not None else 400)
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["X-Robots-Tag"] = "noindex"
+    return response
 
 
 @auth_bp.route("/cadastro", methods=["GET", "POST"])

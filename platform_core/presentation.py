@@ -36,6 +36,7 @@ LABELS = {
     "project_status_changed": "Estado do projeto alterado",
     "project_archived": "Projeto arquivado", "project_restored": "Projeto desarquivado",
     "user_password_reset": "Senha de usuário redefinida", "password_changed_after_reset": "Senha alterada após redefinição",
+    "password_recovery_requested": "Recuperação de senha solicitada", "password_recovered": "Senha redefinida por recuperação",
     "plan_state_changed": "Estado do plano alterado",
     "project_permanently_deleted": "Projeto excluído permanentemente",
     "library_state_changed": "Estado da biblioteca alterado",

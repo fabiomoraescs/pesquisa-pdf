@@ -66,6 +66,15 @@ app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax",
     SESSION_COOKIE_SECURE=os.environ.get("PESQUISAPDF_HTTPS") == "1",
+    PASSWORD_RECOVERY_TTL_SECONDS=1800,
+    PESQUISAPDF_PUBLIC_URL=os.environ.get("PESQUISAPDF_PUBLIC_URL", ""),
+    MAIL_SERVER=os.environ.get("MAIL_SERVER", ""),
+    MAIL_PORT=os.environ.get("MAIL_PORT", "587"),
+    MAIL_USERNAME=os.environ.get("MAIL_USERNAME", ""),
+    MAIL_PASSWORD=os.environ.get("MAIL_PASSWORD", ""),
+    MAIL_FROM=os.environ.get("MAIL_FROM", ""),
+    MAIL_USE_TLS=os.environ.get("MAIL_USE_TLS", "1") == "1",
+    MAIL_USE_SSL=os.environ.get("MAIL_USE_SSL", "0") == "1",
 )
 db.init_app(app)
 login_manager.init_app(app)
@@ -94,7 +103,7 @@ def _load_user(user_id: str):
 
 @app.before_request
 def _enforce_platform_access():
-    if request.endpoint in {"static", "auth.login", "auth.register"}:
+    if request.endpoint in {"static", "auth.login", "auth.register", "auth.forgot_password", "auth.reset_password"}:
         return None
     if not current_user.is_authenticated or not current_user.is_active:
         if current_user.is_authenticated:

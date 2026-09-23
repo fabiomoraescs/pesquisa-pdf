@@ -14,7 +14,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from .extensions import db
 from .models import (
-    AccessGrant, AuditLog, Plan, Project, ProjectLibrary, ProjectVocabularyVersion, Tool, User,
+    AccessGrant, AuditLog, PasswordRecoveryToken, Plan, Project, ProjectLibrary, ProjectVocabularyVersion, Tool, User,
     UserProfile, UserToolOverride, VocabularyLibrary, utcnow,
 )
 from .password_policy import TEMPORARY_PASSWORD
@@ -314,6 +314,7 @@ def permanently_delete_user(user_id: UUID):
             ))
             db.session.execute(delete(UserToolOverride).where(UserToolOverride.user_id == user.id))
             db.session.execute(delete(AccessGrant).where(AccessGrant.user_id == user.id))
+            db.session.execute(delete(PasswordRecoveryToken).where(PasswordRecoveryToken.user_id == user.id))
             db.session.execute(delete(UserProfile).where(UserProfile.user_id == user.id))
             record_audit(current_user, "user_permanently_deleted", "user", user.id,
                          {"name": user.name, "role": user.role}, {"removed": True})
@@ -374,7 +375,9 @@ def set_plan_state(plan_id: str):
 @admin_only
 def projects():
     page = max(1, request.args.get("page", 1, type=int))
-    pagination = db.paginate(select(Project).order_by(Project.created_at.desc()), page=page, per_page=30, error_out=False)
+    pagination = db.paginate(select(Project).where(
+        Project.deleted_at.is_(None), Project.status != "deleted",
+    ).order_by(Project.created_at.desc()), page=page, per_page=30, error_out=False)
     return render_template("platform/admin.html", section="projects", projects=pagination.items, pagination=pagination)
 
 
@@ -382,7 +385,7 @@ def projects():
 @admin_only
 def project_detail(project_id: UUID):
     project = db.session.get(Project, str(project_id))
-    if project is None:
+    if project is None or project.deleted_at is not None or project.status == "deleted":
         abort(404)
     libraries = db.session.scalars(
         select(VocabularyLibrary).join(ProjectLibrary, ProjectLibrary.library_id == VocabularyLibrary.id)

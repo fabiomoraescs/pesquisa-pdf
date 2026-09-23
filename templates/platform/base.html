@@ -9,9 +9,9 @@
   <link href="{{ url_for('static', filename='css/platform.css') }}" rel="stylesheet">
   <script>try { document.documentElement.dataset.theme = localStorage.getItem('varredura-pdf-theme') || 'dark'; } catch (_) { document.documentElement.dataset.theme = 'dark'; }</script>
 </head>
-<body class="platform-page{% if mode in ('login', 'register') %} platform-auth-page{% endif %}">
+<body class="platform-page{% if mode in ('login', 'register') or request.endpoint in ('auth.forgot_password', 'auth.reset_password') %} platform-auth-page{% endif %}">
   {% include 'platform/_header.html' %}
-  <main class="platform-main{% if mode in ('login', 'register') %} platform-main-auth{% endif %}">
+  <main class="platform-main{% if mode in ('login', 'register') or request.endpoint in ('auth.forgot_password', 'auth.reset_password') %} platform-main-auth{% endif %}">
     <div class="app-content-container">
     {% block page_intro %}{% endblock %}
     {% with messages = get_flashed_messages(with_categories=true) %}{% for category, message in messages %}<div class="alert alert-{{ category }}" role="alert">{{ message }}</div>{% endfor %}{% endwith %}

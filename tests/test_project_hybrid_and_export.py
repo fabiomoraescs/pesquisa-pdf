@@ -28,6 +28,17 @@ def pdf_curto(texto: str) -> bytes:
 
 
 class ProjectMethodTests(unittest.TestCase):
+    def test_hibrido_sem_limiar_explicito_usa_default_compartilhado(self):
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root) / "controle.pdf"
+            path.write_bytes(pdf_curto("Du Bois foi citado em debate publico."))
+            with patch("historico_racial.semantic.combinar_semantica", return_value=[]) as semantic:
+                result = processar_documentos(
+                    [ArquivoPDF(path, path.name, "arquivo-1")], metodo_analise="hibrido"
+                )
+        self.assertEqual(result["limiar_semantico"], 0.50)
+        self.assertEqual(semantic.call_args.args[-2], 0.50)
+
     def test_lexical_padrao_nao_importa_motor_semantico(self):
         with tempfile.TemporaryDirectory() as root:
             path = Path(root) / "controle.pdf"

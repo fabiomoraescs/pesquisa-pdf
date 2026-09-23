@@ -62,6 +62,18 @@ class UserProfile(db.Model):
     user: Mapped[User] = relationship(back_populates="profile")
 
 
+class PasswordRecoveryToken(db.Model):
+    """Credencial efêmera: somente o SHA-256 do token é persistido."""
+
+    __tablename__ = "password_recovery_tokens"
+    id: Mapped[str] = mapped_column(db.String(36), primary_key=True, default=lambda: str(uuid4()))
+    user_id: Mapped[str] = mapped_column(db.ForeignKey("users.id"), index=True, nullable=False)
+    token_digest: Mapped[str] = mapped_column(db.String(64), unique=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), nullable=False)
+    consumed_at: Mapped[datetime | None] = mapped_column(db.DateTime(timezone=True))
+
+
 class Plan(db.Model):
     __tablename__ = "plans"
     id: Mapped[str] = mapped_column(db.String(32), primary_key=True)

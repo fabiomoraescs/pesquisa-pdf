@@ -37,8 +37,20 @@ class SidebarHeaderTests(unittest.TestCase):
                 header = re.search(r'<span class="platform-header-context">(.*?)</span>', html, re.S)
                 self.assertIsNotNone(sidebar)
                 self.assertIsNotNone(header)
-                self.assertEqual(sidebar.group(1).strip(), "Raspagem de Dados")
+                self.assertEqual(re.sub(r"<small>.*?</small>", "", sidebar.group(1), flags=re.S).strip(), "Raspagem de Dados")
+                self.assertIn("<small>Análise documental em Ciências Sociais</small>", sidebar.group(1))
                 self.assertEqual(header.group(1).strip(), heading)
+
+    def test_sidebar_identity_is_above_navigation_and_footer_contains_only_logout(self):
+        html = self.client.get("/projetos").get_data(as_text=True)
+        sidebar = html.split('<aside class="platform-sidebar"', 1)[1].split("</aside>", 1)[0]
+        identity = 'Raspagem de Dados<small>Análise documental em Ciências Sociais</small>'
+        self.assertEqual(sidebar.count(identity), 1)
+        self.assertLess(sidebar.index(identity), sidebar.index('<nav class="platform-nav"'))
+        footer = sidebar.split('<div class="platform-sidebar-footer">', 1)[1]
+        self.assertNotIn("Raspagem de Dados", footer)
+        self.assertNotIn("Análise documental em Ciências Sociais", footer)
+        self.assertEqual(re.findall(r"<button[^>]*>(.*?)</button>", footer), ["Sair"])
 
     def test_navigation_order_and_admin_submenu_are_unchanged(self):
         html = self.client.get("/admin/usuarios").get_data(as_text=True)
@@ -53,6 +65,7 @@ class SidebarHeaderTests(unittest.TestCase):
         self.assertIn('id="platform-admin-submenu"', nav)
         self.assertIn('id="platform-menu-toggle"', html)
         self.assertIn('aria-label="Nome da plataforma">Raspagem de Dados', html)
+        self.assertIn('Raspagem de Dados<small>Análise documental em Ciências Sociais</small>', html)
 
 
 if __name__ == "__main__":

@@ -387,6 +387,7 @@ class RemainingRefinementsTests(unittest.TestCase):
             action="project_permanently_deleted", target_id=project_id).first())
 
     def test_shared_threshold_markup_and_normalization(self):
+        self.assertEqual((MINIMUM, MAXIMUM, DEFAULT), (0.50, 0.90, 0.50))
         project_id = create_project(self.client)
         legacy_html = self.client.get("/").get_data(as_text=True)
         hybrid_html = self.client.get(f"/analise-documental/projetos/{project_id}").get_data(as_text=True)
@@ -396,6 +397,16 @@ class RemainingRefinementsTests(unittest.TestCase):
             self.assertEqual(float(re.search(pattern, hybrid_html).group(1)), expected)
         self.assertIn('id="hr-valor-limiar"', hybrid_html)
         self.assertIn('id="hr-limiar" name="limiar_semantico" type="range"', hybrid_html)
+        self.assertIn("valor inicial <strong>0,50</strong>", hybrid_html)
+        self.assertNotIn("valor inicial <strong>0,70</strong>", hybrid_html)
+        self.assertIn("O valor inicial é 0,50", legacy_html)
+        self.assertEqual(normalize(None), DEFAULT)
+        self.assertEqual(normalize("invalido"), DEFAULT)
+        for selected in (0.55, 0.60, 0.65, 0.70, 0.75, 0.80, 0.85, 0.90):
+            with self.subTest(selected=selected):
+                self.assertEqual(normalize(str(selected)), selected)
+        with self.app.test_request_context("/", method="POST", data={"incluir_lexical": "on", "incluir_semantica": "on"}):
+            self.assertEqual(legacy._configuracoes_v3()["limiar_semantico"], DEFAULT)
         for raw in ("0.49", "0.70", "0.91", "invalido"):
             with self.subTest(raw=raw):
                 with self.app.test_request_context("/", method="POST", data={

@@ -3,7 +3,6 @@
 {% block title %}{{ 'Entrar' if mode == 'login' else 'Criar conta' }} — Raspagem de Dados{% endblock %}
 {% block body %}
 <div class="platform-auth-wrap">
-  <div class="platform-auth-intro"><h1>Raspagem de Dados</h1><p>Análise documental em Ciências Sociais</p></div>
   <section class="platform-auth-card{% if mode == 'register' %} platform-auth-card-wide{% endif %}">
     <h2>{{ 'Entrar' if mode == 'login' else 'Criar conta' }}</h2>
     <form method="post" novalidate>
@@ -25,6 +24,7 @@
       {% endif %}
       <button class="btn btn-primary platform-submit" type="submit">{{ 'Entrar' if mode == 'login' else 'Criar conta' }}</button>
     </form>
+    {% if mode == 'login' %}<p class="platform-auth-switch"><a href="{{ url_for('auth.forgot_password') }}">Esqueci minha senha</a></p>{% endif %}
     <p class="platform-auth-switch">{% if mode == 'login' %}Ainda não possui conta? <a href="{{ url_for('auth.register') }}">Criar conta</a>{% else %}Já possui conta? <a href="{{ url_for('auth.login') }}">Entrar</a>{% endif %}</p>
   </section>
 </div>

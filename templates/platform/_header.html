@@ -21,7 +21,7 @@
 {% elif project is defined %}{% set section_title = project.name %}
 {% else %}{% set section_title = 'Raspagem de Dados' %}{% endif %}
 <aside class="platform-sidebar" id="platform-sidebar" aria-label="Menu da plataforma">
-  <div class="platform-section-title" aria-label="Nome da plataforma">Raspagem de Dados</div>
+  <div class="platform-section-title" aria-label="Nome da plataforma">Raspagem de Dados<small>Análise documental em Ciências Sociais</small></div>
   <nav class="platform-nav" aria-label="Navegação principal">
     <a class="{{ 'is-current' if endpoint == 'profile.my_profile' else '' }}" {% if endpoint == 'profile.my_profile' %}aria-current="page"{% endif %} href="{{ url_for('profile.my_profile') }}">{{ icon('perfil') }}<span>Perfil</span></a>
     <a class="{{ 'is-current' if endpoint in ('projects.list_projects', 'projects.new_project') else '' }}" {% if endpoint == 'projects.list_projects' %}aria-current="page"{% endif %} href="{{ url_for('projects.list_projects') }}">{{ icon('projetos') }}<span>Projetos</span></a>
@@ -43,7 +43,6 @@
     {% endif %}
   </nav>
   <div class="platform-sidebar-footer">
-    <a class="platform-sidebar-identity" href="{{ url_for('projects.list_projects') }}">Raspagem de Dados <small>Análise documental em Ciências Sociais</small></a>
     <form method="post" action="{{ url_for('auth.logout') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-outline-primary btn-sm" type="submit">Sair</button></form>
   </div>
 </aside>

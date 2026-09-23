@@ -1,7 +1,7 @@
 (() => {
   document.querySelectorAll('[data-view-container]').forEach((container) => {
     const buttons = document.querySelectorAll(`[data-view-target="${container.id}"]`);
-    const key = 'pesquisapdf-view-mode';
+    const key = container.dataset.viewStorageKey || 'pesquisapdf-view-mode';
     let saved = 'list';
     try { saved = localStorage.getItem(key) === 'cardbox' ? 'cardbox' : 'list'; } catch (_) { /* armazenamento indisponível */ }
     const setView = (mode) => {

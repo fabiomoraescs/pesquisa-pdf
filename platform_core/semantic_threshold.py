@@ -1,15 +1,19 @@
-"""Limiar visual compartilhado com a configuração vigente da V3."""
+"""Limiar inicial compartilhado pelas interfaces, sem alterar o motor da V3."""
 
-from analyzer.v3 import LIMIAR_PADRAO, _configuracao
+from analyzer.v3 import _configuracao
 
 MINIMUM = 0.50
 MAXIMUM = 0.90
 STEP = 0.01
-DEFAULT = LIMIAR_PADRAO
+DEFAULT = MINIMUM
 
 
 def normalize(value: object) -> float:
-    """Usa exatamente o tratamento de entrada e limites da V3 existente."""
+    """Usa os limites da V3 e o padrão exploratório para entrada inválida."""
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        value = DEFAULT
     return _configuracao({"limiar_semantico": value})["limiar_semantico"]
 
 

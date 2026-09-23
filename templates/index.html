@@ -85,8 +85,8 @@
           <div class="v3-threshold" id="controle-limiar-semantico">
             <label class="form-label d-flex justify-content-between gap-3" for="limiar-semantico"><span>Limiar de similaridade</span><output id="valor-limiar" for="limiar-semantico">{{ '%.2f'|format(semantic_threshold.default)|replace('.', ',') }}</output></label>
             <input class="form-range" id="limiar-semantico" name="limiar_semantico" type="range" min="{{ '%.2f'|format(semantic_threshold.minimum) }}" max="{{ '%.2f'|format(semantic_threshold.maximum) }}" value="{{ '%.2f'|format(semantic_threshold.default) }}" step="{{ '%.2f'|format(semantic_threshold.step) }}" aria-describedby="ajuda-limiar">
-            <div class="d-flex justify-content-between threshold-labels" aria-hidden="true"><span>{{ '%.2f'|format(semantic_threshold.minimum)|replace('.', ',') }} · mais exploratória</span><span>{{ '%.2f'|format(semantic_threshold.default)|replace('.', ',') }} · equilibrada</span><span>{{ '%.2f'|format(semantic_threshold.maximum)|replace('.', ',') }} · mais precisa</span></div>
-            <p class="form-text mb-0" id="ajuda-limiar">Valores menores ampliam a recuperação de trechos relacionados; valores maiores tornam a seleção mais restritiva.</p>
+            <div class="d-flex justify-content-between threshold-labels" aria-hidden="true"><span>{{ '%.2f'|format(semantic_threshold.default)|replace('.', ',') }} · inicial mais exploratória</span><span>{{ '%.2f'|format(semantic_threshold.maximum)|replace('.', ',') }} · mais restritiva</span></div>
+            <p class="form-text mb-0" id="ajuda-limiar">O valor inicial mais exploratório tende a ampliar os candidatos recuperados. Valores maiores tornam a seleção mais restritiva; nenhum limiar é universalmente correto.</p>
           </div>
           <p class="semantic-warning mb-0 mt-3" id="aviso-semantico"><strong>Atenção:</strong> resultados semânticos indicam proximidade de sentido e devem ser validados manualmente. Eles não comprovam ocorrência literal do termo.</p>
         </section>
@@ -185,7 +185,7 @@
             <h3 id="modal-similaridade">Como interpretar a similaridade semântica?</h3>
             <p>O valor de similaridade indica o grau de proximidade entre a consulta e o trecho recuperado no espaço vetorial utilizado pelo modelo.</p>
             <p class="modal-help__notice"><strong>Esse valor não representa probabilidade, certeza, precisão estatística ou validação científica do resultado.</strong></p>
-            <p class="mb-0">Quanto maior o limiar definido na V3, mais restritiva tende a ser a recuperação. Limiares menores tornam a busca mais exploratória e podem aumentar também resultados pouco relevantes.</p>
+            <p class="mb-0">O valor inicial é {{ '%.2f'|format(semantic_threshold.default)|replace('.', ',') }}, uma configuração mais exploratória que tende a ampliar os candidatos recuperados. Valores maiores tornam a seleção mais restritiva. Não existe limiar universalmente correto, e os resultados exigem interpretação do pesquisador.</p>
           </section>
 
           <section class="modal-help__section" aria-labelledby="modal-metodos">
