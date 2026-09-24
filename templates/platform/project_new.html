@@ -1,13 +1,13 @@
 {% extends 'platform/base.html' %}
-{% block title %}Novo projeto — Raspagem de Dados{% endblock %}
+{% block title %}Novo projeto — {{ 'Raspagem livre' if scrape_type == 'free' else 'Raspagem sistemática' }}{% endblock %}
 {% block heading %}Novo projeto{% endblock %}
-{% block page_intro %}<div class="platform-page-heading"><h1>Novo projeto</h1></div>{% endblock %}
+{% block page_intro %}<h1 class="visually-hidden">Novo projeto</h1>{% endblock %}
 {% block body %}
 <section class="platform-panel">
   <form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="platform-form-group"><label class="form-label" for="name">Nome do projeto</label><input class="form-control" id="name" name="name" maxlength="200" required value="{{ request.form.get('name', '') }}"></div>
     <div class="platform-form-group"><label class="form-label" for="description">Descrição (opcional)</label><textarea class="form-control" id="description" name="description" rows="3" maxlength="4000">{{ request.form.get('description', '') }}</textarea></div>
-    <fieldset class="platform-form-section"><legend>Bibliotecas de vocabulário</legend><p class="platform-muted">Selecione pelo menos uma biblioteca para a versão inicial do projeto.</p>
+    {% if scrape_type == 'systematic' %}<fieldset class="platform-form-section"><legend>Bibliotecas de vocabulário</legend><p class="platform-muted">Selecione pelo menos uma biblioteca para a versão inicial do projeto.</p>
       <div class="platform-view-list">{% for library in libraries %}
         <label class="platform-list-item platform-library-choice d-flex align-items-center gap-3">
           <input class="form-check-input m-0 flex-shrink-0" type="checkbox" name="libraries" value="{{ library.id }}" {% if library.id in request.form.getlist('libraries') or (not request.form and library.id == 'relacoes_raciais') %}checked{% endif %}>
@@ -15,8 +15,8 @@
         </label>
       {% else %}<p>Nenhuma biblioteca publicada está disponível no momento.</p>{% endfor %}</div>
     </fieldset>
-    <p class="form-text">Uma cópia das bibliotecas selecionadas formará a versão v1.0 deste projeto. Depois, você poderá criar versões próprias.</p>
-    <div class="d-flex flex-wrap gap-2"><button class="btn btn-primary" type="submit">Criar projeto</button><a class="btn btn-outline-primary" href="{{ url_for('projects.list_projects') }}">Cancelar</a></div>
+    <p class="form-text">Uma cópia das bibliotecas selecionadas formará a versão v1.0 deste projeto. Depois, você poderá criar versões próprias.</p>{% else %}<p class="form-text">Neste tipo de projeto, você define os termos livremente ao executar V1, V2 ou V3.</p>{% endif %}
+    <div class="d-flex flex-wrap gap-2"><button class="btn btn-primary" type="submit">Novo projeto</button><a class="btn btn-outline-primary" href="{{ url_for('projects.list_free_projects' if scrape_type == 'free' else 'projects.list_projects') }}">Cancelar</a></div>
   </form>
 </section>
 {% endblock %}

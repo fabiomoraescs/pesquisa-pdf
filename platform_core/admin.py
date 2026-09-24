@@ -14,11 +14,12 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from .extensions import db
 from .models import (
-    AccessGrant, AuditLog, PasswordRecoveryToken, Plan, Project, ProjectLibrary, ProjectVocabularyVersion, Tool, User,
+    AccessGrant, Analysis, AuditLog, PasswordRecoveryToken, Plan, PlanTool, Project, ProjectLibrary, ProjectVocabularyVersion, Tool, User,
     UserProfile, UserToolOverride, VocabularyLibrary, utcnow,
 )
 from .password_policy import TEMPORARY_PASSWORD
 from .project_lifecycle import ProjectActionError, archive, delete_archived, restore
+from .scraping_types import LABEL_BY_TOOL
 from .official_libraries import LibraryError, add_entity, add_group, add_variant, change_publication, create_draft, create_imported_draft, set_item_active
 from .library_spreadsheets import MAX_XLSX_BYTES, SpreadsheetImportError, parse_library_xlsx, previews
 from .services import ACCOUNT_LIFECYCLE_LOCK, access_is_active, current_grant, record_audit, replace_grant
@@ -91,7 +92,7 @@ def user_detail(user_id: UUID):
         plans=db.session.scalars(select(Plan).where(Plan.active.is_(True)).order_by(Plan.name)).all(),
         tools=db.session.scalars(select(Tool).order_by(Tool.name)).all(),
         overrides={item.tool_id: item.decision for item in db.session.scalars(select(UserToolOverride).where(UserToolOverride.user_id == user.id))},
-        projects=db.session.scalars(select(Project).where(Project.owner_user_id == user.id)).all(),
+        projects=db.session.scalars(select(Project).where(Project.owner_user_id == user.id).order_by(Project.created_at.desc())).all(),
     )
 
 
@@ -264,6 +265,8 @@ def _permanent_deletion_block(user: User) -> str | None:
         return "Você não pode excluir sua própria conta enquanto estiver autenticado."
     if db.session.scalar(select(Project.id).where(Project.owner_user_id == user.id).limit(1)):
         return "Este usuário possui projetos vinculados e não pode ser excluído permanentemente enquanto esses projetos existirem."
+    if db.session.scalar(select(Analysis.id).where(Analysis.user_id == user.id).limit(1)):
+        return "Este usuário possui análises vinculadas. Exclua as análises antes de remover a conta."
     from app import PROGRESSOS, PROGRESSOS_LOCK
     from historico_racial.routes import JOBS_LOCK, PROGRESSOS_HR
 
@@ -353,6 +356,36 @@ def plans():
     return render_template("platform/admin.html", section="plans", plans=db.session.scalars(select(Plan)).all())
 
 
+@admin_bp.route("/definir-acessos", methods=["GET", "POST"])
+@admin_only
+def define_access():
+    plans = db.session.scalars(select(Plan).order_by(Plan.name)).all()
+    tools = db.session.scalars(select(Tool).order_by(Tool.name)).all()
+    valid = {(plan.id, tool.id) for plan in plans for tool in tools}
+    if request.method == "POST":
+        submitted = set()
+        for value in request.form.getlist("access"):
+            parts = value.split("|", 1)
+            if len(parts) != 2 or tuple(parts) not in valid:
+                abort(400)
+            submitted.add(tuple(parts))
+        existing = {(row.plan_id, row.tool_id) for row in db.session.scalars(select(PlanTool)).all()}
+        for plan_id, tool_id in sorted(submitted - existing):
+            db.session.add(PlanTool(plan_id=plan_id, tool_id=tool_id))
+            record_audit(current_user, "plan_tool_access_changed", "plan_tool", f"{plan_id}:{tool_id}",
+                         {"allowed": False}, {"allowed": True})
+        for plan_id, tool_id in sorted(existing - submitted):
+            db.session.execute(delete(PlanTool).where(PlanTool.plan_id == plan_id, PlanTool.tool_id == tool_id))
+            record_audit(current_user, "plan_tool_access_changed", "plan_tool", f"{plan_id}:{tool_id}",
+                         {"allowed": True}, {"allowed": False})
+        db.session.commit()
+        flash("Acessos por plano atualizados.", "success")
+        return redirect(url_for("admin.define_access"))
+    selected = {(row.plan_id, row.tool_id) for row in db.session.scalars(select(PlanTool)).all()}
+    return render_template("platform/access_matrix.html", plans=plans, tools=tools, selected=selected,
+                           tool_labels=LABEL_BY_TOOL)
+
+
 @admin_bp.post("/planos/<plan_id>/estado")
 @admin_only
 def set_plan_state(plan_id: str):
@@ -421,7 +454,7 @@ def set_project_state(project_id: UUID):
         db.session.commit()
     else:
         abort(400)
-    return redirect(url_for("admin.projects"))
+    return redirect(url_for("admin.user_detail", user_id=project.owner_user_id))
 
 
 @admin_bp.route("/projetos/<uuid:project_id>/excluir", methods=["GET", "POST"])
@@ -439,8 +472,9 @@ def delete_project(project_id: UUID):
             flash(str(error), "danger")
             return render_template("platform/project_delete.html", projects=[project],
                                    action=url_for("admin.delete_project", project_id=project.id), batch=False), 400
+        owner_id = project.owner_user_id
         flash("Projeto excluído permanentemente.", "success")
-        return redirect(url_for("admin.projects"))
+        return redirect(url_for("admin.user_detail", user_id=owner_id))
     return render_template("platform/project_delete.html", projects=[project],
                            action=url_for("admin.delete_project", project_id=project.id), batch=False)
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from flask import Blueprint, abort, current_app, flash, make_response, redirect, render_template, request, url_for
+from flask import Blueprint, current_app, flash, make_response, redirect, render_template, request, url_for
 from flask_login import current_user, login_user, logout_user
 from sqlalchemy import select
 
@@ -14,7 +14,7 @@ from .models import Plan, User, UserProfile
 from .password_policy import RETIRED_TEMPORARY_PASSWORD, TEMPORARY_PASSWORD
 from .password_recovery import consume_token, issue_token, revoke_token, valid_token
 from .profile import validated_profile
-from .services import access_is_active, can_use_tool, record_audit, replace_grant
+from .services import access_is_active, record_audit, replace_grant
 
 auth_bp = Blueprint("auth", __name__)
 
@@ -23,13 +23,7 @@ def _next_url() -> str:
     target = request.args.get("next", "")
     if target.startswith("/") and not target.startswith("//") and "\\" not in target:
         return target
-    if can_use_tool(current_user, "document_analysis"):
-        return url_for("projects.list_projects")
-    if can_use_tool(current_user, "pdf_scraper"):
-        return url_for("inicio")
-    if current_user.role == "admin":
-        return url_for("admin.home")
-    abort(403)
+    return url_for("profile.my_profile")
 
 
 @auth_bp.route("/login", methods=["GET", "POST"])

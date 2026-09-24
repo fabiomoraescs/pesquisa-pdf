@@ -4,7 +4,8 @@
 {% block body %}
 {% from 'platform/_view_controls.html' import action_link %}
 {% from 'platform/_icons.html' import icon %}
-<p class="platform-muted">Projetos arquivados ficam fora da lista principal, mas preservam dados, bibliotecas e histórico até que você os desarquive ou exclua definitivamente.</p>
+<p class="platform-muted">Projetos arquivados ficam fora da lista principal, mas preservam dados{% if scrape_type == 'systematic' %}, bibliotecas{% endif %} e bases de análise até que você os desarquive ou exclua definitivamente.</p>
+<p><a class="btn btn-outline-primary btn-sm" href="{{ url_for('projects.list_free_projects' if scrape_type == 'free' else 'projects.list_projects') }}">Voltar aos projetos</a></p>
 {% if projects %}
 <form id="bulk-delete-form" method="post" action="{{ url_for('projects.confirm_batch_delete') }}">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -14,7 +15,7 @@
 <section class="platform-project-card">
   <div class="platform-project-select"><input class="form-check-input" type="checkbox" form="bulk-delete-form" name="project_ids" value="{{ project.id }}" id="project-{{ project.id }}"><label for="project-{{ project.id }}"><strong>{{ project.name }}</strong></label></div>
   <p>{{ project.description or 'Sem descrição.' }}</p>
-  <p class="platform-muted"><strong>Bibliotecas:</strong> {{ summaries[project.id].libraries | join(', ') or 'Nenhuma' }} · <strong>Vocabulário:</strong> {{ summaries[project.id].version or 'Indisponível' }}</p>
+  {% if scrape_type == 'systematic' %}<p class="platform-muted"><strong>Bibliotecas:</strong> {{ summaries[project.id].libraries | join(', ') or 'Nenhuma' }} · <strong>Vocabulário:</strong> {{ summaries[project.id].version or 'Indisponível' }}</p>{% endif %}
   <p class="platform-muted"><strong>Arquivado em:</strong> {{ (project.archived_at or project.updated_at) | data_br }}</p>
   <div class="platform-card-actions">
     <form method="post" action="{{ url_for('projects.restore_project', project_id=project.id) }}" onsubmit="return confirm('Desarquivar este projeto e restaurar o acesso?')"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="confirm" value="yes"><button class="btn btn-outline-primary btn-sm platform-action-button" type="submit" title="Restaurar projeto" aria-label="Restaurar projeto">{{ icon('restaurar') }}</button></form>
@@ -25,6 +26,6 @@
 </div>
 <button class="btn btn-danger mt-3" type="submit" form="bulk-delete-form" title="Excluir permanentemente selecionados" aria-label="Excluir permanentemente selecionados">Excluir permanentemente selecionados</button>
 {% else %}
-<div class="platform-empty-state"><h2 class="h5">Nenhum projeto arquivado.</h2><p>Projetos arquivados aparecerão aqui.</p><a class="btn btn-outline-primary" href="{{ url_for('projects.list_projects') }}">Voltar aos projetos</a></div>
+<div class="platform-empty-state"><h2 class="h5">Nenhum projeto arquivado.</h2><p>Projetos arquivados aparecerão aqui.</p><a class="btn btn-outline-primary" href="{{ url_for('projects.list_free_projects' if scrape_type == 'free' else 'projects.list_projects') }}">Voltar aos projetos</a></div>
 {% endif %}
 {% endblock %}

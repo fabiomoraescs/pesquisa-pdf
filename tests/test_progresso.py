@@ -160,7 +160,7 @@ class TesteProgresso(unittest.TestCase):
         self.assertEqual(erro.get_json()["status"], "erro")
         self.assertNotIn("Traceback", erro.get_json()["erro"])
         self.assertEqual(ausente.status_code, 404)
-        self.assertEqual(ausente.get_json()["erro"], "Análise não encontrada.")
+        self.assertEqual(ausente.get_json()["erro"], "Processamento não encontrado.")
 
     def test_preparacao_do_modelo_mantem_eta_indeterminada(self):
         job_id = "b49b9023-f7c3-482d-96e0-52aaeb6e26cd"
@@ -192,9 +192,9 @@ class TesteProgresso(unittest.TestCase):
         with patch.object(aplicacao_web.EXECUTOR_ANALISES, "submit", executor):
             with self.client as cliente:
                 resposta = cliente.post(
-                    "/",
+                    "/raspagem-livre",
                     data={
-                        "csrf_token": csrf_from(cliente.get("/")),
+                        "csrf_token": csrf_from(cliente.get("/raspagem-livre")),
                         "versao": "v1",
                         "termos": "São Paulo",
                         "pdfs": (BytesIO(b"%PDF-1.4\n%teste"), "livro.pdf"),
@@ -468,7 +468,7 @@ class TesteProgresso(unittest.TestCase):
         self.assertEqual(sem_callback_v3, com_callback_v3)
 
     def test_frontend_mantem_polling_e_bloqueio_de_reenvio(self):
-        html = self.client.get("/").get_data(as_text=True)
+        html = self.client.get("/raspagem-livre").get_data(as_text=True)
         self.assertIn("iniciarPolling", html)
         self.assertIn("X-Requested-With", html)
         self.assertIn("if (enviando)", html)

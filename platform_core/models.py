@@ -130,6 +130,7 @@ class Project(db.Model):
     owner_user_id: Mapped[str] = mapped_column(db.ForeignKey("users.id"), index=True, nullable=False)
     name: Mapped[str] = mapped_column(db.String(200), nullable=False)
     description: Mapped[str] = mapped_column(db.Text, default="", nullable=False)
+    scrape_type: Mapped[str] = mapped_column(db.String(16), default="systematic", nullable=False, index=True)
     status: Mapped[str] = mapped_column(db.String(16), default="active", nullable=False)
     created_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
@@ -174,6 +175,43 @@ class ProjectVocabularyVersion(db.Model):
     created_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=utcnow, nullable=False)
     active: Mapped[bool] = mapped_column(db.Boolean, default=True, nullable=False)
     __table_args__ = (UniqueConstraint("project_id", "version"),)
+
+
+class Analysis(db.Model):
+    """Execução persistente, independente do cache de progresso do Gunicorn."""
+
+    __tablename__ = "analyses"
+    id: Mapped[str] = mapped_column(db.String(36), primary_key=True, default=lambda: str(uuid4()))
+    user_id: Mapped[str] = mapped_column(db.ForeignKey("users.id"), index=True, nullable=False)
+    project_id: Mapped[str | None] = mapped_column(db.ForeignKey("projects.id"), index=True)
+    name: Mapped[str] = mapped_column(db.String(200), nullable=False)
+    name_confirmed: Mapped[bool] = mapped_column(db.Boolean, default=False, nullable=False)
+    source_type: Mapped[str] = mapped_column(db.String(16), nullable=False)
+    tool_id: Mapped[str] = mapped_column(db.ForeignKey("tools.id"), nullable=False)
+    tool_version: Mapped[str] = mapped_column(db.String(32), nullable=False)
+    status: Mapped[str] = mapped_column(db.String(16), nullable=False, default="processando")
+    created_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+    completed_at: Mapped[datetime | None] = mapped_column(db.DateTime(timezone=True))
+    document_count: Mapped[int] = mapped_column(db.Integer, default=0, nullable=False)
+    result_count: Mapped[int] = mapped_column(db.Integer, default=0, nullable=False)
+    parameters_json: Mapped[dict] = mapped_column(db.JSON, default=dict, nullable=False)
+    excel_files_json: Mapped[list] = mapped_column(db.JSON, default=list, nullable=False)
+    error_message: Mapped[str | None] = mapped_column(db.String(300))
+
+    @property
+    def display_name(self) -> str:
+        return self.name if self.name_confirmed else "Base de análise sem nome"
+
+
+class AnalysisDocument(db.Model):
+    """PDF próprio da execução; nunca aponta para um PDF compartilhado."""
+
+    __tablename__ = "analysis_documents"
+    id: Mapped[str] = mapped_column(db.String(36), primary_key=True, default=lambda: str(uuid4()))
+    analysis_id: Mapped[str] = mapped_column(db.ForeignKey("analyses.id"), index=True, nullable=False)
+    original_name: Mapped[str] = mapped_column(db.String(255), nullable=False)
+    stored_name: Mapped[str] = mapped_column(db.String(255), nullable=False)
+    __table_args__ = (UniqueConstraint("analysis_id", "stored_name"),)
 
 
 class AuditLog(db.Model):

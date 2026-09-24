@@ -5,15 +5,17 @@ from __future__ import annotations
 import os
 import re
 import secrets
+import shutil
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from threading import RLock
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from flask import (
     Flask,
     abort,
+    current_app,
     flash,
     jsonify,
     redirect,
@@ -24,16 +26,20 @@ from flask import (
 )
 from flask_login import current_user, logout_user
 from flask_wtf.csrf import CSRFError
+from sqlalchemy import select
 
 from platform_core.extensions import csrf, db, login_manager, migrate
-from platform_core.models import User
+from platform_core.models import Analysis, Project, Tool, User
+from platform_core.analyses import create_analysis, document_paths, get_analysis, preserve_documents, save_error, save_success
 from platform_core.auth import auth_bp
 from platform_core.projects import projects_bp
 from platform_core.admin import admin_bp
 from platform_core.profile import profile_bp
+from platform_core.analysis_routes import analyses_bp
 from platform_core.presentation import register_presentation
 from platform_core.cli import register_cli
-from platform_core.services import ACCOUNT_LIFECYCLE_LOCK, access_is_active, account_accepts_new_work, can_use_tool
+from platform_core.services import ACCOUNT_LIFECYCLE_LOCK, access_is_active, account_accepts_new_work, can_use_tool, get_project_for_user
+from platform_core.scraping_types import FREE, tool_for_project
 from platform_core.semantic_threshold import normalize as normalize_semantic_threshold, template_settings
 
 from analyzer.common import (
@@ -94,6 +100,7 @@ app.register_blueprint(projects_bp)
 app.register_blueprint(admin_bp)
 app.register_blueprint(profile_bp)
 app.register_blueprint(historico_racial_bp)
+app.register_blueprint(analyses_bp)
 
 
 @login_manager.user_loader
@@ -122,12 +129,23 @@ def _enforce_platform_access():
     if request.path.startswith("/admin"):
         if current_user.role != "admin":
             abort(403)
-    elif request.path == "/" or request.path.startswith(("/resultado/", "/download/", "/api/progresso/")):
+    elif ((request.path == "/" and request.method == "POST")
+          or request.path == "/raspagem-livre"
+          or request.path.startswith(("/resultado/", "/download/", "/api/progresso/"))):
         if not can_use_tool(current_user, "pdf_scraper"):
             abort(403)
-    elif request.path.startswith(("/historico-racial", "/analise-documental", "/projetos")):
+    elif request.path.startswith(("/historico-racial", "/analise-documental")):
         if not can_use_tool(current_user, "document_analysis"):
             abort(403)
+    else:
+        # Ferramentas futuras cadastradas com prefixo próprio também recebem
+        # proteção por plano, sem criar constantes duplicadas na navegação.
+        for tool in db.session.scalars(select(Tool).where(Tool.route.notin_(("/", "/analise-documental")))):
+            prefix = tool.route.rstrip("/")
+            if prefix and (request.path == prefix or request.path.startswith(prefix + "/")):
+                if not can_use_tool(current_user, tool.id):
+                    abort(403)
+                break
     return None
 
 
@@ -137,9 +155,7 @@ def _csrf_error(_error):
         return jsonify({"erro": "Sessão expirada ou token de segurança inválido. Recarregue a página."}), 400
     return "Sessão expirada ou token de segurança inválido. Recarregue a página.", 400
 
-# A aplicação não possui histórico permanente. O cache só mantém a análise
-# atual enquanto o servidor estiver aberto, para exibir o dashboard e baixar
-# os arquivos gerados pela mesma sessão.
+# Cache de compatibilidade dos resultados recentes. O histórico fica no banco/volume.
 ANALISES: dict[str, dict] = {}
 ANALISES_LOCK = RLock()
 
@@ -428,7 +444,7 @@ class RelatorDeProgresso:
             dados.update(
                 {
                     "status": "concluido",
-                    "etapa": "Análise concluída",
+                    "etapa": "Raspagem concluída",
                     "percentual": 100.0,
                     "eta_segundos": 0,
                     "resultado_url": resultado_url,
@@ -549,6 +565,7 @@ def _executar_job(
     configuracoes_v3: dict | None,
     resultado_url: str,
     owner_user_id: str | None = None,
+    app_instance: Flask | None = None,
 ) -> None:
     relator = RelatorDeProgresso(job_id, versao, configuracoes_v3)
     try:
@@ -566,11 +583,25 @@ def _executar_job(
         resultado["dashboard"] = criar_dashboard(resultado)
         resultado["pasta_saida"] = pasta_saida
         resultado["owner_user_id"] = owner_user_id
+        if app_instance is not None:
+            with app_instance.app_context():
+                analysis = db.session.get(Analysis, job_id)
+                if analysis is not None:
+                    indicators = resultado["dashboard"].get("indicadores", {})
+                    count = indicators.get("resultados" if versao == "v3" else "ocorrencias", len(resultado["ocorrencias"]))
+                    save_success(
+                        analysis, {key: value for key, value in resultado.items() if key != "pasta_saida"},
+                        [(item["nome"], pasta_saida / item["nome"]) for item in resultado["arquivos"]],
+                        int(count),
+                    )
         with ANALISES_LOCK:
             ANALISES[job_id] = resultado
         relator.concluir(resultado_url)
     except Exception:
         app.logger.exception("Falha no job local %s", job_id)
+        if app_instance is not None:
+            with app_instance.app_context():
+                save_error(job_id, "Não foi possível concluir a análise. Verifique os arquivos enviados e tente novamente.")
         relator.erro(
             "Não foi possível concluir a análise. Verifique os arquivos enviados e tente novamente."
         )
@@ -615,17 +646,78 @@ def arquivo_grande(_erro):
     return _resposta_erro("O envio ultrapassa o limite de 1 GB da aplicação local.", 413)
 
 
-@app.route("/", methods=["GET", "POST"])
+@app.get("/")
+def home():
+    return redirect(url_for("profile.my_profile"))
+
+
+@app.route("/", methods=["POST"], endpoint="legacy_free_submit")
+@app.route("/raspagem-livre", methods=["GET", "POST"])
 def inicio():
     if request.method == "GET":
-        return render_template("index.html", job_inicial=request.args.get("job", ""))
+        duplicate = None
+        if request.args.get("duplicate"):
+            try:
+                duplicate = get_analysis(request.args["duplicate"], current_user)
+            except ValueError:
+                abort(404)
+            if duplicate.user_id != current_user.id or duplicate.tool_id != "pdf_scraper" or duplicate.status != "concluida":
+                abort(403)
+            if duplicate.project_id:
+                previous_project = get_project_for_user(duplicate.project_id, current_user)
+                if not can_use_tool(current_user, tool_for_project(previous_project)):
+                    abort(403)
+        selected_project_id = request.args.get("project_id") or (duplicate.project_id if duplicate else None)
+        selected_project = None
+        if selected_project_id:
+            try:
+                selected_project = get_project_for_user(str(UUID(selected_project_id)), current_user)
+            except ValueError:
+                abort(404)
+            if selected_project.scrape_type != FREE and selected_project_id != (duplicate.project_id if duplicate else None):
+                abort(404)
+        free_projects = db.session.scalars(select(Project).where(
+            Project.owner_user_id == current_user.id, Project.scrape_type == FREE,
+            Project.status == "active", Project.deleted_at.is_(None)
+        ).order_by(Project.name)).all()
+        duplicate_terms = "; ".join(item["termo"] for item in duplicate.parameters_json.get("termos", [])) if duplicate else ""
+        return render_template("index.html", job_inicial=request.args.get("job", ""), duplicate=duplicate,
+                               duplicate_terms=duplicate_terms, free_projects=free_projects,
+                               selected_project_id=selected_project_id,
+                               legacy_project=selected_project if selected_project and selected_project.scrape_type != FREE else None)
+
+    duplicate = None
+    if request.form.get("duplicate_id"):
+        duplicate = get_analysis(request.form["duplicate_id"], current_user)
+        if duplicate.user_id != current_user.id or duplicate.tool_id != "pdf_scraper" or duplicate.status != "concluida":
+            abort(403)
+        if duplicate.project_id:
+            previous_project = get_project_for_user(duplicate.project_id, current_user)
+            if not can_use_tool(current_user, tool_for_project(previous_project)):
+                abort(403)
+
+    selected_project_id = request.form.get("project_id", "").strip()
+    if selected_project_id:
+        try:
+            target_project = get_project_for_user(str(UUID(selected_project_id)), current_user)
+        except ValueError:
+            abort(400)
+        if target_project.scrape_type != FREE:
+            abort(403)
+    else:
+        # Compatibilidade com clientes anteriores: a interface nova exige
+        # projeto, mas execuções legadas sem projeto continuam recuperáveis.
+        target_project = db.session.get(Project, duplicate.project_id) if duplicate and duplicate.project_id else None
 
     versao = request.form.get("versao", "").casefold()
     if versao not in ANALISADORES:
         return _resposta_erro("Escolha a metodologia da varredura antes de iniciar a análise.")
 
     texto_termos = request.form.get("termos", "")
-    if _termos_digitados_tem_separador_invalido(texto_termos):
+    original_terms_text = "; ".join(item["termo"] for item in duplicate.parameters_json.get("termos", [])) if duplicate else None
+    reuse_terms = (duplicate is not None and versao == duplicate.tool_version
+                   and texto_termos == original_terms_text and not request.files.get("arquivo_termos"))
+    if not reuse_terms and _termos_digitados_tem_separador_invalido(texto_termos):
         return _resposta_erro("Use ponto e vírgula (;) para separar os termos de pesquisa.")
 
     configuracoes_v3 = _configuracoes_v3() if versao == "v3" else None
@@ -641,7 +733,7 @@ def inicio():
         for arquivo in request.files.getlist("pdfs")
         if arquivo and arquivo.filename
     ]
-    if not arquivos_pdf:
+    if not arquivos_pdf and duplicate is None:
         return _resposta_erro("Envie ao menos um arquivo PDF.")
 
     invalidos = [arquivo.filename for arquivo in arquivos_pdf if not _arquivo_pdf_valido(arquivo.filename)]
@@ -655,7 +747,7 @@ def inicio():
             return _resposta_erro("O arquivo de termos deve ter extensão .txt.")
         texto_arquivo = ler_arquivo_termos(arquivo_termos.read())
 
-    termos = montar_termos(texto_termos, texto_arquivo, versao)
+    termos = duplicate.parameters_json["termos"] if reuse_terms else montar_termos(texto_termos, texto_arquivo, versao)
     if not termos:
         return _resposta_erro(
             "Informe pelo menos um termo no campo de texto ou no arquivo TXT."
@@ -667,11 +759,25 @@ def inicio():
     pasta_upload.mkdir(parents=True)
 
     pdfs_salvos: list[Path] = []
-    for arquivo in arquivos_pdf:
-        nome = _nome_upload_seguro(arquivo.filename)
-        destino = _nome_disponivel(pasta_upload, nome)
-        arquivo.save(destino)
-        pdfs_salvos.append(destino)
+    try:
+        if arquivos_pdf:
+            for arquivo in arquivos_pdf:
+                nome = _nome_upload_seguro(arquivo.filename)
+                destino = _nome_disponivel(pasta_upload, nome)
+                pdfs_salvos.append(destino)
+                arquivo.save(destino)
+        elif duplicate is not None:
+            for source, original_name in document_paths(duplicate):
+                if not source.is_file() or source.is_symlink():
+                    raise OSError("PDF original indisponível")
+                destination = _nome_disponivel(pasta_upload, _nome_upload_seguro(original_name))
+                pdfs_salvos.append(destination)
+                shutil.copy2(source, destination)
+    except (OSError, ValueError):
+        for path in pdfs_salvos:
+            path.unlink(missing_ok=True)
+        pasta_upload.rmdir()
+        return _resposta_erro("Não foi possível salvar ou recuperar os PDFs desta análise.", 503)
 
     with ACCOUNT_LIFECYCLE_LOCK:
         if not account_accepts_new_work(current_user.id):
@@ -679,19 +785,32 @@ def inicio():
                 caminho.unlink(missing_ok=True)
             pasta_upload.rmdir()
             return _resposta_erro("A conta não está mais disponível para processamento.")
+        try:
+            analysis = create_analysis(
+                analysis_id=job_id, user_id=current_user.id,
+                project_id=target_project.id if target_project else None,
+                tool_id="pdf_scraper", tool_version=versao,
+                parameters={"termos": termos, "texto_termos": texto_termos, "texto_arquivo": texto_arquivo,
+                            "configuracoes_v3": configuracoes_v3, "versao": versao},
+            )
+            preserve_documents(analysis, [(path, path.name) for path in pdfs_salvos])
+        except Exception:
+            app.logger.exception("Falha ao preservar análise %s", job_id)
+            save_error(job_id, "Não foi possível salvar os PDFs desta análise.")
+            return _resposta_erro("Não foi possível salvar esta análise. Tente novamente.", 503)
         _novo_progresso(job_id, versao, len(pdfs_salvos), current_user.id)
-        resultado_url = url_for("resultado", identificador=job_id)
-        EXECUTOR_ANALISES.submit(
-            _executar_job,
-            job_id,
-            pdfs_salvos,
-            termos,
-            pasta_saida,
-            versao,
-            configuracoes_v3,
-            resultado_url,
-            current_user.id,
-        )
+        resultado_url = url_for("analyses.name_base", analysis_id=job_id)
+        try:
+            EXECUTOR_ANALISES.submit(
+                _executar_job, job_id, pdfs_salvos, termos, pasta_saida, versao,
+                configuracoes_v3, resultado_url, current_user.id,
+                current_app._get_current_object(),
+            )
+        except RuntimeError:
+            save_error(job_id, "Não foi possível iniciar o processamento.")
+            with PROGRESSOS_LOCK:
+                PROGRESSOS.pop(job_id, None)
+            return _resposta_erro("O processamento não pôde ser iniciado. Tente novamente.", 503)
     # O executor já recebeu todos os valores simples necessários; a resposta
     # retorna imediatamente para que o navegador inicie o polling.
     if request.headers.get("X-Requested-With") == "XMLHttpRequest":
@@ -708,6 +827,8 @@ def inicio():
 
 @app.get("/resultado/<identificador>")
 def resultado(identificador: str):
+    if db.session.get(Analysis, identificador):
+        return redirect(url_for("analyses.dashboard", analysis_id=identificador))
     with ANALISES_LOCK:
         dados = ANALISES.get(identificador)
     if not dados:
@@ -719,9 +840,13 @@ def resultado(identificador: str):
 
 @app.get("/download/<identificador>/<nome_arquivo>")
 def download(identificador: str, nome_arquivo: str):
+    if db.session.get(Analysis, identificador):
+        return redirect(url_for("analyses.excel", analysis_id=identificador, filename=nome_arquivo))
     with ANALISES_LOCK:
         dados = ANALISES.get(identificador)
-    if not dados or nome_arquivo != Path(nome_arquivo).name:
+    if not dados:
+        abort(404)
+    if nome_arquivo != Path(nome_arquivo).name:
         abort(404)
     if dados.get("owner_user_id") != current_user.id and current_user.role != "admin":
         abort(404)
@@ -738,10 +863,10 @@ def progresso(job_id: str):
     with PROGRESSOS_LOCK:
         owner = PROGRESSOS.get(job_id, {}).get("owner_user_id")
     if owner is None or (owner != current_user.id and current_user.role != "admin"):
-        return jsonify({"erro": "Análise não encontrada."}), 404
+        return jsonify({"erro": "Processamento não encontrado."}), 404
     dados = _progresso_publico(job_id)
     if dados is None:
-        return jsonify({"erro": "Análise não encontrada."}), 404
+        return jsonify({"erro": "Processamento não encontrado."}), 404
     return jsonify(dados)
 
 
@@ -773,6 +898,7 @@ def create_app(test_config: dict | None = None) -> Flask:
     isolated.register_blueprint(admin_bp)
     isolated.register_blueprint(profile_bp)
     isolated.register_blueprint(historico_racial_bp)
+    isolated.register_blueprint(analyses_bp)
     isolated.before_request(_enforce_platform_access)
     isolated.register_error_handler(CSRFError, _csrf_error)
     isolated.register_error_handler(413, arquivo_grande)

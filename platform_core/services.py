@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from threading import RLock
 
 from flask import abort
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from historico_racial.vocabulary import _contagens, _seed, hash_vocabulario
 
@@ -23,8 +23,8 @@ PLANOS = (
     ("institutional", "Institucional", "Plano institucional"),
 )
 FERRAMENTAS = (
-    ("pdf_scraper", "Raspagem padrão", "/"),
-    ("document_analysis", "Raspagem de Dados — Análise documental em Ciências Sociais", "/analise-documental"),
+    ("pdf_scraper", "Raspagem livre", "/"),
+    ("document_analysis", "Raspagem sistemática", "/analise-documental"),
 )
 ACCOUNT_LIFECYCLE_LOCK = RLock()
 
@@ -38,6 +38,10 @@ def account_accepts_new_work(user_id: str) -> bool:
 
 def seed_platform() -> None:
     """Idempotente; nunca reescreve uma biblioteca ou permissão existente."""
+    initial_bootstrap = (
+        db.session.scalar(select(func.count()).select_from(Plan)) == 0
+        and db.session.scalar(select(func.count()).select_from(Tool)) == 0
+    )
     for code, name, description in PLANOS:
         if db.session.get(Plan, code) is None:
             db.session.add(Plan(id=code, name=name, description=description, active=True))
@@ -47,12 +51,12 @@ def seed_platform() -> None:
     db.session.flush()
     # Ambas as ferramentas iniciais ficam no plano gratuito; nenhum limite
     # arbitrário de PDFs ou projetos é introduzido nesta etapa.
-    for plan_id, tool_id in (
+    for plan_id, tool_id in (() if not initial_bootstrap else (
         ("student", "pdf_scraper"), ("student", "document_analysis"),
         ("researcher", "pdf_scraper"), ("researcher", "document_analysis"),
         ("pro", "pdf_scraper"), ("pro", "document_analysis"),
         ("institutional", "pdf_scraper"), ("institutional", "document_analysis"),
-    ):
+    )):
         if db.session.get(PlanTool, (plan_id, tool_id)) is None:
             db.session.add(PlanTool(plan_id=plan_id, tool_id=tool_id))
     snapshot = _seed()

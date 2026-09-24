@@ -4,7 +4,7 @@
 {% block page_intro %}<div class="platform-page-heading"><h1>Confirmar exclusão permanente</h1></div>{% endblock %}
 {% block body %}
 <section class="platform-panel">
-  <p class="platform-danger-note"><strong>Esta ação não pode ser desfeita.</strong> Você está prestes a excluir permanentemente {{ projects | length }} projeto(s), seus vínculos e todas as versões físicas do vocabulário.</p>
+  <p class="platform-danger-note"><strong>Esta ação não pode ser desfeita.</strong> Você está prestes a excluir permanentemente {{ projects | length }} projeto(s), seus vínculos, bases de análise e{% if projects[0].scrape_type == 'systematic' %} todas as versões físicas do vocabulário{% else %} os artefatos próprios das execuções{% endif %}.</p>
   <ul>{% for project in projects %}<li>{{ project.name }}</li>{% endfor %}</ul>
   <form method="post" action="{{ action }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -12,7 +12,7 @@
     <label class="form-label" for="delete-confirmation">Digite <strong>deletar</strong> para confirmar</label>
     <input class="form-control mb-3" id="delete-confirmation" name="confirmation" type="text" required autocomplete="off" data-delete-confirm="final-delete-button" aria-describedby="delete-rule">
     <p class="form-text" id="delete-rule">Aceita-se somente “deletar”, com espaços antes ou depois ignorados.</p>
-    <div class="d-flex flex-wrap gap-2"><button class="btn btn-danger" id="final-delete-button" type="submit" disabled>Excluir permanentemente</button><a class="btn btn-outline-primary" href="{{ url_for('admin.projects') if current_user.role == 'admin' and request.blueprint == 'admin' else url_for('projects.archived_projects') }}">Cancelar</a></div>
+    <div class="d-flex flex-wrap gap-2"><button class="btn btn-danger" id="final-delete-button" type="submit" disabled>Excluir permanentemente</button><a class="btn btn-outline-primary" href="{{ url_for('admin.user_detail', user_id=projects[0].owner_user_id) if current_user.role == 'admin' and request.blueprint == 'admin' else url_for('projects.archived_free_projects' if projects[0].scrape_type == 'free' else 'projects.archived_projects') }}">Cancelar</a></div>
   </form>
 </section>
 {% endblock %}

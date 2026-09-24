@@ -5,40 +5,14 @@
     displaylogo: false,
     toImageButtonOptions: { format: 'png', filename: 'varredura_de_pdfs', scale: 2 }
   };
-  const coresClaras = ['#1f4e78', '#2a7f62', '#a05d20', '#7755a5', '#c0504d', '#3c8dad', '#748f34', '#b36d2a', '#537a96', '#9a5a80'];
-  const coresEscuras = ['#78b7e5', '#66d0ad', '#f2b36d', '#b89bef', '#f18a87', '#72c8e5', '#b7cf6c', '#f0a75c', '#91bbd9', '#e29ac3'];
+  const plotTheme = window.PesquisaPdfPlotTheme;
   const limiteCategorias = 8;
 
-  function corVariavel(nome) {
-    return getComputedStyle(document.documentElement).getPropertyValue(nome).trim();
-  }
-
-  function paleta() {
-    return document.documentElement.dataset.theme === 'dark' ? coresEscuras : coresClaras;
-  }
-
-  function layoutBase() {
-    return {
-      margin: { l: 55, r: 24, t: 24, b: 80 },
-      paper_bgcolor: corVariavel('--plot-paper'),
-      plot_bgcolor: corVariavel('--plot-bg'),
-      font: { color: corVariavel('--plot-text') },
-      hoverlabel: { bgcolor: corVariavel('--surface-muted'), font: { color: corVariavel('--plot-text') } }
-    };
-  }
-
-  function eixo(opcoes = {}) {
-    return {
-      color: corVariavel('--plot-text'),
-      gridcolor: corVariavel('--plot-grid'),
-      zerolinecolor: corVariavel('--plot-grid'),
-      ...opcoes
-    };
-  }
-
-  function legenda(opcoes = {}) {
-    return { font: { color: corVariavel('--plot-text') }, ...opcoes };
-  }
+  const corVariavel = plotTheme.color;
+  const paleta = plotTheme.palette;
+  const layoutBase = plotTheme.layout;
+  const eixo = plotTheme.axis;
+  const legenda = plotTheme.legend;
 
   function configPara(nome) {
     return {

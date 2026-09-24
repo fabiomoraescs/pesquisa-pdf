@@ -1,0 +1,3 @@
+{% extends 'platform/base.html' %}
+{% block title %}{{ analysis.display_name }} — Raspagem de Dados{% endblock %}
+{% block body %}<section class="platform-panel"><h1 class="h4">{{ analysis.display_name }}</h1><p>Estado: {{ {'processando': 'Processando', 'concluida': 'Aguardando nome', 'erro': 'Erro'}.get(analysis.status, analysis.status) }}.</p>{% if analysis.status == 'erro' %}<p>{{ analysis.error_message }}</p>{% elif analysis.status == 'concluida' %}<p>A execução terminou e aguarda a definição de um nome para a base de análise.</p>{% else %}<p>O processamento ainda não terminou. Recarregue esta página mais tarde.</p>{% endif %}{% include 'platform/_analysis_actions.html' %}</section>{% endblock %}

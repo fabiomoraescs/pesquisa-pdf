@@ -257,16 +257,17 @@ class ImportRouteTests(unittest.TestCase):
     def test_navigation_and_shared_progress_markup(self):
         self._admin()
         projects = self.client.get("/projetos").get_data(as_text=True)
-        self.assertNotIn('>Novo projeto</a>', projects.split('class="platform-nav"')[1].split('</nav>')[0])
-        self.assertIn('+ Novo projeto', projects)
+        self.assertIn('>Novo projeto</a>', projects.split('class="platform-nav"')[1].split('</nav>')[0])
+        self.assertIn('>Novo projeto</a>', projects)
+        self.assertNotIn('+ Novo projeto', projects)
         self.assertIn(
-            'class="platform-section-title" aria-label="Nome da plataforma">Raspagem de Dados',
+            'class="platform-section-title" aria-label="Nome da plataforma"><span class="platform-brand-mark"><strong>Análysis</strong><small>ferramentas para pesquisa</small></span>',
             projects,
         )
         self.assertIn('class="platform-header-context">Projetos', projects)
         profile = self.client.get("/perfil").get_data(as_text=True)
         self.assertIn(
-            'class="platform-section-title" aria-label="Nome da plataforma">Raspagem de Dados',
+            'class="platform-section-title" aria-label="Nome da plataforma"><span class="platform-brand-mark"><strong>Análysis</strong><small>ferramentas para pesquisa</small></span>',
             profile,
         )
         self.assertIn('class="platform-header-context">Perfil', profile)
@@ -275,16 +276,16 @@ class ImportRouteTests(unittest.TestCase):
         self.assertIn('id="platform-admin-toggle"', admin)
         self.assertIn('aria-expanded="true"', admin)
         self.assertNotIn('class="platform-admin-nav"', admin)
-        for name in ("Visão geral", "Usuários", "Projetos", "Ferramentas", "Planos", "Bibliotecas", "Auditoria"):
+        for name in ("Visão geral", "Usuários", "Ferramentas", "Planos", "Definir acessos", "Bibliotecas", "Auditoria"):
             self.assertIn(name, admin)
-        legacy = self.client.get("/").get_data(as_text=True)
+        legacy = self.client.get("/raspagem-livre").get_data(as_text=True)
         self.assertIn('id="platform-sidebar"', legacy)
         self.assertIn('id="platform-menu-toggle"', legacy)
         self.assertIn(
-            'class="platform-section-title" aria-label="Nome da plataforma">Raspagem de Dados',
+            'class="platform-section-title" aria-label="Nome da plataforma"><span class="platform-brand-mark"><strong>Análysis</strong><small>ferramentas para pesquisa</small></span>',
             legacy,
         )
-        self.assertIn('class="platform-header-context">Raspagem padrão', legacy)
+        self.assertIn('class="platform-header-context">Raspagem livre', legacy)
         self.assertNotIn('aria-label="Conta e projetos"', legacy)
         self.assertIn('id="overlay-processamento"', legacy)
 

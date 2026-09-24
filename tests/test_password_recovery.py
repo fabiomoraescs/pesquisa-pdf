@@ -50,11 +50,12 @@ class PasswordRecoveryTests(unittest.TestCase):
                 self.assertNotIn('class="platform-auth-intro"', html)
                 self.assertIn('class="platform-auth-card', html)
                 self.assertIn(heading, html)
+                self.assertIn('<strong>Análysis</strong><small>ferramentas para pesquisa</small>', html)
         self.assertIn("Esqueci minha senha", self.client.get("/login").get_data(as_text=True))
         user = create_user("Admin", "admin-intro@example.org", role="admin")
         login(self.client, user.email)
         self.assertIn(
-            "Raspagem de Dados<small>Análise documental em Ciências Sociais</small>",
+            '<strong>Análysis</strong><small>ferramentas para pesquisa</small>',
             self.client.get("/perfil").get_data(as_text=True),
         )
 
@@ -124,7 +125,7 @@ class PasswordRecoveryTests(unittest.TestCase):
             "password": "nova-senha-segura-123",
         })
         self.assertEqual(new_login.status_code, 302)
-        self.assertIn("/projetos", new_login.headers["Location"])
+        self.assertEqual(new_login.headers["Location"], "/perfil")
         audits = db.session.query(AuditLog).filter_by(target_type="user", target_id=user.id).all()
         self.assertEqual({item.action for item in audits if item.action.startswith("password_recover")},
                          {"password_recovery_requested", "password_recovered"})

@@ -123,7 +123,7 @@ class RemainingRefinementsTests(unittest.TestCase):
                 "confirm": "nova-senha-definitiva-123",
             })
             self.assertEqual(change.status_code, 302)
-            self.assertIn("/projetos", change.headers["Location"])
+            self.assertEqual(change.headers["Location"], "/perfil")
             self.assertEqual(visitor.get("/projetos").status_code, 200)
 
         db.session.refresh(user)
@@ -143,7 +143,7 @@ class RemainingRefinementsTests(unittest.TestCase):
                 "password": "nova-senha-definitiva-123",
             })
             self.assertEqual(final_login.status_code, 302)
-            self.assertIn("/projetos", final_login.headers["Location"])
+            self.assertEqual(final_login.headers["Location"], "/perfil")
 
     def test_common_user_cannot_reset_another_password(self):
         target = create_user("Alvo", "alvo@example.org")
@@ -205,7 +205,7 @@ class RemainingRefinementsTests(unittest.TestCase):
                 "csrf_token": csrf_from(fresh.get("/login")), "email": user.email,
                 "password": "nova-senha-segura-123",
             })
-        self.assertIn("/projetos", response.headers["Location"])
+        self.assertEqual(response.headers["Location"], "/perfil")
 
     def test_new_login_with_temporary_password_reaches_only_change_page(self):
         user = create_user("Alvo", "alvo@example.org")
@@ -389,7 +389,7 @@ class RemainingRefinementsTests(unittest.TestCase):
     def test_shared_threshold_markup_and_normalization(self):
         self.assertEqual((MINIMUM, MAXIMUM, DEFAULT), (0.50, 0.90, 0.50))
         project_id = create_project(self.client)
-        legacy_html = self.client.get("/").get_data(as_text=True)
+        legacy_html = self.client.get("/raspagem-livre").get_data(as_text=True)
         hybrid_html = self.client.get(f"/analise-documental/projetos/{project_id}").get_data(as_text=True)
         for attribute, expected in (("min", MINIMUM), ("max", MAXIMUM), ("step", STEP), ("value", DEFAULT)):
             pattern = rf'id="(?:limiar-semantico|hr-limiar)"[^>]*{attribute}="([^"]+)"'
@@ -423,7 +423,7 @@ class RemainingRefinementsTests(unittest.TestCase):
         self.assertIn('id="admin-users-list" data-view-container', users_html)
         self.assertIn('class="btn btn-outline-primary btn-sm platform-action-button"', users_html)
         self.assertIn(f"/admin/usuarios/{target.id}/redefinir-senha", users_html)
-        self.assertIn("Raspagem padrão", self.client.get("/").get_data(as_text=True))
+        self.assertIn("Raspagem livre", self.client.get("/raspagem-livre").get_data(as_text=True))
 
 
 if __name__ == "__main__":

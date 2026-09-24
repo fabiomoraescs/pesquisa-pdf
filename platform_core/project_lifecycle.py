@@ -9,10 +9,10 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 from flask import current_app
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 
 from .extensions import db
-from .models import Project, ProjectLibrary, ProjectVocabularyVersion, User, utcnow
+from .models import Analysis, AnalysisDocument, Project, ProjectLibrary, ProjectVocabularyVersion, User, utcnow
 from .services import record_audit
 from .vocabularies import forget_project_store
 
@@ -94,11 +94,34 @@ def _delete_projects(projects: list[Project], actor: User | None, confirmation: 
         raise ProjectActionError("Diretório de quarentena inválido; exclusão cancelada.")
     staged: list[tuple[Path, Path]] = []
     selected = {project.id for project in projects}
+    analyses = db.session.scalars(select(Analysis).where(Analysis.project_id.in_(selected))).all()
+    if any(item.status == "processando" for item in analyses):
+        raise ProjectActionError("Aguarde o término das análises antes de excluir o projeto.")
     with JOBS_LOCK:
         if any(data.get("project_id") in selected and data.get("status") == "processando"
                for data in PROGRESSOS_HR.values()):
             raise ProjectActionError("Aguarde o término do processamento antes de excluir o projeto.")
         try:
+            from .analyses import analysis_dir
+            for analysis in analyses:
+                source = analysis_dir(analysis.id)
+                if source.exists():
+                    quarantine.mkdir(parents=True, exist_ok=True)
+                    destination = quarantine / f"analysis-{analysis.id}"
+                    os.replace(source, destination)
+                    staged.append((source, destination))
+                if analysis.tool_id == "pdf_scraper":
+                    application_root = Path(current_app.root_path).resolve()
+                    for label, folder in (("upload", "uploads"), ("legacy-output", "outputs")):
+                        root_for_job = (application_root / folder).resolve()
+                        old_source = root_for_job / analysis.id
+                        if old_source.is_symlink() or old_source.resolve().parent != root_for_job:
+                            raise ProjectActionError("Artefato antigo inválido; exclusão cancelada.")
+                        if old_source.exists():
+                            quarantine.mkdir(parents=True, exist_ok=True)
+                            old_destination = quarantine / f"{label}-{analysis.id}"
+                            os.replace(old_source, old_destination)
+                            staged.append((old_source, old_destination))
             for project in projects:
                 source = _project_directory(project.id)
                 if source.exists():
@@ -107,6 +130,9 @@ def _delete_projects(projects: list[Project], actor: User | None, confirmation: 
                     os.replace(source, destination)
                     staged.append((source, destination))
             for project in projects:
+                for analysis in [item for item in analyses if item.project_id == project.id]:
+                    db.session.execute(delete(AnalysisDocument).where(AnalysisDocument.analysis_id == analysis.id))
+                    db.session.delete(analysis)
                 db.session.execute(delete(ProjectVocabularyVersion).where(ProjectVocabularyVersion.project_id == project.id))
                 db.session.execute(delete(ProjectLibrary).where(ProjectLibrary.project_id == project.id))
                 record_audit(actor, "project_permanently_deleted", "project", project.id,
@@ -128,6 +154,13 @@ def _delete_projects(projects: list[Project], actor: User | None, confirmation: 
             if data.get("project_id") in selected:
                 PROGRESSOS_HR.pop(job_id, None)
                 RESULTADOS_HR.pop(job_id, None)
+        from app import ANALISES, ANALISES_LOCK, PROGRESSOS, PROGRESSOS_LOCK
+        with ANALISES_LOCK, PROGRESSOS_LOCK:
+            for analysis in analyses:
+                ANALISES.pop(analysis.id, None)
+                PROGRESSOS.pop(analysis.id, None)
+                RESULTADOS_HR.pop(analysis.id, None)
+                PROGRESSOS_HR.pop(analysis.id, None)
     if quarantine.exists():
         if quarantine.is_symlink() or quarantine.resolve().parent != deletion_root:
             logging.getLogger(__name__).error("Quarentena fora do diretório previsto: %s", quarantine)

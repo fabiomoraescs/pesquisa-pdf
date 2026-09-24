@@ -22,7 +22,7 @@
       <h1 id="titulo-historico-racial">Resultados da análise documental</h1>
       <p>Projeto: <strong>{{ project.name }}</strong> · Bibliotecas: {{ resultado.library_names | join(', ') }}</p>
       <p>Método: <strong>{{ 'Híbrido' if resultado.metodo_analise == 'hibrido' else 'Lexical' }}</strong>{% if resultado.limiar_semantico is not none %} · Limiar semântico: {{ resultado.limiar_semantico }}{% endif %}</p>
-      <a class="btn btn-outline-primary mb-4" href="{{ url_for('historico_racial.inicio_projeto', project_id=project.id) }}">Nova análise</a>
+      <a class="btn btn-outline-primary mb-4" href="{{ url_for('historico_racial.inicio_projeto', project_id=project.id) }}">Nova raspagem</a>
       <a class="btn btn-primary mb-4" href="{{ url_for('historico_racial.baixar_resultado', project_id=project.id, job_id=request.view_args.job_id) }}">Baixar planilha XLSX</a>
 
       {% if resultado.vocabulario_version %}
@@ -100,7 +100,7 @@
           <section class="modal-help__section" aria-labelledby="modal-hr-documentos">
             <h3 id="modal-hr-documentos">Documentos e leitura dos PDFs</h3>
             <p>Envie um ou mais PDFs. Cada PDF é tratado como um documento do processamento, com identificação e páginas próprias; as ocorrências ficam vinculadas ao documento de origem. Quando uma página precisa de reconhecimento de texto, a leitura usa OCR como alternativa à extração direta. Erros de OCR ou de leitura podem afetar o que é localizável.</p>
-            <p class="modal-help__notice mb-0"><strong>Guarde a planilha:</strong> os arquivos enviados são temporários e os resultados exibidos pertencem ao processamento atual; eles não constituem um acervo documental permanente dentro do projeto.</p>
+            <p class="modal-help__notice mb-0"><strong>Bases de análise:</strong> cada execução concluída preserva seus PDFs, resultados e planilha na área Bases de análise do projeto. A nova execução não substitui as anteriores.</p>
           </section>
 
           <section class="modal-help__section" aria-labelledby="modal-hr-vocabulario">
@@ -133,7 +133,7 @@
               <article class="modal-help__method-card"><h4>Híbrido</h4><p class="mb-0">Combina as ocorrências lexicais com trechos recuperados por similaridade semântica. A parte lexical continua identificável separadamente.</p></article>
             </div>
             <p>No controle atual, o limiar semântico vai de <strong>{{ '%.2f'|format(semantic_threshold.minimum)|replace('.', ',') }} a {{ '%.2f'|format(semantic_threshold.maximum)|replace('.', ',') }}</strong>, com valor inicial <strong>{{ '%.2f'|format(semantic_threshold.default)|replace('.', ',') }}</strong>. Essa opção mais exploratória tende a ampliar os candidatos; valores maiores tornam a seleção mais restritiva. Alterar o limiar muda a sensibilidade da recuperação, e não existe valor universalmente correto.</p>
-            <p class="mb-0">O limiar usa a mesma configuração compartilhada com a Raspagem padrão e só se aplica quando o modo Híbrido está selecionado.</p>
+            <p class="mb-0">O limiar usa a mesma configuração compartilhada com a Raspagem livre e só se aplica quando o modo Híbrido está selecionado.</p>
           </section>
 
           <section class="modal-help__section" aria-labelledby="modal-hr-tipos">

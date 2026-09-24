@@ -1,0 +1,9 @@
+{% extends 'platform/base.html' %}
+{% block title %}Nomear base de análise — Raspagem de Dados{% endblock %}
+{% block body %}
+<section class="platform-panel mx-auto" style="max-width: 640px">
+  <h1 class="h4">Nome da Base de análise</h1>
+  <p class="text-secondary">O processamento terminou. Os dados, PDFs e planilhas já estão preservados. Dê um nome à base para abrir seu dashboard; se sair agora, ela continuará no histórico como “Base de análise sem nome”.</p>
+  <form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label class="form-label" for="base-name">Nome da Base de análise</label><input class="form-control mb-3" id="base-name" name="name" maxlength="200" required autofocus value="{{ request.form.get('name', '') }}" placeholder="Ex.: Representações do Nordeste – PNLD 2026"><button class="btn btn-primary" type="submit">Salvar base</button></form>
+</section>
+{% endblock %}

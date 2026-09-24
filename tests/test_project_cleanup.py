@@ -60,7 +60,7 @@ class ProjectCleanupTests(unittest.TestCase):
     def test_project_info_reuses_existing_modal_pattern(self):
         project_id = create_project(self.client, name="Pesquisa informativa")
         html = self.client.get(f"/analise-documental/projetos/{project_id}").get_data(as_text=True)
-        legacy = self.client.get("/").get_data(as_text=True)
+        legacy = self.client.get("/raspagem-livre").get_data(as_text=True)
         self.assertIn('class="btn btn-outline-primary info-icon-button"', html)
         self.assertIn('aria-label="Como funciona" title="Como funciona"', html)
         self.assertIn('data-bs-target="#modal-sobre-historico-racial"', html)

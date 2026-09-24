@@ -1,41 +1,60 @@
+{% from 'platform/_brand.html' import brand_mark %}
 {% if current_user.is_authenticated %}
 {% from 'platform/_icons.html' import icon %}
 {% set endpoint = request.endpoint or '' %}
+{% set free_context = endpoint in ('inicio', 'resultado', 'download', 'progresso', 'projects.list_free_projects', 'projects.new_free_project', 'projects.archived_free_projects', 'projects.free_project', 'analyses.standard_history', 'analyses.free_history') or (analysis is defined and analysis.tool_id == 'pdf_scraper') or (project is defined and project.scrape_type == 'free') %}
+{% set systematic_context = endpoint in ('projects.list_projects', 'projects.new_project', 'projects.archived_projects', 'analyses.systematic_history') or (analysis is defined and analysis.tool_id == 'document_analysis') or (project is defined and project.scrape_type == 'systematic') or endpoint.startswith('historico_racial.') %}
+{% set free_bases_active = endpoint in ('analyses.standard_history', 'analyses.free_history') or (endpoint == 'analyses.project_history' and project is defined and project.scrape_type == 'free') or (analysis is defined and analysis.tool_id == 'pdf_scraper' and endpoint.startswith('analyses.')) %}
+{% set systematic_bases_active = endpoint == 'analyses.systematic_history' or (endpoint == 'analyses.project_history' and project is defined and project.scrape_type == 'systematic') or (analysis is defined and analysis.tool_id == 'document_analysis' and endpoint.startswith('analyses.')) %}
 {% set admin_sections = {
   'admin.home': 'Visão geral', 'admin.users': 'Usuários', 'admin.user_detail': 'Usuários',
   'admin.deleted_users': 'Usuários excluídos', 'admin.delete_user': 'Usuários',
   'admin.restore_user': 'Usuários excluídos', 'admin.reset_user_password': 'Usuários',
   'admin.permanently_delete_user': 'Usuários excluídos',
   'admin.projects': 'Projetos', 'admin.project_detail': 'Projetos', 'admin.delete_project': 'Projetos',
-  'admin.tools': 'Ferramentas', 'admin.plans': 'Planos', 'admin.libraries': 'Bibliotecas',
+  'admin.tools': 'Ferramentas', 'admin.plans': 'Planos', 'admin.define_access': 'Definir acessos', 'admin.libraries': 'Bibliotecas',
   'admin.new_library': 'Bibliotecas', 'admin.library_detail': 'Bibliotecas', 'admin.delete_library': 'Bibliotecas',
   'admin.library_template': 'Bibliotecas', 'admin.library_import': 'Bibliotecas',
   'admin.audit': 'Auditoria'
 } %}
 {% if endpoint == 'profile.my_profile' %}{% set section_title = 'Perfil' %}
-{% elif endpoint == 'projects.archived_projects' or endpoint in ('projects.delete_project', 'projects.confirm_batch_delete') %}{% set section_title = 'Projetos arquivados' %}
+{% elif endpoint in ('projects.archived_projects', 'projects.archived_free_projects') or endpoint in ('projects.delete_project', 'projects.confirm_batch_delete') %}{% set section_title = 'Projetos arquivados' %}
 {% elif endpoint.startswith('projects.') %}{% set section_title = 'Projetos' %}
-{% elif endpoint == 'inicio' or endpoint in ('resultado', 'download', 'progresso') %}{% set section_title = 'Raspagem padrão' %}
+{% elif endpoint == 'inicio' or endpoint in ('resultado', 'download', 'progresso') %}{% set section_title = 'Raspagem livre' %}
+{% elif endpoint in ('analyses.standard_history', 'analyses.free_history', 'analyses.systematic_history', 'analyses.project_history') %}{% set section_title = 'Bases de análise' %}
+{% elif endpoint.startswith('analyses.') %}{% set section_title = 'Base de análise' %}
 {% elif endpoint == 'auth.change_password' %}{% set section_title = 'Alterar senha' %}
 {% elif request.blueprint == 'admin' %}{% set section_title = admin_sections.get(endpoint, 'Gerenciar') %}
 {% elif project is defined %}{% set section_title = project.name %}
 {% else %}{% set section_title = 'Raspagem de Dados' %}{% endif %}
 <aside class="platform-sidebar" id="platform-sidebar" aria-label="Menu da plataforma">
-  <div class="platform-section-title" aria-label="Nome da plataforma">Raspagem de Dados<small>Análise documental em Ciências Sociais</small></div>
+  <div class="platform-section-title" aria-label="Nome da plataforma">{{ brand_mark() }}</div>
   <nav class="platform-nav" aria-label="Navegação principal">
     <a class="{{ 'is-current' if endpoint == 'profile.my_profile' else '' }}" {% if endpoint == 'profile.my_profile' %}aria-current="page"{% endif %} href="{{ url_for('profile.my_profile') }}">{{ icon('perfil') }}<span>Perfil</span></a>
-    <a class="{{ 'is-current' if endpoint in ('projects.list_projects', 'projects.new_project') else '' }}" {% if endpoint == 'projects.list_projects' %}aria-current="page"{% endif %} href="{{ url_for('projects.list_projects') }}">{{ icon('projetos') }}<span>Projetos</span></a>
-    <a class="{{ 'is-current' if endpoint in ('projects.archived_projects', 'projects.delete_project', 'projects.confirm_batch_delete') else '' }}" {% if endpoint == 'projects.archived_projects' %}aria-current="page"{% endif %} href="{{ url_for('projects.archived_projects') }}">{{ icon('arquivados') }}<span>Projetos arquivados</span></a>
-    <a class="{{ 'is-current' if endpoint == 'inicio' or endpoint in ('resultado', 'download', 'progresso') else '' }}" {% if endpoint in ('inicio', 'resultado') %}aria-current="page"{% endif %} href="{{ url_for('inicio') }}">{{ icon('pdf') }}<span>Raspagem padrão</span></a>
+    <details class="platform-nav-dropdown" {% if free_context or systematic_context %}open{% endif %}>
+      <summary>{{ icon('pdf') }}<span>Raspagem de dados</span></summary>
+      <details class="platform-nav-subdropdown" {% if free_context %}open{% endif %}>
+        <summary class="{{ 'is-current' if free_context else '' }}">Raspagem livre</summary>
+        <a class="{{ 'is-current' if endpoint == 'projects.new_free_project' else '' }}" {% if endpoint == 'projects.new_free_project' %}aria-current="page"{% endif %} href="{{ url_for('projects.new_free_project') }}">Novo projeto</a>
+        <a class="{{ 'is-current' if free_context and not free_bases_active and endpoint != 'projects.new_free_project' else '' }}" {% if free_context and not free_bases_active and endpoint != 'projects.new_free_project' %}aria-current="page"{% endif %} href="{{ url_for('projects.list_free_projects') }}">Projetos</a>
+      </details>
+      <details class="platform-nav-subdropdown" {% if systematic_context %}open{% endif %}>
+        <summary class="{{ 'is-current' if systematic_context else '' }}">Raspagem sistemática</summary>
+        <a class="{{ 'is-current' if endpoint == 'projects.new_project' else '' }}" {% if endpoint == 'projects.new_project' %}aria-current="page"{% endif %} href="{{ url_for('projects.new_project') }}">Novo projeto</a>
+        <a class="{{ 'is-current' if systematic_context and not systematic_bases_active and endpoint != 'projects.new_project' else '' }}" {% if systematic_context and not systematic_bases_active and endpoint != 'projects.new_project' %}aria-current="page"{% endif %} href="{{ url_for('projects.list_projects') }}">Projetos</a>
+      </details>
+    </details>
+    <span class="platform-nav-unavailable" aria-disabled="true">{{ icon('qualitativa') }}<span>Análise qualitativa</span></span>
+    <span class="platform-nav-unavailable" aria-disabled="true">{{ icon('quantitativa') }}<span>Análise quantitativa</span></span>
     {% if current_user.role == 'admin' %}
     <button class="platform-admin-toggle{{ ' is-current' if request.blueprint == 'admin' else '' }}" id="platform-admin-toggle" type="button" aria-expanded="{{ 'true' if request.blueprint == 'admin' else 'false' }}" aria-controls="platform-admin-submenu">{{ icon('gerenciar') }}<span>Gerenciar</span><span class="platform-admin-chevron" aria-hidden="true">▾</span></button>
     <div class="platform-admin-submenu" id="platform-admin-submenu" {% if request.blueprint != 'admin' %}hidden{% endif %}>
       {% for label, target, endpoints in [
         ('Visão geral', 'admin.home', ['admin.home']),
         ('Usuários', 'admin.users', ['admin.users', 'admin.deleted_users', 'admin.user_detail', 'admin.delete_user', 'admin.restore_user', 'admin.reset_user_password', 'admin.permanently_delete_user']),
-        ('Projetos', 'admin.projects', ['admin.projects', 'admin.project_detail', 'admin.delete_project']),
         ('Ferramentas', 'admin.tools', ['admin.tools']),
         ('Planos', 'admin.plans', ['admin.plans']),
+        ('Definir acessos', 'admin.define_access', ['admin.define_access']),
         ('Bibliotecas', 'admin.libraries', ['admin.libraries', 'admin.new_library', 'admin.library_detail', 'admin.delete_library', 'admin.library_import', 'admin.library_template']),
         ('Auditoria', 'admin.audit', ['admin.audit'])
       ] %}<a class="{{ 'is-current' if endpoint in endpoints else '' }}" {% if endpoint in endpoints %}aria-current="page"{% endif %} href="{{ url_for(target) }}">{{ label }}</a>{% endfor %}
@@ -54,7 +73,7 @@
 </header>
 {% else %}
 <header class="platform-header platform-header-public">
-  <a class="platform-brand" href="{{ url_for('auth.login') }}" aria-label="Raspagem de Dados — página inicial"><strong>Raspagem de Dados</strong><small>Análise documental em Ciências Sociais</small></a>
+  <a class="platform-brand" href="{{ url_for('auth.login') }}" aria-label="Análysis — página inicial">{{ brand_mark() }}</a>
   <button class="btn btn-outline-primary theme-icon-button" id="theme-toggle" type="button" aria-label="Alternar tema" title="Alternar tema"></button>
 </header>
 {% endif %}

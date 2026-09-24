@@ -2,6 +2,7 @@
   const formulario = document.getElementById('hr-form');
   if (!formulario) return;
   const arquivos = document.getElementById('pdfs-historico-racial');
+  const duplicate = Boolean(formulario.querySelector('[name="duplicate_id"]'));
   const botao = document.getElementById('hr-analisar');
   const erro = document.getElementById('hr-erro');
   const overlay = document.getElementById('hr-overlay-processamento');
@@ -25,11 +26,15 @@
     semanticControls.hidden = !hybrid;
     semanticThreshold.disabled = !hybrid;
   }));
+  if (document.querySelector('input[name="metodo_analise"]:checked')?.value === 'hibrido') {
+    semanticControls.hidden = false;
+    semanticThreshold.disabled = false;
+  }
   let ocupado = false;
   let temporizador = null;
 
   function selecaoValida() {
-    return arquivos.files.length > 0 && [...arquivos.files].every((arquivo) => arquivo.name.toLowerCase().endsWith('.pdf'));
+    return (duplicate || arquivos.files.length > 0) && [...arquivos.files].every((arquivo) => arquivo.name.toLowerCase().endsWith('.pdf'));
   }
 
   function mostrarErro(texto) {
@@ -111,7 +116,7 @@
       if (!resposta.ok) throw new Error(dados.erro || 'Não foi possível consultar o progresso.');
       atualizarProgresso(dados);
       if (dados.status === 'concluido') {
-        titulo.textContent = 'Análise concluída — 100%';
+        titulo.textContent = 'Raspagem concluída — 100%';
         window.location.assign(dados.resultado_url);
         return;
       }

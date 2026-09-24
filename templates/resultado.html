@@ -14,14 +14,16 @@
   <main class="platform-main platform-main-legacy platform-main-results">
     <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-4">
       <div>
-        <span class="eyebrow">ANÁLISE CONCLUÍDA</span>
-        <h1 class="mb-1">Resultados da raspagem</h1>
+        <span class="eyebrow">BASE DE ANÁLISE</span>
+        <h1 class="mb-1">{{ analysis.name if analysis is defined else 'Resultados da raspagem' }}</h1>
         <p class="text-secondary mb-0">Os gráficos têm controles interativos e o ícone de câmera na barra do Plotly baixa o gráfico como PNG.</p>
       </div>
       <div class="app-actions">
-        <a href="{{ url_for('inicio') }}" class="btn btn-outline-primary">Nova análise</a>
+        <a href="{{ url_for('inicio', project_id=analysis.project_id) if analysis is defined and analysis.project_id else url_for('projects.list_free_projects') }}" class="btn btn-outline-primary">Nova raspagem</a>
       </div>
     </div>
+
+    {% if analysis is defined %}<section class="download-card mb-4"><p class="text-secondary mb-2">Raspagem livre · {{ analysis.document_count }} PDF(s) · {{ analysis.result_count }} resultado(s) · {{ analysis.tool_version|upper }} · {{ analysis.created_at.strftime('%d/%m/%Y %H:%M') }}{% if analysis.project_id %} · Vinculada a projeto{% endif %}</p><p class="text-secondary mb-2"><strong>Documentos:</strong> {{ documents|map(attribute='original_name')|join(', ') }} · <strong>Termos:</strong> {{ analysis.parameters_json.termos|map(attribute='termo')|join(', ') }}</p>{% include 'platform/_analysis_actions.html' %}</section>{% endif %}
 
     {% if resultado.erros %}
       <div class="alert alert-warning">
@@ -45,7 +47,7 @@
       <h2 class="h5">Planilhas geradas pela V3</h2>
       <div class="d-flex gap-2 flex-wrap">
         {% for arquivo in resultado.arquivos %}
-          <a class="btn {% if arquivo.consolidado %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{{ url_for('download', identificador=identificador, nome_arquivo=arquivo.nome) }}">{{ arquivo.rotulo }}</a>
+          <a class="btn {% if arquivo.consolidado %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{{ url_for('analyses.excel', analysis_id=analysis.id, filename=arquivo.nome) if analysis is defined else url_for('download', identificador=identificador, nome_arquivo=arquivo.nome) }}">{{ arquivo.rotulo }}</a>
         {% endfor %}
       </div>
       {% if not resultado.arquivos %}<p class="mb-0 text-secondary">Não houve planilha gerada porque nenhum PDF foi processado com sucesso.</p>{% endif %}
@@ -73,7 +75,7 @@
       <h2 class="h5">Planilhas geradas</h2>
       <div class="d-flex gap-2 flex-wrap">
         {% for arquivo in resultado.arquivos %}
-          <a class="btn {% if arquivo.consolidado %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{{ url_for('download', identificador=identificador, nome_arquivo=arquivo.nome) }}">{{ arquivo.rotulo }}</a>
+          <a class="btn {% if arquivo.consolidado %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{{ url_for('analyses.excel', analysis_id=analysis.id, filename=arquivo.nome) if analysis is defined else url_for('download', identificador=identificador, nome_arquivo=arquivo.nome) }}">{{ arquivo.rotulo }}</a>
         {% endfor %}
       </div>
       {% if not resultado.arquivos %}<p class="mb-0 text-secondary">Não houve planilha gerada porque nenhum PDF foi processado com sucesso.</p>{% endif %}
@@ -138,8 +140,10 @@
   <script src="{{ url_for('static', filename='js/interface.js') }}"></script>
   <script src="{{ url_for('static', filename='js/platform.js') }}"></script>
   {% if resultado.versao == 'v3' %}
+    <script src="{{ url_for('static', filename='js/plot_theme.js') }}"></script>
     <script src="{{ url_for('static', filename='js/dashboard-v3.js') }}"></script>
   {% else %}
+    <script src="{{ url_for('static', filename='js/plot_theme.js') }}"></script>
     <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
   {% endif %}
 </body>

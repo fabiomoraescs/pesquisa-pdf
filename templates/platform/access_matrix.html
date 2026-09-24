@@ -1,0 +1,6 @@
+{% extends 'platform/base.html' %}
+{% block title %}Definir acessos por plano — Raspagem de Dados{% endblock %}
+{% block body %}
+<section class="platform-panel platform-access-matrix"><h1 class="h4">Definir acessos por plano</h1><p class="text-secondary">As permissões abaixo são verificadas também nas rotas das ferramentas. Exceções individuais continuam na ficha do usuário.</p>
+<form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><div class="table-responsive"><table class="table"><thead><tr><th scope="col">Ferramenta</th>{% for plan in plans %}<th scope="col">{{ plan.name }}</th>{% endfor %}</tr></thead><tbody>{% for tool in tools %}<tr><th scope="row">{{ tool_labels.get(tool.id, tool.name) }}</th>{% for plan in plans %}<td><label><input type="checkbox" name="access" value="{{ plan.id }}|{{ tool.id }}" {% if (plan.id, tool.id) in selected %}checked{% endif %} aria-label="Permitir {{ tool_labels.get(tool.id, tool.name) }} no plano {{ plan.name }}"> <span class="visually-hidden">Permitir</span></label></td>{% endfor %}</tr>{% endfor %}</tbody></table></div><button class="btn btn-primary" type="submit">Salvar acessos</button></form></section>
+{% endblock %}

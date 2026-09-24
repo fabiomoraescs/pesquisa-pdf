@@ -702,7 +702,7 @@ class TesteV3(unittest.TestCase):
                 try:
                     with test_app.test_client() as cliente:
                         login(cliente)
-                        inicio = cliente.get("/")
+                        inicio = cliente.get("/raspagem-livre")
                         pagina_v3 = cliente.get(f"/resultado/{identificador}")
                     self.assertEqual(inicio.status_code, 200)
                     self.assertIn(b"V3: Busca h", inicio.data)
@@ -813,10 +813,10 @@ class TesteV3(unittest.TestCase):
             create_user()
             cliente = test_app.test_client()
             login(cliente)
-            token = csrf_from(cliente.get("/"))
+            token = csrf_from(cliente.get("/raspagem-livre"))
             for termos in entradas_invalidas:
                 resposta = cliente.post(
-                    "/",
+                    "/raspagem-livre",
                     data={
                         "csrf_token": token,
                         "versao": "v1",
@@ -832,7 +832,7 @@ class TesteV3(unittest.TestCase):
                 )
 
             resposta_valida = cliente.post(
-                "/",
+                "/raspagem-livre",
                 data={"csrf_token": token, "versao": "v1", "termos": "Nordeste; Recife; sertão"},
                 content_type="multipart/form-data",
             )

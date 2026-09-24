@@ -28,7 +28,7 @@ LABELS = {
     "admin_courtesy": "Cortesia administrativa", "inherit": "Herdar do plano",
     "allow": "Permitir", "deny": "Bloquear", "student": "Estudante",
     "researcher": "Pesquisador", "pro": "Pro", "institutional": "Institucional",
-    "pdf_scraper": "Raspagem padrão", "document_analysis": "Análise documental",
+    "pdf_scraper": "Raspagem livre", "document_analysis": "Raspagem sistemática",
     "user_registered": "Usuário cadastrado", "admin_created": "Administrador criado",
     "user_status_changed": "Estado do usuário alterado",
     "access_grant_changed": "Acesso alterado", "tool_override_changed": "Permissão de ferramenta alterada",

@@ -22,7 +22,7 @@ class SidebarHeaderTests(unittest.TestCase):
             ("/perfil", "Perfil"),
             ("/projetos", "Projetos"),
             ("/projetos/arquivados", "Projetos arquivados"),
-            ("/", "Raspagem padrão"),
+            ("/raspagem-livre", "Raspagem livre"),
             ("/admin", "Visão geral"),
             ("/admin/usuarios", "Usuários"),
             ("/admin/planos", "Planos"),
@@ -37,35 +37,45 @@ class SidebarHeaderTests(unittest.TestCase):
                 header = re.search(r'<span class="platform-header-context">(.*?)</span>', html, re.S)
                 self.assertIsNotNone(sidebar)
                 self.assertIsNotNone(header)
-                self.assertEqual(re.sub(r"<small>.*?</small>", "", sidebar.group(1), flags=re.S).strip(), "Raspagem de Dados")
-                self.assertIn("<small>Análise documental em Ciências Sociais</small>", sidebar.group(1))
+                self.assertIn('<strong>Análysis</strong>', sidebar.group(1))
+                self.assertIn('<small>ferramentas para pesquisa</small>', sidebar.group(1))
                 self.assertEqual(header.group(1).strip(), heading)
 
     def test_sidebar_identity_is_above_navigation_and_footer_contains_only_logout(self):
         html = self.client.get("/projetos").get_data(as_text=True)
         sidebar = html.split('<aside class="platform-sidebar"', 1)[1].split("</aside>", 1)[0]
-        identity = 'Raspagem de Dados<small>Análise documental em Ciências Sociais</small>'
+        identity = '<strong>Análysis</strong><small>ferramentas para pesquisa</small>'
         self.assertEqual(sidebar.count(identity), 1)
         self.assertLess(sidebar.index(identity), sidebar.index('<nav class="platform-nav"'))
         footer = sidebar.split('<div class="platform-sidebar-footer">', 1)[1]
-        self.assertNotIn("Raspagem de Dados", footer)
-        self.assertNotIn("Análise documental em Ciências Sociais", footer)
+        self.assertNotIn("Análysis", footer)
+        self.assertNotIn("ferramentas para pesquisa", footer)
         self.assertEqual(re.findall(r"<button[^>]*>(.*?)</button>", footer), ["Sair"])
 
     def test_navigation_order_and_admin_submenu_are_unchanged(self):
         html = self.client.get("/admin/usuarios").get_data(as_text=True)
         nav = html.split('<nav class="platform-nav"', 1)[1].split("</nav>", 1)[0]
         positions = [nav.index(marker) for marker in (
-            'href="/perfil"', 'href="/projetos"', 'href="/projetos/arquivados"',
-            'href="/"', 'id="platform-admin-toggle"',
+            'href="/perfil"', '<span>Raspagem de dados</span>',
+            '<span>Análise qualitativa</span>', '<span>Análise quantitativa</span>',
+            'id="platform-admin-toggle"',
         )]
         self.assertEqual(positions, sorted(positions))
+        self.assertIn('href="/projetos/livres"', nav)
+        self.assertIn('href="/projetos"', nav)
+        self.assertEqual(nav.count('>Novo projeto</a>'), 2)
+        self.assertEqual(nav.count('>Projetos</a>'), 2)
+        self.assertNotIn('>Bases de análise</a>', nav)
+        self.assertNotIn('Projetos arquivados', nav)
+        self.assertNotIn('Em breve', nav)
+        self.assertIn('class="platform-nav-subdropdown"', nav)
+        self.assertIn('aria-disabled="true"', nav)
         self.assertIn('aria-expanded="true"', nav)
         self.assertIn('aria-controls="platform-admin-submenu"', nav)
         self.assertIn('id="platform-admin-submenu"', nav)
         self.assertIn('id="platform-menu-toggle"', html)
-        self.assertIn('aria-label="Nome da plataforma">Raspagem de Dados', html)
-        self.assertIn('Raspagem de Dados<small>Análise documental em Ciências Sociais</small>', html)
+        self.assertIn('aria-label="Nome da plataforma"><span class="platform-brand-mark">', html)
+        self.assertIn('<strong>Análysis</strong><small>ferramentas para pesquisa</small>', html)
 
 
 if __name__ == "__main__":

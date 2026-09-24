@@ -2,44 +2,18 @@
   const origem = document.getElementById('dados-dashboard');
   if (!origem || !window.Plotly) return;
   const dados = JSON.parse(origem.textContent);
-  const coresClaras = ['#1f4e78', '#2a7f62', '#a05d20', '#7755a5', '#c0504d', '#3c8dad', '#748f34'];
-  const coresEscuras = ['#78b7e5', '#66d0ad', '#f2b36d', '#b89bef', '#f18a87', '#72c8e5', '#b7cf6c'];
+  const plotTheme = window.PesquisaPdfPlotTheme;
   const configBase = {
     responsive: true,
     displaylogo: false,
     toImageButtonOptions: { format: 'png', filename: 'varredura_v3', scale: 2 },
   };
 
-  function cor(nome) {
-    return getComputedStyle(document.documentElement).getPropertyValue(nome).trim();
-  }
-
-  function paleta() {
-    return document.documentElement.dataset.theme === 'dark' ? coresEscuras : coresClaras;
-  }
-
-  function layoutBase() {
-    return {
-      margin: { l: 56, r: 26, t: 22, b: 82 },
-      paper_bgcolor: cor('--plot-paper'),
-      plot_bgcolor: cor('--plot-bg'),
-      font: { color: cor('--plot-text') },
-      hoverlabel: { bgcolor: cor('--surface-muted'), font: { color: cor('--plot-text') } },
-    };
-  }
-
-  function eixo(opcoes = {}) {
-    return {
-      color: cor('--plot-text'),
-      gridcolor: cor('--plot-grid'),
-      zerolinecolor: cor('--plot-grid'),
-      ...opcoes,
-    };
-  }
-
-  function legenda(opcoes = {}) {
-    return { font: { color: cor('--plot-text') }, ...opcoes };
-  }
+  const cor = plotTheme.color;
+  const paleta = plotTheme.palette;
+  const layoutBase = () => plotTheme.layout({ l: 56, r: 26, t: 22, b: 82 });
+  const eixo = plotTheme.axis;
+  const legenda = plotTheme.legend;
 
   function config(nome) {
     return { ...configBase, toImageButtonOptions: { ...configBase.toImageButtonOptions, filename: nome } };

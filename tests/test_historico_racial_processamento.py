@@ -194,6 +194,10 @@ class TesteProcessamentoHistoricoRacial(unittest.TestCase):
             self.assertEqual(progresso.json["percentual"], 100)
             pagina = cliente.get(progresso.json["resultado_url"])
             self.assertEqual(pagina.status_code, 200)
+            self.assertIn("Salvar base", pagina.get_data(as_text=True))
+            pagina = cliente.post(progresso.json["resultado_url"], data={
+                "csrf_token": csrf_from(pagina), "name": "Debates raciais",
+            }, follow_redirects=True)
             conteudo = pagina.get_data(as_text=True)
             self.assertIn("Du Bois", conteudo)
             self.assertIn("Primeiras ocorrências", conteudo)

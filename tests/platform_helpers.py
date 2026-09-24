@@ -60,4 +60,4 @@ def create_project(client, name="Pesquisa de teste", libraries=("relacoes_raciai
         "libraries": list(libraries),
     })
     assert response.status_code == 302, response.get_data(as_text=True)
-    return response.headers["Location"].split("/projetos/")[1]
+    return response.headers["Location"].rsplit("/", 1)[1]

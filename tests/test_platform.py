@@ -65,7 +65,8 @@ class PlatformTests(unittest.TestCase):
         self.assertTrue(can_use_tool(user, "pdf_scraper"))
         self.assertTrue(can_use_tool(user, "document_analysis"))
         self.assertIsNotNone(db.session.scalar(select(AuditLog).where(AuditLog.action == "user_registered", AuditLog.target_id == user.id)))
-        self.assertEqual(self.client.get("/").status_code, 200)
+        self.assertEqual(self.client.get("/").headers["Location"], "/perfil")
+        self.assertEqual(self.client.get("/raspagem-livre").status_code, 200)
         self.assertEqual(self.client.post("/logout", data={"csrf_token": csrf_from(self.client.get("/projetos"))}).status_code, 302)
         self.assertIn("/login", self.client.get("/").headers["Location"])
 
@@ -255,7 +256,8 @@ class PlatformTests(unittest.TestCase):
         self.assertFalse(can_use_tool(admin, "document_analysis"))
         login(self.client)
         self.assertEqual(self.client.get("/projetos").status_code, 403)
-        self.assertEqual(self.client.get("/").status_code, 200)
+        self.assertEqual(self.client.get("/").headers["Location"], "/perfil")
+        self.assertEqual(self.client.get("/raspagem-livre").status_code, 200)
 
     def test_admin_project_archive_restore_and_no_deleted_shortcut(self):
         create_user()

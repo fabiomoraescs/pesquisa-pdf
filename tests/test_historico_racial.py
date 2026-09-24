@@ -24,8 +24,10 @@ class TesteHistoricoRacial(unittest.TestCase):
 
         self.assertEqual(resposta.status_code, 200)
         pagina = resposta.get_data(as_text=True)
-        self.assertIn("Raspagem de Dados", pagina)
-        self.assertIn("Análise documental em Ciências Sociais", pagina)
+        self.assertIn("Análysis", pagina)
+        self.assertIn("ferramentas para pesquisa", pagina)
+        self.assertIn("Raspagem de dados", pagina)
+        self.assertIn("Raspagem sistemática", pagina)
         self.assertIn("Processar PDFs", pagina)
         self.assertIn(f'action="/analise-documental/projetos/{projeto}/analisar"', pagina)
 
@@ -34,7 +36,8 @@ class TesteHistoricoRacial(unittest.TestCase):
             login(cliente)
             resposta = cliente.get("/")
 
-        self.assertEqual(resposta.status_code, 200)
+        self.assertEqual(resposta.status_code, 302)
+        self.assertEqual(resposta.headers["Location"], "/perfil")
 
 
 if __name__ == "__main__":

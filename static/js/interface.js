@@ -2,7 +2,8 @@
   const chaveTema = 'varredura-pdf-theme';
   const raiz = document.documentElement;
   const botaoTema = document.getElementById('theme-toggle');
-  const seletorVersao = document.getElementById('versao');
+  const opcoesVersao = [...document.querySelectorAll('input[name="versao"]')];
+  const versaoSelecionada = () => opcoesVersao.find((opcao) => opcao.checked)?.value || '';
   const configuracoesV3 = document.getElementById('configuracoes-v3');
   const opcaoLexical = document.getElementById('incluir-lexical');
   const opcaoSemantica = document.getElementById('incluir-semantica');
@@ -43,8 +44,8 @@
   }
 
   function atualizarConfiguracoesV3() {
-    if (!configuracoesV3 || !seletorVersao) return;
-    const ativa = seletorVersao.value === 'v3';
+    if (!configuracoesV3 || !opcoesVersao.length) return;
+    const ativa = versaoSelecionada() === 'v3';
     configuracoesV3.hidden = !ativa;
     if (opcaoLexical) opcaoLexical.disabled = !ativa;
     if (opcaoSemantica) opcaoSemantica.disabled = !ativa;
@@ -53,7 +54,7 @@
 
   function atualizarEstadoSemantico() {
     const semanticaAtiva = Boolean(
-      seletorVersao && seletorVersao.value === 'v3' && opcaoSemantica && opcaoSemantica.checked,
+      versaoSelecionada() === 'v3' && opcaoSemantica && opcaoSemantica.checked,
     );
     if (controleLimiarSemantico) controleLimiarSemantico.hidden = !semanticaAtiva;
     if (avisoSemantico) avisoSemantico.hidden = !semanticaAtiva;
@@ -76,8 +77,8 @@
     atualizarEstadoSemantico();
   }
 
-  if (seletorVersao) {
-    seletorVersao.addEventListener('change', atualizarConfiguracoesV3);
+  if (opcoesVersao.length) {
+    opcoesVersao.forEach((opcao) => opcao.addEventListener('change', atualizarConfiguracoesV3));
     atualizarConfiguracoesV3();
   }
   if (opcaoLexical && opcaoSemantica) {
