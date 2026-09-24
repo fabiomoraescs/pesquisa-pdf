@@ -19,7 +19,7 @@ from werkzeug.utils import secure_filename
 
 from .extensions import db
 from .models import Analysis, AnalysisDocument, Project, User, utcnow
-from .scraping_types import FREE, TOOL_BY_TYPE
+from .scraping_types import FREE, QUALITATIVE_TOOL, TOOL_BY_TYPE
 
 
 def history_access_filter(user_id: str, scrape_type: str):
@@ -68,6 +68,10 @@ def get_analysis(analysis_id: str, user: User) -> Analysis:
 def create_analysis(*, user_id: str, project_id: str | None, tool_id: str,
                     tool_version: str, parameters: dict, name: str | None = None,
                     analysis_id: str | None = None) -> Analysis:
+    if tool_id == QUALITATIVE_TOOL:
+        from .qualitative import validate_qualitative_parameters, validate_qualitative_project
+        validate_qualitative_project(project_id, user_id)
+        validate_qualitative_parameters(parameters)
     analysis = Analysis(
         id=str(UUID(analysis_id)) if analysis_id else str(uuid4()),
         user_id=user_id, project_id=project_id,
@@ -258,6 +262,9 @@ def delete_analysis(analysis: Analysis) -> None:
                 destination = quarantine / label
                 _move_artifact(source, destination)
                 staged.append((source, destination))
+        if analysis.tool_id == QUALITATIVE_TOOL:
+            from .qualitative import delete_qualitative_dependents
+            delete_qualitative_dependents((analysis.id,))
         db.session.execute(delete(AnalysisDocument).where(AnalysisDocument.analysis_id == analysis.id))
         db.session.delete(analysis)
         db.session.commit()

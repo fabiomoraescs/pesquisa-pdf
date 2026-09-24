@@ -13,6 +13,8 @@ from sqlalchemy import delete, select
 
 from .extensions import db
 from .models import Analysis, AnalysisDocument, Project, ProjectLibrary, ProjectVocabularyVersion, User, utcnow
+from .qualitative import delete_qualitative_dependents
+from .scraping_types import QUALITATIVE_TOOL
 from .services import record_audit
 from .vocabularies import forget_project_store
 
@@ -131,6 +133,8 @@ def _delete_projects(projects: list[Project], actor: User | None, confirmation: 
                     staged.append((source, destination))
             for project in projects:
                 for analysis in [item for item in analyses if item.project_id == project.id]:
+                    if analysis.tool_id == QUALITATIVE_TOOL:
+                        delete_qualitative_dependents((analysis.id,))
                     db.session.execute(delete(AnalysisDocument).where(AnalysisDocument.analysis_id == analysis.id))
                     db.session.delete(analysis)
                 db.session.execute(delete(ProjectVocabularyVersion).where(ProjectVocabularyVersion.project_id == project.id))

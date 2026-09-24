@@ -1,9 +1,19 @@
-"""Identidades públicas das duas raspagens; IDs de ferramentas permanecem estáveis."""
+"""Identidades dos tipos de projeto; IDs de ferramentas permanecem estáveis."""
 
 FREE = "free"
 SYSTEMATIC = "systematic"
-TOOL_BY_TYPE = {FREE: "pdf_scraper", SYSTEMATIC: "document_analysis"}
-LABEL_BY_TYPE = {FREE: "Raspagem livre", SYSTEMATIC: "Raspagem sistemática"}
+QUALITATIVE = "qualitative"
+QUALITATIVE_TOOL = "qualitative_analysis"
+TOOL_BY_TYPE = {
+    FREE: "pdf_scraper",
+    SYSTEMATIC: "document_analysis",
+    QUALITATIVE: QUALITATIVE_TOOL,
+}
+LABEL_BY_TYPE = {
+    FREE: "Raspagem livre",
+    SYSTEMATIC: "Raspagem sistemática",
+    QUALITATIVE: "Análise qualitativa",
+}
 LABEL_BY_TOOL = {tool: LABEL_BY_TYPE[kind] for kind, tool in TOOL_BY_TYPE.items()}
 
 

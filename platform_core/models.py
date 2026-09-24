@@ -1,12 +1,13 @@
-"""Metadados persistentes. PDFs, trechos e embeddings não são salvos aqui."""
+"""Metadados persistentes; PDFs, corpus integral e embeddings ficam fora do banco."""
 
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import unicodedata
 from uuid import uuid4
 
 from flask_login import UserMixin
-from sqlalchemy import UniqueConstraint
+from sqlalchemy import CheckConstraint, ForeignKeyConstraint, Index, UniqueConstraint, event
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -211,7 +212,126 @@ class AnalysisDocument(db.Model):
     analysis_id: Mapped[str] = mapped_column(db.ForeignKey("analyses.id"), index=True, nullable=False)
     original_name: Mapped[str] = mapped_column(db.String(255), nullable=False)
     stored_name: Mapped[str] = mapped_column(db.String(255), nullable=False)
-    __table_args__ = (UniqueConstraint("analysis_id", "stored_name"),)
+    __table_args__ = (
+        UniqueConstraint("analysis_id", "stored_name"),
+        # Permite FKs compostas que provam que o documento pertence à Base.
+        Index("ux_analysis_documents_id_analysis_id", "id", "analysis_id", unique=True),
+    )
+
+
+def normalized_qualitative_code_name(name: str) -> str:
+    """Chave estável para unicidade de códigos dentro de uma Base."""
+    return unicodedata.normalize("NFKC", " ".join(name.split())).casefold()
+
+
+class QualitativeCode(db.Model):
+    __tablename__ = "qualitative_codes"
+    id: Mapped[str] = mapped_column(db.String(36), primary_key=True, default=lambda: str(uuid4()))
+    analysis_id: Mapped[str] = mapped_column(db.ForeignKey("analyses.id"), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(db.String(160), nullable=False)
+    normalized_name: Mapped[str] = mapped_column(db.String(160), nullable=False)
+    description: Mapped[str] = mapped_column(db.Text, default="", nullable=False)
+    active: Mapped[bool] = mapped_column(db.Boolean, default=True, nullable=False)
+    created_by_user_id: Mapped[str] = mapped_column(db.ForeignKey("users.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
+    __table_args__ = (
+        UniqueConstraint("analysis_id", "normalized_name", name="uq_qualitative_code_name_per_base"),
+        UniqueConstraint("id", "analysis_id", name="uq_qualitative_code_id_base"),
+        CheckConstraint("length(trim(name)) > 0", name="ck_qualitative_code_name"),
+        CheckConstraint("length(normalized_name) > 0", name="ck_qualitative_code_normalized_name"),
+    )
+
+
+@event.listens_for(QualitativeCode, "before_insert")
+@event.listens_for(QualitativeCode, "before_update")
+def _prepare_qualitative_code(_mapper, _connection, code: QualitativeCode) -> None:
+    name = " ".join(code.name.split())
+    normalized = normalized_qualitative_code_name(name)
+    if not name or len(name) > 160 or len(normalized) > 160:
+        raise ValueError("Informe um nome de código válido (até 160 caracteres).")
+    code.name = name
+    code.normalized_name = normalized
+
+
+class QualitativeExcerpt(db.Model):
+    __tablename__ = "qualitative_excerpts"
+    id: Mapped[str] = mapped_column(db.String(36), primary_key=True, default=lambda: str(uuid4()))
+    analysis_id: Mapped[str] = mapped_column(db.ForeignKey("analyses.id"), nullable=False, index=True)
+    document_id: Mapped[str] = mapped_column(db.String(36), nullable=False)
+    page_number: Mapped[int] = mapped_column(db.Integer, nullable=False)
+    start_offset: Mapped[int] = mapped_column(db.Integer, nullable=False)
+    end_offset: Mapped[int] = mapped_column(db.Integer, nullable=False)
+    quoted_text: Mapped[str] = mapped_column(db.Text, nullable=False)
+    page_text_hash: Mapped[str] = mapped_column(db.String(64), nullable=False)
+    created_by_user_id: Mapped[str] = mapped_column(db.ForeignKey("users.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["document_id", "analysis_id"],
+            ["analysis_documents.id", "analysis_documents.analysis_id"],
+            name="fk_qualitative_excerpt_document_base",
+        ),
+        UniqueConstraint("id", "analysis_id", name="uq_qualitative_excerpt_id_base"),
+        CheckConstraint("page_number >= 1", name="ck_qualitative_excerpt_page"),
+        CheckConstraint("start_offset >= 0 AND end_offset > start_offset", name="ck_qualitative_excerpt_offsets"),
+        CheckConstraint("length(quoted_text) > 0", name="ck_qualitative_excerpt_text"),
+        CheckConstraint("length(page_text_hash) = 64", name="ck_qualitative_excerpt_hash"),
+    )
+
+
+class QualitativeCoding(db.Model):
+    __tablename__ = "qualitative_codings"
+    id: Mapped[str] = mapped_column(db.String(36), primary_key=True, default=lambda: str(uuid4()))
+    # A Base repetida aqui permite impor no banco que código e trecho coincidem.
+    analysis_id: Mapped[str] = mapped_column(db.ForeignKey("analyses.id"), nullable=False, index=True)
+    excerpt_id: Mapped[str] = mapped_column(db.String(36), nullable=False)
+    code_id: Mapped[str] = mapped_column(db.String(36), nullable=False)
+    created_by_user_id: Mapped[str] = mapped_column(db.ForeignKey("users.id"), nullable=False)
+    origin: Mapped[str] = mapped_column(db.String(16), default="manual", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+    __table_args__ = (
+        ForeignKeyConstraint(["excerpt_id", "analysis_id"],
+                             ["qualitative_excerpts.id", "qualitative_excerpts.analysis_id"],
+                             name="fk_qualitative_coding_excerpt_base"),
+        ForeignKeyConstraint(["code_id", "analysis_id"],
+                             ["qualitative_codes.id", "qualitative_codes.analysis_id"],
+                             name="fk_qualitative_coding_code_base"),
+        UniqueConstraint("excerpt_id", "code_id", name="uq_qualitative_coding_excerpt_code"),
+        CheckConstraint("origin IN ('manual', 'assisted')", name="ck_qualitative_coding_origin"),
+    )
+
+
+class QualitativeMemo(db.Model):
+    __tablename__ = "qualitative_memos"
+    id: Mapped[str] = mapped_column(db.String(36), primary_key=True, default=lambda: str(uuid4()))
+    analysis_id: Mapped[str] = mapped_column(db.ForeignKey("analyses.id"), nullable=False, index=True)
+    document_id: Mapped[str | None] = mapped_column(db.String(36))
+    code_id: Mapped[str | None] = mapped_column(db.String(36))
+    excerpt_id: Mapped[str | None] = mapped_column(db.String(36))
+    text: Mapped[str] = mapped_column(db.Text, nullable=False)
+    created_by_user_id: Mapped[str] = mapped_column(db.ForeignKey("users.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
+    __table_args__ = (
+        ForeignKeyConstraint(["document_id", "analysis_id"],
+                             ["analysis_documents.id", "analysis_documents.analysis_id"],
+                             name="fk_qualitative_memo_document_base"),
+        ForeignKeyConstraint(["code_id", "analysis_id"],
+                             ["qualitative_codes.id", "qualitative_codes.analysis_id"],
+                             name="fk_qualitative_memo_code_base"),
+        ForeignKeyConstraint(["excerpt_id", "analysis_id"],
+                             ["qualitative_excerpts.id", "qualitative_excerpts.analysis_id"],
+                             name="fk_qualitative_memo_excerpt_base"),
+        CheckConstraint(
+            "(CASE WHEN document_id IS NOT NULL THEN 1 ELSE 0 END) + "
+            "(CASE WHEN code_id IS NOT NULL THEN 1 ELSE 0 END) + "
+            "(CASE WHEN excerpt_id IS NOT NULL THEN 1 ELSE 0 END) <= 1",
+            name="ck_qualitative_memo_single_target",
+        ),
+        CheckConstraint("length(trim(text)) > 0", name="ck_qualitative_memo_text"),
+    )
 
 
 class AuditLog(db.Model):

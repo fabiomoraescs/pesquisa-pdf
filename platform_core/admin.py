@@ -14,7 +14,8 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from .extensions import db
 from .models import (
-    AccessGrant, Analysis, AuditLog, PasswordRecoveryToken, Plan, PlanTool, Project, ProjectLibrary, ProjectVocabularyVersion, Tool, User,
+    AccessGrant, Analysis, AuditLog, PasswordRecoveryToken, Plan, PlanTool, Project, ProjectLibrary, ProjectVocabularyVersion,
+    QualitativeCode, QualitativeCoding, QualitativeExcerpt, QualitativeMemo, Tool, User,
     UserProfile, UserToolOverride, VocabularyLibrary, utcnow,
 )
 from .password_policy import TEMPORARY_PASSWORD
@@ -268,6 +269,9 @@ def _permanent_deletion_block(user: User) -> str | None:
         return "Este usuário possui projetos vinculados e não pode ser excluído permanentemente enquanto esses projetos existirem."
     if db.session.scalar(select(Analysis.id).where(Analysis.user_id == user.id).limit(1)):
         return "Este usuário possui análises vinculadas. Exclua as análises antes de remover a conta."
+    if any(db.session.scalar(select(model.id).where(model.created_by_user_id == user.id).limit(1))
+           for model in (QualitativeCode, QualitativeExcerpt, QualitativeCoding, QualitativeMemo)):
+        return "Este usuário possui registros de codificação qualitativa vinculados e não pode ser excluído permanentemente."
     from app import PROGRESSOS, PROGRESSOS_LOCK
     from historico_racial.routes import JOBS_LOCK, PROGRESSOS_HR
 

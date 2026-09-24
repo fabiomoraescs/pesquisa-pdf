@@ -25,6 +25,7 @@ PLANOS = (
 FERRAMENTAS = (
     ("pdf_scraper", "Raspagem livre", "/"),
     ("document_analysis", "Raspagem sistemática", "/analise-documental"),
+    ("qualitative_analysis", "Análise qualitativa", "/analise-qualitativa"),
 )
 ACCOUNT_LIFECYCLE_LOCK = RLock()
 
