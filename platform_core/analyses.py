@@ -8,16 +8,29 @@ import logging
 import math
 import os
 import shutil
+from collections import Counter
 from datetime import date, datetime
 from pathlib import Path
 from uuid import UUID, uuid4
 
 from flask import abort, current_app
-from sqlalchemy import delete, select
+from sqlalchemy import and_, delete, or_, select
 from werkzeug.utils import secure_filename
 
 from .extensions import db
 from .models import Analysis, AnalysisDocument, Project, User, utcnow
+from .scraping_types import FREE, TOOL_BY_TYPE
+
+
+def history_access_filter(user_id: str, scrape_type: str):
+    """Filtro das listagens de Bases; requer outer join com Project."""
+    ownership = and_(Project.owner_user_id == user_id,
+                     Project.scrape_type == scrape_type,
+                     Project.deleted_at.is_(None))
+    if scrape_type == FREE:
+        ownership = or_(ownership, and_(Analysis.project_id.is_(None),
+                                       Analysis.user_id == user_id))
+    return and_(Analysis.tool_id == TOOL_BY_TYPE[scrape_type], ownership)
 
 
 def analysis_root() -> Path:
@@ -160,6 +173,19 @@ def load_result(analysis: Analysis) -> dict:
         abort(404)
     with path.open(encoding="utf-8") as stream:
         return json.load(stream)
+
+
+def systematic_chart_data(result: dict) -> dict[str, list[tuple[str, int]]]:
+    """Séries do dashboard sistemático a partir das ocorrências já salvas."""
+    occurrences = result.get("ocorrencias", [])
+    entities = Counter(item.get("entidade_canonica") or "Não informada" for item in occurrences)
+    methods = Counter(item.get("tipo_correspondencia") or (
+        "Lexical" if item.get("metodo_localizacao") == "lexical" else "Não informado"
+    ) for item in occurrences)
+    return {
+        "entities": sorted(entities.items(), key=lambda pair: (-pair[1], pair[0])),
+        "methods": sorted(methods.items(), key=lambda pair: (-pair[1], pair[0])),
+    }
 
 
 def documents_for(analysis: Analysis) -> list[AnalysisDocument]:

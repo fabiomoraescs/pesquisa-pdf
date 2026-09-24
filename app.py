@@ -7,6 +7,7 @@ import re
 import secrets
 import shutil
 import time
+from datetime import datetime, timedelta, timezone
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from threading import RLock
@@ -26,11 +27,12 @@ from flask import (
 )
 from flask_login import current_user, logout_user
 from flask_wtf.csrf import CSRFError
-from sqlalchemy import select
+from sqlalchemy import extract, false, func, or_, select
+from werkzeug.exceptions import NotFound
 
 from platform_core.extensions import csrf, db, login_manager, migrate
 from platform_core.models import Analysis, Project, Tool, User
-from platform_core.analyses import create_analysis, document_paths, get_analysis, preserve_documents, save_error, save_success
+from platform_core.analyses import create_analysis, document_paths, get_analysis, history_access_filter, load_result, preserve_documents, save_error, save_success, systematic_chart_data
 from platform_core.auth import auth_bp
 from platform_core.projects import projects_bp
 from platform_core.admin import admin_bp
@@ -39,7 +41,7 @@ from platform_core.analysis_routes import analyses_bp
 from platform_core.presentation import register_presentation
 from platform_core.cli import register_cli
 from platform_core.services import ACCOUNT_LIFECYCLE_LOCK, access_is_active, account_accepts_new_work, can_use_tool, get_project_for_user
-from platform_core.scraping_types import FREE, tool_for_project
+from platform_core.scraping_types import FREE, SYSTEMATIC, TOOL_BY_TYPE, tool_for_project
 from platform_core.semantic_threshold import normalize as normalize_semantic_threshold, template_settings
 
 from analyzer.common import (
@@ -648,7 +650,87 @@ def arquivo_grande(_erro):
 
 @app.get("/")
 def home():
-    return redirect(url_for("profile.my_profile"))
+    available_types = [kind for kind in (FREE, SYSTEMATIC)
+                       if can_use_tool(current_user, TOOL_BY_TYPE[kind])]
+    project_filter = (Project.owner_user_id == current_user.id,
+                      Project.status == "active", Project.deleted_at.is_(None),
+                      Project.scrape_type.in_(available_types))
+    projects_total = db.session.scalar(select(func.count()).select_from(Project).where(*project_filter))
+    projects_by_type = {
+        kind: db.session.scalar(select(func.count()).select_from(Project).where(*project_filter,
+                                                                                Project.scrape_type == kind))
+        for kind in (FREE, SYSTEMATIC)
+    }
+    base_filter = (or_(*(history_access_filter(current_user.id, kind)
+                         for kind in available_types)) if available_types else false(),)
+    base_query = select(Analysis, Project.name).outerjoin(Project, Analysis.project_id == Project.id)
+    bases_total = db.session.scalar(select(func.count()).select_from(Analysis)
+                                    .outerjoin(Project, Analysis.project_id == Project.id)
+                                    .where(*base_filter))
+    recent_bases = db.session.execute(base_query.where(*base_filter)
+                                      .order_by(Analysis.created_at.desc()).limit(5)).all()
+    latest_bases = {}
+    chart_data = {}
+    for kind in (FREE, SYSTEMATIC):
+        if kind not in available_types:
+            latest_bases[kind] = None
+            continue
+        latest = db.session.execute(base_query.where(
+            *base_filter, Analysis.tool_id == TOOL_BY_TYPE[kind], Analysis.status == "concluida"
+        ).order_by(func.coalesce(Analysis.completed_at, Analysis.created_at).desc(),
+                   Analysis.created_at.desc()).limit(1)).first()
+        latest_bases[kind] = latest
+        if latest is None:
+            continue
+        try:
+            result = load_result(latest[0])
+        except NotFound:
+            continue
+        if kind == FREE:
+            version = result.get("versao") or latest[0].tool_version
+            key = "resultados_por_livro" if version == "v3" else "por_livro"
+            series = (result.get("dashboard") or {}).get(key) or {}
+            title = "Resultados recuperados por livro" if version == "v3" else "Ocorrências por livro"
+            unit = "resultado(s)" if version == "v3" else "ocorrência(s)"
+            pairs = list(zip(series.get("rotulos", []), series.get("valores", [])))
+        else:
+            title = "Ocorrências por entidade"
+            unit = "ocorrência(s)"
+            pairs = systematic_chart_data(result)["entities"]
+        pairs = sorted(pairs, key=lambda pair: (-pair[1], str(pair[0])))[:8]
+        chart_data[kind] = {"title": title, "unit": unit,
+                            "labels": [pair[0] for pair in pairs],
+                            "values": [pair[1] for pair in pairs]}
+    admin_charts = None
+    if current_user.role == "admin":
+        month_cursor = datetime.now(timezone.utc).date().replace(day=1)
+        months = []
+        for _ in range(12):
+            months.append(month_cursor.strftime("%Y-%m"))
+            month_cursor = (month_cursor - timedelta(days=1)).replace(day=1)
+        months.reverse()
+        first_year, first_month = map(int, months[0].split("-"))
+        year_expression = extract("year", User.created_at)
+        month_expression = extract("month", User.created_at)
+        registration_counts = {f"{int(year):04d}-{int(month):02d}": count
+                               for year, month, count in db.session.execute(
+            select(year_expression, month_expression, func.count())
+            .where(User.created_at >= datetime(first_year, first_month, 1, tzinfo=timezone.utc))
+            .group_by(year_expression, month_expression)).all()}
+        usage_counts = dict(db.session.execute(select(Analysis.tool_id, func.count())
+            .where(Analysis.status == "concluida", Analysis.tool_id.in_(TOOL_BY_TYPE.values()))
+            .group_by(Analysis.tool_id)).all())
+        admin_charts = {
+            "registrations": {"labels": months,
+                              "values": [registration_counts.get(month, 0) for month in months]},
+            "usage": {"labels": ["Raspagem livre", "Raspagem sistemática"],
+                      "values": [usage_counts.get(TOOL_BY_TYPE[kind], 0)
+                                 for kind in (FREE, SYSTEMATIC)]},
+        }
+    return render_template("platform/dashboard.html", projects_total=projects_total,
+                           projects_by_type=projects_by_type, bases_total=bases_total,
+                           recent_bases=recent_bases, latest_bases=latest_bases,
+                           chart_data=chart_data, admin_charts=admin_charts)
 
 
 @app.route("/", methods=["POST"], endpoint="legacy_free_submit")

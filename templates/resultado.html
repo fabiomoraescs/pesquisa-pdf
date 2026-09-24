@@ -132,9 +132,7 @@
     {% endif %}
 
   </main>
-  <footer class="app-footer">
-    Grupo de pesquisa: <a href="http://dgp.cnpq.br/dgp/espelhogrupo/538438" target="_blank" rel="noopener noreferrer">ConsCiências-Sociais</a> | Desenvolvido por <a href="http://lattes.cnpq.br/0075160400322127" target="_blank" rel="noopener noreferrer">Fabio Monteiro de Moraes</a> - 2026 | Versão beta
-  </footer>
+  {% include 'platform/_footer.html' %}
   <script id="dados-dashboard" type="application/json">{{ resultado.dashboard | tojson }}</script>
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
   <script src="{{ url_for('static', filename='js/interface.js') }}"></script>

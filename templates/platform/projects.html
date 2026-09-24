@@ -4,7 +4,7 @@
 {% block body %}
 {% from 'platform/_view_controls.html' import toggle, action_link %}
 {% from 'platform/_icons.html' import icon %}
-<div class="platform-toolbar platform-toolbar-actions"><div class="d-flex flex-wrap gap-2 align-items-center"><a class="btn btn-outline-primary btn-sm" href="{{ url_for('projects.new_free_project' if scrape_type == 'free' else 'projects.new_project') }}">Novo projeto</a><a class="btn btn-outline-primary btn-sm" href="{{ url_for('projects.archived_free_projects' if scrape_type == 'free' else 'projects.archived_projects') }}">Projetos arquivados</a></div>{{ toggle('my-projects-list') }}</div>
+<div class="platform-toolbar platform-toolbar-actions"><div class="d-flex flex-wrap gap-2 align-items-center ms-auto"><a class="btn btn-outline-primary btn-sm" href="{{ url_for('projects.new_free_project' if scrape_type == 'free' else 'projects.new_project') }}">Novo projeto</a><a class="btn btn-outline-primary btn-sm" href="{{ url_for('projects.archived_free_projects' if scrape_type == 'free' else 'projects.archived_projects') }}">Projetos arquivados</a>{{ toggle('my-projects-list') }}</div></div>
 {% if projects %}
 <div class="platform-view-list" id="my-projects-list" data-view-container>
   {% for project in projects %}

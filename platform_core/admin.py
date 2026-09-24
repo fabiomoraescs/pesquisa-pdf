@@ -7,7 +7,7 @@ from functools import wraps
 from pathlib import Path
 from uuid import UUID
 
-from flask import Blueprint, abort, flash, redirect, render_template, request, send_file, url_for
+from flask import Blueprint, abort, current_app, flash, redirect, render_template, request, send_file, url_for
 from flask_login import current_user, login_required
 from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -19,6 +19,7 @@ from .models import (
 )
 from .password_policy import TEMPORARY_PASSWORD
 from .project_lifecycle import ProjectActionError, archive, delete_archived, restore
+from .profile import remove_profile_photo
 from .scraping_types import LABEL_BY_TOOL
 from .official_libraries import LibraryError, add_entity, add_group, add_variant, change_publication, create_draft, create_imported_draft, set_item_active
 from .library_spreadsheets import MAX_XLSX_BYTES, SpreadsheetImportError, parse_library_xlsx, previews
@@ -304,6 +305,7 @@ def permanently_delete_user(user_id: UUID):
             return render_template("platform/user_delete_permanent.html", user=user,
                                    block_reason=block_reason), 409
 
+        target_user_id = user.id
         try:
             # Não há cascade: dependências exclusivas são eliminadas explicitamente;
             # registros históricos de autoria permanecem com um snapshot mínimo.
@@ -327,6 +329,10 @@ def permanently_delete_user(user_id: UUID):
             db.session.rollback()
             flash("Não foi possível excluir a conta com segurança. Verifique seus vínculos e tente novamente.", "danger")
             return redirect(url_for("admin.user_detail", user_id=user_id)), 409
+        try:
+            remove_profile_photo(target_user_id)
+        except OSError:
+            current_app.logger.exception("Não foi possível remover a foto da conta excluída %s.", target_user_id)
     flash("Usuário excluído permanentemente.", "success")
     return redirect(url_for("admin.users"))
 

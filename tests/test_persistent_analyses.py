@@ -271,7 +271,7 @@ class PersistentAnalysisTests(unittest.TestCase):
         self.assertFalse(can_use_tool(student, "pdf_scraper"))
         self.client.post("/logout", data={"csrf_token": token})
         login(self.client)
-        self.assertEqual(self.client.get("/").headers["Location"], "/perfil")
+        self.assertEqual(self.client.get("/").status_code, 200)
         self.assertEqual(self.client.get("/raspagem-livre").status_code, 403)
         self.assertEqual(self.client.get("/analises").status_code, 403)
         self.assertEqual(self.client.get("/projetos").status_code, 200)
@@ -284,7 +284,7 @@ class PersistentAnalysisTests(unittest.TestCase):
         }).status_code, 302)
         self.client.post("/logout", data={"csrf_token": token})
         login(self.client)
-        self.assertEqual(self.client.get("/").headers["Location"], "/perfil")
+        self.assertEqual(self.client.get("/").status_code, 200)
         self.assertEqual(self.client.get("/raspagem-livre").status_code, 200)
 
     def test_new_tool_route_is_guarded_by_dynamic_plan_matrix(self):

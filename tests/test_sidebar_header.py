@@ -19,6 +19,7 @@ class SidebarHeaderTests(unittest.TestCase):
 
     def test_sidebar_brand_is_fixed_and_main_header_tracks_section(self):
         pages = (
+            ("/", "Dashboard"),
             ("/perfil", "Perfil"),
             ("/projetos", "Projetos"),
             ("/projetos/arquivados", "Projetos arquivados"),
@@ -56,13 +57,14 @@ class SidebarHeaderTests(unittest.TestCase):
         html = self.client.get("/admin/usuarios").get_data(as_text=True)
         nav = html.split('<nav class="platform-nav"', 1)[1].split("</nav>", 1)[0]
         positions = [nav.index(marker) for marker in (
-            'href="/perfil"', '<span>Raspagem de dados</span>',
+            'href="/"', '<span>Raspagem de dados</span>',
             '<span>Análise qualitativa</span>', '<span>Análise quantitativa</span>',
             'id="platform-admin-toggle"',
         )]
         self.assertEqual(positions, sorted(positions))
         self.assertIn('href="/projetos/livres"', nav)
         self.assertIn('href="/projetos"', nav)
+        self.assertNotIn('href="/perfil"', nav)
         self.assertEqual(nav.count('>Novo projeto</a>'), 2)
         self.assertEqual(nav.count('>Projetos</a>'), 2)
         self.assertNotIn('>Bases de análise</a>', nav)

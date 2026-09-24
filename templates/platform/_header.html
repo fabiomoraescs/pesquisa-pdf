@@ -17,7 +17,8 @@
   'admin.library_template': 'Bibliotecas', 'admin.library_import': 'Bibliotecas',
   'admin.audit': 'Auditoria'
 } %}
-{% if endpoint == 'profile.my_profile' %}{% set section_title = 'Perfil' %}
+{% if endpoint == 'home' %}{% set section_title = 'Dashboard' %}
+{% elif endpoint == 'profile.my_profile' or endpoint in ('profile.photo', 'profile.upload_photo', 'profile.remove_photo') %}{% set section_title = 'Perfil' %}
 {% elif endpoint in ('projects.archived_projects', 'projects.archived_free_projects') or endpoint in ('projects.delete_project', 'projects.confirm_batch_delete') %}{% set section_title = 'Projetos arquivados' %}
 {% elif endpoint.startswith('projects.') %}{% set section_title = 'Projetos' %}
 {% elif endpoint == 'inicio' or endpoint in ('resultado', 'download', 'progresso') %}{% set section_title = 'Raspagem livre' %}
@@ -30,7 +31,7 @@
 <aside class="platform-sidebar" id="platform-sidebar" aria-label="Menu da plataforma">
   <div class="platform-section-title" aria-label="Nome da plataforma">{{ brand_mark() }}</div>
   <nav class="platform-nav" aria-label="Navegação principal">
-    <a class="{{ 'is-current' if endpoint == 'profile.my_profile' else '' }}" {% if endpoint == 'profile.my_profile' %}aria-current="page"{% endif %} href="{{ url_for('profile.my_profile') }}">{{ icon('perfil') }}<span>Perfil</span></a>
+    <a class="{{ 'is-current' if endpoint == 'home' else '' }}" {% if endpoint == 'home' %}aria-current="page"{% endif %} href="{{ url_for('home') }}">{{ icon('grade') }}<span>Dashboard</span></a>
     <details class="platform-nav-dropdown" {% if free_context or systematic_context %}open{% endif %}>
       <summary>{{ icon('pdf') }}<span>Raspagem de dados</span></summary>
       <details class="platform-nav-subdropdown" {% if free_context %}open{% endif %}>
@@ -69,7 +70,15 @@
 <header class="platform-header platform-header-authenticated">
   <button class="platform-menu-toggle" id="platform-menu-toggle" type="button" aria-label="Abrir menu" aria-controls="platform-sidebar" aria-expanded="false"><span></span><span></span><span></span></button>
   <span class="platform-header-context">{{ section_title }}</span>
-  <span class="platform-header-user">{{ current_user.name }}</span><button class="btn btn-outline-primary theme-icon-button" id="theme-toggle" type="button" aria-label="Alternar tema" title="Alternar tema"></button>
+  <div class="platform-header-account">
+    <span class="platform-header-user">{{ current_user.name }}</span>
+    <span class="platform-header-divider" aria-hidden="true">|</span>
+    <a class="platform-header-profile-link" href="{{ url_for('profile.my_profile') }}">Perfil</a>
+    <a class="platform-header-avatar" href="{{ url_for('profile.my_profile') }}" aria-label="Abrir Perfil" title="Perfil">
+      {% if profile_avatar_url %}<img src="{{ profile_avatar_url }}" alt="">{% else %}{{ icon('perfil') }}{% endif %}
+    </a>
+  </div>
+  <button class="btn btn-outline-primary theme-icon-button" id="theme-toggle" type="button" aria-label="Alternar tema" title="Alternar tema"></button>
 </header>
 {% else %}
 <header class="platform-header platform-header-public">

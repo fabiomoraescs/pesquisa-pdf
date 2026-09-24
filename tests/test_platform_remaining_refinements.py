@@ -123,7 +123,7 @@ class RemainingRefinementsTests(unittest.TestCase):
                 "confirm": "nova-senha-definitiva-123",
             })
             self.assertEqual(change.status_code, 302)
-            self.assertEqual(change.headers["Location"], "/perfil")
+            self.assertEqual(change.headers["Location"], "/")
             self.assertEqual(visitor.get("/projetos").status_code, 200)
 
         db.session.refresh(user)
@@ -143,7 +143,7 @@ class RemainingRefinementsTests(unittest.TestCase):
                 "password": "nova-senha-definitiva-123",
             })
             self.assertEqual(final_login.status_code, 302)
-            self.assertEqual(final_login.headers["Location"], "/perfil")
+            self.assertEqual(final_login.headers["Location"], "/")
 
     def test_common_user_cannot_reset_another_password(self):
         target = create_user("Alvo", "alvo@example.org")
@@ -205,7 +205,7 @@ class RemainingRefinementsTests(unittest.TestCase):
                 "csrf_token": csrf_from(fresh.get("/login")), "email": user.email,
                 "password": "nova-senha-segura-123",
             })
-        self.assertEqual(response.headers["Location"], "/perfil")
+        self.assertEqual(response.headers["Location"], "/")
 
     def test_new_login_with_temporary_password_reaches_only_change_page(self):
         user = create_user("Alvo", "alvo@example.org")

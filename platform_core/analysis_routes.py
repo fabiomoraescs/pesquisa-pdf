@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
-from collections import Counter
 from pathlib import Path
 from uuid import UUID
 
 from flask import Blueprint, abort, flash, redirect, render_template, request, send_from_directory, url_for
 from flask_login import current_user, login_required
-from sqlalchemy import and_, or_, select
+from sqlalchemy import select
 
-from .analyses import analysis_dir, delete_analysis, documents_for, get_analysis, load_result
+from .analyses import analysis_dir, delete_analysis, documents_for, get_analysis, history_access_filter, load_result, systematic_chart_data
 from .extensions import db
 from .models import Analysis, Project
 from .scraping_types import FREE, SYSTEMATIC, TOOL_BY_TYPE, tool_for_project
@@ -75,12 +74,8 @@ def _type_history(scrape_type: str):
         Project.deleted_at.is_(None)
     )).all()
     owned_ids = [project.id for project in owned_projects]
-    ownership = Analysis.project_id.in_(owned_ids)
-    if scrape_type == FREE:
-        ownership = or_(ownership, and_(Analysis.project_id.is_(None),
-                                        Analysis.user_id == current_user.id))
-    items = db.session.scalars(select(Analysis).where(
-        Analysis.tool_id == tool_id, ownership
+    items = db.session.scalars(select(Analysis).outerjoin(Project, Analysis.project_id == Project.id).where(
+        history_access_filter(current_user.id, scrape_type)
     ).order_by(Analysis.created_at.desc())).all()
     return render_template(
         "platform/analysis_history.html", analyses=items, project=None,
@@ -124,15 +119,7 @@ def dashboard(analysis_id: UUID):
         return render_template("resultado.html", resultado=result, identificador=analysis.id,
                                analysis=analysis, projects=projects, documents=documents_for(analysis),
                                can_manage=_can_manage(analysis))
-    occurrences = result.get("ocorrencias", [])
-    entities = Counter(item.get("entidade_canonica") or "Não informada" for item in occurrences)
-    methods = Counter(item.get("tipo_correspondencia") or (
-        "Lexical" if item.get("metodo_localizacao") == "lexical" else "Não informado"
-    ) for item in occurrences)
-    chart_data = {
-        "entities": sorted(entities.items(), key=lambda pair: (-pair[1], pair[0])),
-        "methods": sorted(methods.items(), key=lambda pair: (-pair[1], pair[0])),
-    }
+    chart_data = systematic_chart_data(result)
     return render_template("platform/analysis_dashboard.html", analysis=analysis,
                            result=result, projects=projects, documents=documents_for(analysis),
                            can_manage=_can_manage(analysis), chart_data=chart_data)

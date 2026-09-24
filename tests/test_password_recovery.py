@@ -125,7 +125,7 @@ class PasswordRecoveryTests(unittest.TestCase):
             "password": "nova-senha-segura-123",
         })
         self.assertEqual(new_login.status_code, 302)
-        self.assertEqual(new_login.headers["Location"], "/perfil")
+        self.assertEqual(new_login.headers["Location"], "/")
         audits = db.session.query(AuditLog).filter_by(target_type="user", target_id=user.id).all()
         self.assertEqual({item.action for item in audits if item.action.startswith("password_recover")},
                          {"password_recovery_requested", "password_recovered"})

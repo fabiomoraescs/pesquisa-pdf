@@ -23,7 +23,7 @@ def _next_url() -> str:
     target = request.args.get("next", "")
     if target.startswith("/") and not target.startswith("//") and "\\" not in target:
         return target
-    return url_for("profile.my_profile")
+    return url_for("home")
 
 
 @auth_bp.route("/login", methods=["GET", "POST"])

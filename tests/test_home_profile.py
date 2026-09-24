@@ -17,7 +17,7 @@ class HomeProfileTests(unittest.TestCase):
     def tearDown(self):
         self.scope.__exit__(None, None, None)
 
-    def test_root_and_normal_login_open_profile(self):
+    def test_root_and_normal_login_open_dashboard(self):
         create_user()
         anonymous = self.client.get("/")
         self.assertEqual(anonymous.status_code, 302)
@@ -27,10 +27,11 @@ class HomeProfileTests(unittest.TestCase):
             "csrf_token": token, "email": "pesquisador@example.org",
             "password": "senha-de-teste-segura-123",
         })
-        self.assertEqual(response.headers["Location"], "/perfil")
+        self.assertEqual(response.headers["Location"], "/")
         root = self.client.get("/")
-        self.assertEqual(root.status_code, 302)
-        self.assertEqual(root.headers["Location"], "/perfil")
+        self.assertEqual(root.status_code, 200)
+        self.assertIn("Bases de análise recentes", root.get_data(as_text=True))
+        self.assertNotIn("Projetos recentes", root.get_data(as_text=True))
         self.assertEqual(self.client.get("/perfil").status_code, 200)
         self.assertEqual(self.client.get("/raspagem-livre").status_code, 200)
 
@@ -48,12 +49,21 @@ class HomeProfileTests(unittest.TestCase):
         self.assertEqual(urlparse(response.headers["Location"]).path, "/projetos/livres")
         self.assertEqual(self.client.get(response.headers["Location"]).status_code, 200)
 
-    def test_profile_home_does_not_require_free_scraper_permission(self):
+    def test_login_rejects_external_next_and_opens_dashboard(self):
+        create_user()
+        login_url = "/login?next=//example.invalid"
+        response = self.client.post(login_url, data={
+            "csrf_token": csrf_from(self.client.get(login_url)),
+            "email": "pesquisador@example.org", "password": "senha-de-teste-segura-123",
+        })
+        self.assertEqual(response.headers["Location"], "/")
+
+    def test_dashboard_and_profile_do_not_require_free_scraper_permission(self):
         create_user()
         db.session.delete(db.session.get(PlanTool, ("student", "pdf_scraper")))
         db.session.commit()
         login(self.client)
-        self.assertEqual(self.client.get("/").headers["Location"], "/perfil")
+        self.assertEqual(self.client.get("/").status_code, 200)
         self.assertEqual(self.client.get("/perfil").status_code, 200)
         self.assertEqual(self.client.get("/raspagem-livre").status_code, 403)
         self.assertEqual(self.client.get("/projetos/livres").status_code, 403)
