@@ -23,7 +23,7 @@
       </div>
     </div>
 
-    {% if analysis is defined %}<section class="download-card mb-4"><p class="text-secondary mb-2">Análise por termos · {{ analysis.document_count }} PDF(s) · {{ analysis.result_count }} resultado(s) · {{ analysis | metodo_base }} · {{ analysis.created_at.strftime('%d/%m/%Y %H:%M') }}{% if analysis.project_id %} · Vinculada a projeto{% endif %}</p><p class="text-secondary mb-2"><strong>Documentos:</strong> {{ documents|map(attribute='original_name')|join(', ') }} · <strong>Termos:</strong> {{ analysis.parameters_json.termos|map(attribute='termo')|join(', ') }}</p>{% include 'platform/_analysis_actions.html' %}</section>{% endif %}
+    {% if analysis is defined %}<section class="download-card mb-4"><p class="text-secondary mb-2">Busca por termos · {{ analysis.document_count }} PDF(s) · {{ analysis.result_count }} resultado(s) · {{ analysis | metodo_base }} · {{ analysis.created_at.strftime('%d/%m/%Y %H:%M') }}{% if analysis.project_id %} · Vinculada a projeto{% endif %}</p><p class="text-secondary mb-2"><strong>Documentos:</strong> {{ documents|map(attribute='original_name')|join(', ') }} · <strong>Termos:</strong> {{ analysis.parameters_json.termos|map(attribute='termo')|join(', ') }}</p>{% include 'platform/_analysis_actions.html' %}</section>{% endif %}
 
     {% if resultado.erros %}
       <div class="alert alert-warning">

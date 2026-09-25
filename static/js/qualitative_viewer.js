@@ -37,6 +37,41 @@ if (root) {
   let resizeAnchor;
   let panelDrag;
   let viewerWidth = 0;
+  let wheelZoomTimer;
+
+  const explorerPopovers = [...root.querySelectorAll('[data-explorer-popover]')];
+  const positionExplorerPopover = (popover) => {
+    const trigger = root.querySelector(`[aria-controls="${popover.id}"]`);
+    const rect = trigger.getBoundingClientRect();
+    const explorerRect = trigger.closest('#qualitative-explorer').getBoundingClientRect();
+    const width = popover.offsetWidth;
+    const height = popover.offsetHeight;
+    const left = Math.min(Math.max(8, rect.left), Math.max(8, window.innerWidth - width - 8));
+    // Keep sibling menu triggers unobstructed while the popover is open.
+    const below = Math.max(rect.bottom, explorerRect.bottom) + 4;
+    const top = below + height <= window.innerHeight - 8
+      ? below : Math.max(8, explorerRect.top - height - 4);
+    popover.style.left = `${left}px`;
+    popover.style.top = `${top}px`;
+  };
+  const closeExplorerPopovers = () => {
+    for (const popover of explorerPopovers) {
+      if (popover.matches(':popover-open')) popover.hidePopover();
+    }
+  };
+  for (const popover of explorerPopovers) {
+    popover.addEventListener('toggle', () => {
+      const open = popover.matches(':popover-open');
+      root.querySelector(`[aria-controls="${popover.id}"]`).setAttribute('aria-expanded', String(open));
+      if (open) positionExplorerPopover(popover);
+    });
+  }
+  const repositionExplorerPopovers = () => {
+    for (const popover of explorerPopovers) {
+      if (popover.matches(':popover-open')) positionExplorerPopover(popover);
+    }
+  };
+  window.addEventListener('scroll', repositionExplorerPopovers, true);
 
   const searchNotice = (message) => { searchMessage.textContent = message; };
   const makePage = (number) => {
@@ -251,7 +286,20 @@ if (root) {
     enqueue(activePage + 1);
     enqueue(activePage - 1);
   };
-  zoom.addEventListener('change', rerenderVisiblePages);
+  zoom.addEventListener('change', () => {
+    clearTimeout(wheelZoomTimer);
+    rerenderVisiblePages();
+  });
+  scroll.addEventListener('wheel', (event) => {
+    if (!event.ctrlKey || !documentPdf || !event.deltaY) return;
+    event.preventDefault();
+    const direction = event.deltaY < 0 ? 1 : -1;
+    const index = Math.max(0, Math.min(zoom.options.length - 1, zoom.selectedIndex + direction));
+    if (index === zoom.selectedIndex) return;
+    zoom.selectedIndex = index;
+    clearTimeout(wheelZoomTimer);
+    wheelZoomTimer = setTimeout(rerenderVisiblePages, 90);
+  }, { passive: false });
 
   const focusActive = () => document.body.classList.contains('platform-qualitative-focus');
   const movePanelTo = (left, top) => {
@@ -259,8 +307,10 @@ if (root) {
     const limitY = Math.max(8, window.innerHeight - focusPanel.offsetHeight - 8);
     focusPanel.style.left = `${Math.min(limitX, Math.max(8, left))}px`;
     focusPanel.style.top = `${Math.min(limitY, Math.max(8, top))}px`;
+    repositionExplorerPopovers();
   };
   const updateFocusPanel = (minimized) => {
+    if (minimized) closeExplorerPopovers();
     focusPanel.classList.toggle('is-minimized', minimized);
     focusPanelToggle.setAttribute('aria-expanded', String(!minimized));
     const action = minimized ? 'Restaurar painel' : 'Minimizar painel';
@@ -273,6 +323,7 @@ if (root) {
   };
   focusPanelToggle.addEventListener('click', () => updateFocusPanel(!focusPanel.classList.contains('is-minimized')));
   focusToggle.addEventListener('click', () => {
+    closeExplorerPopovers();
     const oldWidth = scroll.clientWidth;
     const focused = !focusActive();
     document.body.classList.toggle('platform-qualitative-focus', focused);
@@ -321,6 +372,7 @@ if (root) {
       focusPanel.offsetTop + direction[1] * step);
   });
   window.addEventListener('resize', () => {
+    repositionExplorerPopovers();
     if (!focusActive()) return;
     requestAnimationFrame(() => {
       if (!window.matchMedia('(max-width: 700px)').matches) movePanelTo(focusPanel.offsetLeft, focusPanel.offsetTop);
@@ -334,10 +386,6 @@ if (root) {
     explorer.classList.toggle('is-open', open);
     explorerToggle.setAttribute('aria-expanded', String(open));
   });
-  const info = document.querySelector('[data-qualitative-info]');
-  document.querySelector('[data-qualitative-info-open]')?.addEventListener('click', () => info.showModal());
-  info.querySelector('[data-qualitative-info-close]')?.addEventListener('click', () => info.close());
-
   try {
     const base = root.dataset.pdfjsBase;
     const loading = pdfjsLib.getDocument({ url: root.dataset.pdfUrl, cMapUrl: `${base}cmaps/`,
@@ -358,7 +406,7 @@ if (root) {
     for (const node of nodes.values()) observer.observe(node.shell);
     goToPage(firstPage);
   } catch (error) {
-    console.error('Não foi possível abrir o PDF da Base.', error);
-    status.textContent = 'Não foi possível abrir o PDF original. Confira o arquivo da Base.';
+    console.error('Não foi possível abrir o PDF do projeto.', error);
+    status.textContent = 'Não foi possível abrir o PDF original. Confira o documento do projeto.';
   }
 }

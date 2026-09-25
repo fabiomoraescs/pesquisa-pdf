@@ -1,0 +1,7 @@
+<form method="post" enctype="multipart/form-data" action="{{ url_for('qualitative.add_documents', analysis_id=analysis.id) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <label class="form-label" for="qualitative-documents">Documentos PDF</label>
+  <input class="form-control" id="qualitative-documents" name="documents" type="file" accept="application/pdf,.pdf" multiple required>
+  <p class="form-text">Selecione um ou mais PDFs. Os documentos já preparados serão preservados.</p>
+  <button class="btn btn-outline-primary btn-sm" type="submit">Enviar documentos</button>
+</form>

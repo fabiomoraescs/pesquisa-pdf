@@ -1,11 +1,11 @@
 {% extends 'platform/base.html' %}
-{% block title %}Novo projeto — {{ 'Análise por termos' if scrape_type == 'free' else 'Análise qualitativa' if scrape_type == 'qualitative' else 'Análise estruturada' }}{% endblock %}
+{% block title %}Novo projeto — {{ 'Busca por termos' if scrape_type == 'free' else 'Análise quali-dados' if scrape_type == 'qualitative' else 'Busca estruturada' }}{% endblock %}
 {% block heading %}Novo projeto{% endblock %}
 {% block page_intro %}<h1 class="visually-hidden">Novo projeto</h1>{% endblock %}
 {% block body %}
 <section class="platform-panel">
   <form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <div class="platform-form-group"><label class="form-label" for="name">Nome do projeto</label><input class="form-control" id="name" name="name" maxlength="200" required value="{{ request.form.get('name', '') }}"></div>
+    <div class="platform-form-group"><label class="form-label" for="name">Nome do projeto</label><input class="form-control" id="name" name="name" maxlength="200" required value="{{ request.form.get('name', '') }}" placeholder="Ex.: Meu projeto de pesquisa"></div>
     <div class="platform-form-group"><label class="form-label" for="description">Descrição (opcional)</label><textarea class="form-control" id="description" name="description" rows="3" maxlength="4000">{{ request.form.get('description', '') }}</textarea></div>
     {% if scrape_type == 'systematic' %}<fieldset class="platform-form-section"><legend>Bibliotecas de vocabulário</legend><p class="platform-muted">Selecione pelo menos uma biblioteca para a versão inicial do projeto.</p>
       <div class="platform-view-list">{% for library in libraries %}
@@ -15,7 +15,7 @@
         </label>
       {% else %}<p>Nenhuma biblioteca publicada está disponível no momento.</p>{% endfor %}</div>
     </fieldset>
-    <p class="form-text">Uma cópia das bibliotecas selecionadas formará a versão v1.0 deste projeto. Depois, você poderá criar versões próprias.</p>{% elif scrape_type == 'qualitative' %}<p class="form-text">Este projeto reúne Bases qualitativas para leitura manual do corpus. A preparação de uma Base não conclui a interpretação da pesquisa.</p>{% else %}<p class="form-text">Neste tipo de projeto, você define os termos livremente e escolhe o método Lexical ou Híbrido em cada nova Base.</p>{% endif %}
+    <p class="form-text">Uma cópia das bibliotecas selecionadas formará a versão v1.0 deste projeto. Depois, você poderá criar versões próprias.</p>{% elif scrape_type == 'qualitative' %}<p class="form-text">Este projeto reúne documentos para leitura e pesquisa qualitativa. Após criá-lo, você poderá adicionar PDFs diretamente no ambiente de análise.</p>{% else %}<p class="form-text">Neste tipo de projeto, você define os termos livremente e escolhe o método Lexical ou Híbrido em cada nova Base.</p>{% endif %}
     <div class="d-flex flex-wrap gap-2"><button class="btn btn-primary" type="submit">Novo projeto</button><a class="btn btn-outline-primary" href="{{ url_for('projects.list_free_projects' if scrape_type == 'free' else 'projects.list_qualitative_projects' if scrape_type == 'qualitative' else 'projects.list_projects') }}">Cancelar</a></div>
   </form>
 </section>

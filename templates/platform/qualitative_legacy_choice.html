@@ -1,0 +1,13 @@
+{% extends 'platform/base.html' %}
+{% block title %}{{ project.name }} — Análysis{% endblock %}
+{% block page_intro %}<h1 class="h4">{{ project.name }}</h1>{% endblock %}
+{% block body %}
+<section class="platform-panel">
+  <p>Este projeto contém ambientes históricos separados. Escolha qual deseja abrir; os documentos não foram reunidos nem alterados.</p>
+  <div class="platform-view-list">
+    {% for workspace in workspaces %}
+    <div class="platform-list-item"><div><strong>Acervo {{ loop.index }}</strong><div class="platform-list-meta">{{ workspace.document_count }} PDF(s) · {{ workspace.created_at.strftime('%d/%m/%Y %H:%M') }}</div></div><a class="btn btn-outline-primary btn-sm" href="{{ url_for('qualitative.base', analysis_id=workspace.id) }}">Abrir ambiente</a></div>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

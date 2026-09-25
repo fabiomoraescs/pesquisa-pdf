@@ -1,21 +1,21 @@
 {% extends 'platform/base.html' %}
-{% block title %}Nova Base — Análise qualitativa{% endblock %}
-{% block page_intro %}<h1 class="h4">Nova Base qualitativa</h1><p class="platform-muted">Projeto: {{ project.name }}</p>{% endblock %}
+{% block title %}Documentos — {{ project.name }}{% endblock %}
+{% block page_intro %}<h1 class="h4">{{ project.name }}</h1>{% endblock %}
 {% block body %}
 <section class="platform-panel">
-  <p>Envie os PDFs do corpus. A preparação extrai o texto de cada página uma única vez; depois, a Base poderá ser reaberta para leitura sem reprocessamento.</p>
+  <p>Formulário de compatibilidade para projetos anteriores. No fluxo atual, os PDFs são adicionados diretamente ao projeto.</p>
   {% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
   <form method="post" enctype="multipart/form-data">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <div class="platform-form-group"><label class="form-label" for="qualitative-name">Nome da Base</label><input class="form-control" id="qualitative-name" name="name" maxlength="200" required value="{{ request.form.get('name', '') }}"></div>
+    <div class="platform-form-group"><label class="form-label" for="qualitative-name">Identificação do acervo anterior</label><input class="form-control" id="qualitative-name" name="name" maxlength="200" required value="{{ request.form.get('name', '') }}"></div>
     <fieldset class="platform-form-section"><legend>Estratégia analítica</legend>
       <p class="platform-muted">Registro metodológico, sem codificação automática nesta etapa.</p>
       {% for value, label in [('deductive', 'Dedutiva'), ('inductive', 'Indutiva'), ('hybrid', 'Híbrida')] %}
       <label class="form-check form-check-inline"><input class="form-check-input" type="radio" name="qualitative_strategy" value="{{ value }}" required {% if request.form.get('qualitative_strategy', 'inductive') == value %}checked{% endif %}><span class="form-check-label">{{ label }}</span></label>
       {% endfor %}
     </fieldset>
-    <div class="platform-form-group"><label class="form-label" for="qualitative-documents">Documentos PDF</label><input class="form-control" id="qualitative-documents" name="documents" type="file" accept="application/pdf,.pdf" multiple required><p class="form-text">Selecione um ou mais PDFs. O arquivo original ficará preservado nesta Base.</p></div>
-    <div class="d-flex flex-wrap gap-2"><button class="btn btn-primary" type="submit">Preparar corpus</button><a class="btn btn-outline-primary" href="{{ url_for('qualitative.project_bases', project_id=project.id) }}">Voltar às Bases</a></div>
+    <div class="platform-form-group"><label class="form-label" for="qualitative-documents">Documentos PDF</label><input class="form-control" id="qualitative-documents" name="documents" type="file" accept="application/pdf,.pdf" multiple required><p class="form-text">Selecione um ou mais PDFs. Os originais permanecerão no projeto.</p></div>
+    <div class="d-flex flex-wrap gap-2"><button class="btn btn-primary" type="submit">Preparar corpus</button><a class="btn btn-outline-primary" href="{{ url_for('qualitative.project_workspace', project_id=project.id) }}">Voltar ao projeto</a></div>
   </form>
 </section>
 {% endblock %}

@@ -1,0 +1,9 @@
+<div class="platform-qualitative-page-intro">
+  <h1 class="h4">{{ project.name }}</h1>
+  <div class="platform-qualitative-page-actions">
+    {% if analysis and project.status == 'active' and project.owner_user_id == current_user.id %}
+    <details class="platform-qualitative-upload"><summary class="btn btn-outline-primary btn-sm">Adicionar documentos</summary><div class="platform-panel platform-qualitative-upload-content">{% include 'platform/_qualitative_upload_form.html' %}</div></details>
+    {% endif %}
+    <button class="btn btn-outline-primary info-icon-button" type="button" data-qualitative-info-open aria-label="Como funciona a Análise quali-dados" title="Como funciona a Análise quali-dados"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 10v6M12 7h.01"></path></svg></button>
+  </div>
+</div>

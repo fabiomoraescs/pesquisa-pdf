@@ -1,12 +1,12 @@
 {% extends 'platform/base.html' %}
-{% block title %}Bases qualitativas — {{ project.name }}{% endblock %}
-{% block page_intro %}<h1 class="h4">Bases de análise qualitativa</h1><p class="platform-muted">Projeto: {{ project.name }}</p>{% endblock %}
+{% block title %}Acervos históricos — {{ project.name }}{% endblock %}
+{% block page_intro %}<h1 class="h4">{{ project.name }}</h1>{% endblock %}
 {% block body %}
-<div class="platform-toolbar platform-toolbar-actions"><div class="d-flex flex-wrap gap-2 align-items-center ms-auto">{% if project.status == 'active' %}<a class="btn btn-outline-primary btn-sm" href="{{ url_for('qualitative.new_base', project_id=project.id) }}">Nova Base</a>{% endif %}<a class="btn btn-outline-primary btn-sm" href="{{ url_for('projects.list_qualitative_projects') }}">Projetos</a></div></div>
+<div class="platform-toolbar platform-toolbar-actions"><div class="d-flex flex-wrap gap-2 align-items-center ms-auto"><a class="btn btn-outline-primary btn-sm" href="{{ url_for('qualitative.project_workspace', project_id=project.id) }}">Abrir projeto</a><a class="btn btn-outline-primary btn-sm" href="{{ url_for('projects.list_qualitative_projects') }}">Projetos</a></div></div>
 <div class="platform-view-list">
   {% for analysis in analyses %}
   {% set history_view = true %}{% set can_manage = current_user.id == project.owner_user_id or current_user.id == analysis.user_id %}{% set projects = [] %}
-  <article class="platform-list-item platform-base-list-item"><div><div class="platform-list-title">{{ analysis.display_name }}</div><div class="platform-list-meta">{{ {'deductive': 'Dedutiva', 'inductive': 'Indutiva', 'hybrid': 'Híbrida'}.get(analysis.parameters_json.get('qualitative_strategy'), 'Não informada') }} · {{ analysis.document_count }} PDF(s) · {{ analysis.created_at.strftime('%d/%m/%Y %H:%M') }} · {{ {'processando': 'Preparando corpus', 'concluida': 'Corpus preparado', 'erro': 'Erro na preparação'}.get(analysis.status, analysis.status) }}</div></div><div class="platform-list-actions">{% include 'platform/_analysis_actions.html' %}</div></article>
-  {% else %}<div class="platform-empty-state">Este projeto ainda não possui Bases qualitativas.</div>{% endfor %}
+  <article class="platform-list-item platform-base-list-item"><div><div class="platform-list-title">Acervo {{ loop.index }}</div><div class="platform-list-meta">{{ analysis.document_count }} PDF(s) · {{ analysis.created_at.strftime('%d/%m/%Y %H:%M') }} · {{ {'processando': 'Preparando corpus', 'concluida': 'Corpus preparado', 'erro': 'Erro na preparação'}.get(analysis.status, analysis.status) }}</div></div><div class="platform-list-actions"><a class="btn btn-outline-primary btn-sm" href="{{ url_for('qualitative.base', analysis_id=analysis.id) }}">Abrir ambiente</a></div></article>
+  {% else %}<div class="platform-empty-state">Este projeto ainda não possui documentos.</div>{% endfor %}
 </div>
 {% endblock %}

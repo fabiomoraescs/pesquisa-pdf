@@ -3,6 +3,8 @@
 import hashlib
 import io
 import json
+import os
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -11,16 +13,19 @@ import pymupdf
 from sqlalchemy import select
 
 from platform_helpers import create_user, csrf_from, isolated_platform, login
-from platform_core.analyses import analysis_dir, delete_analysis
+from platform_core.analyses import analysis_dir, create_analysis, delete_analysis, preserve_documents
 from platform_core.extensions import db
-from platform_core.models import Analysis, AnalysisDocument, Project, UserToolOverride
+from platform_core.models import (
+    Analysis, AnalysisDocument, Project, QualitativeCode, QualitativeCoding,
+    QualitativeExcerpt, QualitativeMemo, UserToolOverride,
+)
 from platform_core.project_lifecycle import archive, delete_archived
 from platform_core.qualitative_corpus import (
     CorpusUnavailableError, QualitativePageNotFoundError, canonicalize_page,
     is_qualitative_corpus_ready, load_qualitative_manifest,
     qualitative_manifest_path, read_qualitative_page, validate_qualitative_corpus,
 )
-from platform_core.qualitative_routes import _run_corpus_job
+from platform_core.qualitative_routes import _run_added_documents_job, _run_corpus_job
 from platform_core.qualitative_layout import read_qualitative_layout
 from platform_core.qualitative_search import QualitativeSearchError, search_qualitative_document
 from platform_core.scraping_types import QUALITATIVE, QUALITATIVE_TOOL
@@ -67,6 +72,17 @@ class QualitativeCorpusTests(unittest.TestCase):
             "documents": [(io.BytesIO(pdf_bytes(pages)), filename)],
         }, content_type="multipart/form-data")
 
+    def historical_workspace(self, project):
+        """Fixture de legado: dados antigos podem conter mais de um acervo."""
+        analysis = create_analysis(user_id=self.user_id, project_id=project.id,
+                                   tool_id=QUALITATIVE_TOOL, tool_version="manual-v1",
+                                   name="Acervo anterior", parameters={})
+        with tempfile.TemporaryDirectory() as temporary:
+            source = Path(temporary) / "historico.pdf"
+            source.write_bytes(pdf_bytes())
+            preserve_documents(analysis, [(source, "historico.pdf")])
+        return analysis
+
     def run_job_without_ocr(self, analysis_id):
         def extract(path):
             with pymupdf.open(path) as document:
@@ -89,6 +105,376 @@ class QualitativeCorpusTests(unittest.TestCase):
         manifest = load_qualitative_manifest(analysis)
         return analysis, manifest
 
+    def prepared_two_documents(self):
+        self.allow()
+        project = self.project()
+        token = csrf_from(self.client.get(f"/analise-qualitativa/projetos/{project.id}/bases/nova"))
+        with patch("app.EXECUTOR_ANALISES.submit"):
+            response = self.client.post(f"/analise-qualitativa/projetos/{project.id}/bases/nova",
+                data={"csrf_token": token, "name": "Acervo antigo", "qualitative_strategy": "inductive",
+                      "documents": [(io.BytesIO(pdf_bytes()), "primeiro.pdf"),
+                                    (io.BytesIO(pdf_bytes()), "segundo.pdf")]},
+                content_type="multipart/form-data")
+        self.assertEqual(response.status_code, 302)
+        analysis = db.session.scalar(select(Analysis).where(Analysis.project_id == project.id))
+        self.run_job_without_ocr(analysis.id)
+        db.session.expire_all()
+        analysis = db.session.get(Analysis, analysis.id)
+        return analysis, load_qualitative_manifest(analysis)
+
+    def delete_document_request(self, analysis, document_id):
+        token = csrf_from(self.client.get("/"))
+        return self.client.post(
+            f"/analise-qualitativa/bases/{analysis.id}/documentos/{document_id}/excluir",
+            data={"csrf_token": token})
+
+    def test_document_delete_preserves_other_pdf_corpus_and_search(self):
+        analysis, manifest = self.prepared_two_documents()
+        first, second = manifest["documents"]
+        first_text = read_qualitative_page(analysis, first["document_id"], 1)["text"]
+        first_pdf = analysis_dir(analysis.id) / "documents" / first["stored_name"]
+        first_pdf_bytes = first_pdf.read_bytes()
+        page_url = (f"/analise-qualitativa/bases/{analysis.id}/documentos/"
+                    f"{first['document_id']}/paginas/1")
+        html = self.client.get(page_url).get_data(as_text=True)
+        self.assertIn("Excluir documento primeiro.pdf", html)
+        self.assertIn("Excluir documento segundo.pdf", html)
+        self.assertIn("data-document-delete-dialog", html)
+        endpoint = (f"/analise-qualitativa/bases/{analysis.id}/documentos/"
+                    f"{second['document_id']}/excluir")
+        self.assertEqual(self.client.get(endpoint).status_code, 405)
+        self.assertEqual(self.client.post(endpoint).status_code, 400)  # CSRF
+        with patch("platform_core.qualitative_corpus.pdf_extractor.extrair_paginas",
+                   side_effect=AssertionError("PDF antigo reprocessado")):
+            response = self.delete_document_request(analysis, second["document_id"])
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json["document_count"], 1)
+        self.assertIn(first["document_id"], response.json["next_url"])
+        db.session.expire_all()
+        analysis = db.session.get(Analysis, analysis.id)
+        self.assertEqual(analysis.document_count, 1)
+        self.assertIsNone(db.session.get(AnalysisDocument, second["document_id"]))
+        self.assertEqual(load_qualitative_manifest(analysis)["documents"], [first])
+        self.assertEqual(read_qualitative_page(analysis, first["document_id"], 1)["text"], first_text)
+        self.assertEqual(first_pdf.read_bytes(), first_pdf_bytes)
+        self.assertFalse((analysis_dir(analysis.id) / "documents" / second["stored_name"]).exists())
+        self.assertFalse((analysis_dir(analysis.id) / "qualitative_corpus" / second["document_id"]).exists())
+        self.assertEqual(self.client.get(page_url).status_code, 200)
+        self.assertEqual(self.client.get(page_url.replace(first["document_id"], second["document_id"])).status_code, 404)
+        self.assertEqual(self.client.get(f"/analise-qualitativa/bases/{analysis.id}/documentos/"
+                                         f"{second['document_id']}/buscar?q=Documento").status_code, 404)
+        new_html = self.client.get(page_url).get_data(as_text=True)
+        self.assertIn("Documentos (1)", new_html)
+        self.assertNotIn("segundo.pdf", new_html)
+
+    def test_delete_last_document_returns_to_empty_uploadable_project(self):
+        analysis, manifest = self.prepared_base()
+        response = self.delete_document_request(analysis, manifest["documents"][0]["document_id"])
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json["document_count"], 0)
+        empty = self.client.get(response.json["next_url"], follow_redirects=True)
+        self.assertIn("Este projeto ainda não possui documentos.", empty.get_data(as_text=True))
+        self.assertIn("Adicionar documentos", empty.get_data(as_text=True))
+        db.session.expire_all()
+        self.assertEqual(db.session.get(Analysis, analysis.id).status, "processando")
+        self.assertFalse((analysis_dir(analysis.id) / "qualitative_corpus").exists())
+        self.assertEqual(self.client.get(f"/analise-qualitativa/bases/{analysis.id}").status_code, 200)
+        args = self.submit_new_documents(db.session.get(Analysis, analysis.id), "substituto.pdf")
+        self.assertTrue(args[-1])
+        self.run_added_job_without_ocr(args)
+        db.session.expire_all()
+        self.assertEqual(db.session.get(Analysis, analysis.id).status, "concluida")
+
+    def test_foreign_document_delete_is_rejected(self):
+        analysis, manifest = self.prepared_base()
+        other = self.historical_workspace(db.session.get(Project, analysis.project_id))
+        other_doc = db.session.scalar(select(AnalysisDocument).where(AnalysisDocument.analysis_id == other.id))
+        self.assertEqual(self.delete_document_request(analysis, other_doc.id).status_code, 404)
+        foreign = create_user("Outro", "outro-delete@example.org")
+        self.allow(foreign)
+        token = csrf_from(self.client.get("/"))
+        self.client.post("/logout", data={"csrf_token": token})
+        login(self.client, "outro-delete@example.org")
+        self.assertEqual(self.delete_document_request(analysis, manifest["documents"][0]["document_id"])
+                         .status_code, 404)
+
+    def test_document_delete_waits_for_inflight_processing(self):
+        analysis, manifest = self.prepared_base()
+        from platform_core.qualitative_routes import _upload_lock
+        lock = _upload_lock(analysis.id)
+        lock.touch()
+        try:
+            response = self.delete_document_request(analysis, manifest["documents"][0]["document_id"])
+            self.assertEqual(response.status_code, 409)
+            self.assertIn("Aguarde a preparação", response.json["error"])
+            self.assertEqual(load_qualitative_manifest(analysis), manifest)
+        finally:
+            lock.unlink()
+
+    def test_document_delete_restores_artifacts_when_manifest_publish_fails(self):
+        analysis, manifest = self.prepared_two_documents()
+        second = manifest["documents"][1]
+        original_replace = os.replace
+        manifest_path = qualitative_manifest_path(analysis.id)
+
+        def fail_publication(source, target):
+            if Path(target) == manifest_path and Path(source).name.startswith(".manifest."):
+                raise OSError("falha simulada ao publicar manifest")
+            return original_replace(source, target)
+
+        with patch("platform_core.qualitative_corpus.os.replace", side_effect=fail_publication):
+            response = self.delete_document_request(analysis, second["document_id"])
+        self.assertEqual(response.status_code, 500)
+        db.session.expire_all()
+        analysis = db.session.get(Analysis, analysis.id)
+        self.assertIsNotNone(db.session.get(AnalysisDocument, second["document_id"]))
+        self.assertEqual(analysis.document_count, 2)
+        self.assertNotIn("_qualitative_delete_pending", analysis.parameters_json)
+        self.assertEqual(load_qualitative_manifest(analysis), manifest)
+        self.assertTrue((analysis_dir(analysis.id) / "documents" / second["stored_name"]).is_file())
+        self.assertTrue((analysis_dir(analysis.id) / "qualitative_corpus" / second["document_id"]).is_dir())
+
+    def test_delete_document_removes_only_its_analytic_dependents(self):
+        analysis, manifest = self.prepared_two_documents()
+        first, second = manifest["documents"]
+        code = QualitativeCode(analysis_id=analysis.id, name="Tema", created_by_user_id=self.user_id)
+        db.session.add(code)
+        db.session.flush()
+        excerpts = []
+        for item in (first, second):
+            excerpt = QualitativeExcerpt(analysis_id=analysis.id, document_id=item["document_id"],
+                page_number=1, start_offset=0, end_offset=1, quoted_text="D",
+                page_text_hash=item["pages"][0]["sha256"], created_by_user_id=self.user_id)
+            db.session.add(excerpt)
+            excerpts.append(excerpt)
+        db.session.flush()
+        for excerpt in excerpts:
+            db.session.add(QualitativeCoding(analysis_id=analysis.id, excerpt_id=excerpt.id,
+                code_id=code.id, created_by_user_id=self.user_id, origin="manual"))
+            db.session.add(QualitativeMemo(analysis_id=analysis.id, excerpt_id=excerpt.id,
+                text="Observação", created_by_user_id=self.user_id))
+        db.session.add(QualitativeMemo(analysis_id=analysis.id, document_id=second["document_id"],
+            text="Memo do PDF", created_by_user_id=self.user_id))
+        db.session.commit()
+        self.assertEqual(self.delete_document_request(analysis, second["document_id"]).status_code, 200)
+        self.assertIsNotNone(db.session.get(QualitativeCode, code.id))
+        self.assertEqual(len(db.session.scalars(select(QualitativeExcerpt).where(
+            QualitativeExcerpt.analysis_id == analysis.id)).all()), 1)
+        self.assertEqual(len(db.session.scalars(select(QualitativeCoding).where(
+            QualitativeCoding.analysis_id == analysis.id)).all()), 1)
+        self.assertEqual(len(db.session.scalars(select(QualitativeMemo).where(
+            QualitativeMemo.analysis_id == analysis.id)).all()), 1)
+
+    def submit_new_documents(self, analysis, *names):
+        page = self.client.get(f"/analise-qualitativa/bases/{analysis.id}", follow_redirects=True)
+        token = csrf_from(page)
+        with patch("app.EXECUTOR_ANALISES.submit") as submit:
+            response = self.client.post(
+                f"/analise-qualitativa/bases/{analysis.id}/documentos",
+                data={"csrf_token": token, "documents": [
+                    (io.BytesIO(pdf_bytes()), name) for name in names
+                ]}, content_type="multipart/form-data",
+            )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(submit.call_count, 1)
+        job, *args = submit.call_args.args
+        self.assertIs(job, _run_added_documents_job)
+        return args
+
+    def test_project_opens_empty_environment_without_base_step(self):
+        self.allow()
+        project = self.project()
+        response = self.client.get(f"/analise-qualitativa/projetos/{project.id}", follow_redirects=True)
+        self.assertEqual(response.status_code, 200)
+        html = response.get_data(as_text=True)
+        self.assertIn("Este projeto ainda não possui documentos.", html)
+        self.assertIn("Adicionar documentos", html)
+        self.assertEqual(html.count('>Adicionar documentos</summary>'), 1)
+        self.assertEqual(html.count("data-qualitative-info-open"), 1)
+        self.assertIn('class="platform-qualitative-page-actions"', html)
+        self.assertLess(html.index("Adicionar documentos"), html.index("data-qualitative-info-open"))
+        self.assertNotIn("Bases do projeto", html)
+        self.assertEqual(len(db.session.scalars(select(Analysis).where(
+            Analysis.project_id == project.id)).all()), 1)
+        self.assertEqual(self.client.get(f"/analise-qualitativa/projetos/{project.id}/bases/nova")
+                         .status_code, 302)
+
+    def test_existing_single_workspace_opens_reader_with_project_title(self):
+        analysis, manifest = self.prepared_base()
+        project = db.session.get(Project, analysis.project_id)
+        response = self.client.get(f"/analise-qualitativa/projetos/{project.id}",
+                                   follow_redirects=True)
+        html = response.get_data(as_text=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(f'<h1 class="h4">{project.name}</h1>', html)
+        self.assertNotIn(f'<h1 class="h4">{analysis.name}</h1>', html)
+        self.assertIn("Adicionar documentos", html)
+        self.assertIn("Como funciona a Análise quali-dados", html)
+        self.assertNotIn("Bases do projeto", html)
+        self.assertEqual(manifest["documents"][0]["document_id"],
+                         db.session.scalar(select(AnalysisDocument.id).where(
+                             AnalysisDocument.analysis_id == analysis.id)))
+
+    def test_qualitative_header_and_document_delete_are_visual_only(self):
+        analysis, manifest = self.prepared_base()
+        project = db.session.get(Project, analysis.project_id)
+        document = manifest["documents"][0]
+        html = self.client.get(
+            f"/analise-qualitativa/bases/{analysis.id}/documentos/"
+            f"{document['document_id']}/paginas/1").get_data(as_text=True)
+        intro = html.split('<div class="platform-qualitative-page-intro">', 1)[1].split(
+            '<div class="platform-qualitative-workspace"', 1)[0]
+        self.assertIn(f'<h1 class="h4">{project.name}</h1>', intro)
+        self.assertEqual(html.count('<h1 '), 1)
+        self.assertIn('class="platform-qualitative-page-actions"', intro)
+        self.assertLess(intro.index("Adicionar documentos"), intro.index("data-qualitative-info-open"))
+        self.assertEqual(html.count('>Adicionar documentos</summary>'), 1)
+        self.assertEqual(html.count("data-qualitative-info-open"), 1)
+        self.assertNotIn("platform-qualitative-page-toolbar", html)
+        self.assertIn('class="platform-qualitative-document-delete" type="button" data-delete-document', html)
+        self.assertIn(f'data-document-id="{document["document_id"]}"', html)
+        self.assertIn(f'data-document-name="{document["original_name"]}"', html)
+        self.assertIn('data-delete-url="/analise-qualitativa/bases/', html)
+        self.assertIn(f'title="Excluir {document["original_name"]}"', html)
+        self.assertIn(f'aria-label="Excluir documento {document["original_name"]}"', html)
+        self.assertIn('data-document-delete-dialog', html)
+        self.assertIn('data-delete-cancel>Cancelar', html)
+        self.assertIn('data-delete-confirm>Excluir documento', html)
+        css = (Path(__file__).resolve().parents[1] / "static/css/platform.css").read_text(encoding="utf-8")
+        self.assertIn('.platform-qualitative-document-delete { display: inline-flex;', css)
+        self.assertIn('border: 0; border-radius:', css)
+        self.assertIn('background: transparent; box-shadow: none;', css)
+        self.assertIn('.platform-qualitative-document-delete:hover', css)
+        self.assertIn('.platform-qualitative-document-delete:focus-visible', css)
+        self.assertIn('.platform-qualitative-focus .platform-qualitative-page-intro { display: none;', css)
+
+    def test_foreign_project_cannot_open_or_upload_to_workspace(self):
+        self.allow()
+        other = create_user("Outro", "outro-qual-flow@example.org")
+        project = self.project(owner=other)
+        analysis = create_analysis(user_id=other.id, project_id=project.id,
+                                   tool_id=QUALITATIVE_TOOL, tool_version="manual-v1",
+                                   name="Ambiente alheio", parameters={})
+        self.assertEqual(self.client.get(f"/analise-qualitativa/projetos/{project.id}").status_code, 404)
+        self.assertEqual(self.client.get(f"/analise-qualitativa/bases/{analysis.id}").status_code, 404)
+        token = csrf_from(self.client.get("/"))
+        response = self.client.post(f"/analise-qualitativa/bases/{analysis.id}/documentos",
+                                    data={"csrf_token": token, "documents": [
+                                        (io.BytesIO(pdf_bytes()), "outro.pdf")]},
+                                    content_type="multipart/form-data")
+        self.assertEqual(response.status_code, 404)
+
+    def test_existing_project_with_multiple_workspaces_preserves_every_one(self):
+        self.allow()
+        project = self.project()
+        first = self.historical_workspace(project)
+        second = self.historical_workspace(project)
+        response = self.client.get(f"/analise-qualitativa/projetos/{project.id}")
+        html = response.get_data(as_text=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(f"/analise-qualitativa/bases/{first.id}", html)
+        self.assertIn(f"/analise-qualitativa/bases/{second.id}", html)
+        self.assertEqual(len(db.session.scalars(select(Analysis).where(
+            Analysis.project_id == project.id)).all()), 2)
+        self.assertNotIn("Bases do projeto", html)
+
+    def test_initial_project_upload_accepts_multiple_pdfs(self):
+        self.allow()
+        project = self.project()
+        self.client.get(f"/analise-qualitativa/projetos/{project.id}")
+        analysis = db.session.scalar(select(Analysis).where(Analysis.project_id == project.id))
+        args = self.submit_new_documents(analysis, "primeiro.pdf", "segundo.pdf")
+        self.assertTrue(args[-1])  # primeiro preparo
+        self.run_added_job_without_ocr(args)
+        db.session.expire_all()
+        analysis = db.session.get(Analysis, analysis.id)
+        self.assertEqual(analysis.status, "concluida")
+        manifest = load_qualitative_manifest(analysis)
+        self.assertEqual(len(manifest["documents"]), 2)
+        html = self.client.get(f"/analise-qualitativa/bases/{analysis.id}",
+                               follow_redirects=True).get_data(as_text=True)
+        self.assertIn("Documentos (2)", html)
+        self.assertIn("primeiro.pdf", html)
+        self.assertIn("segundo.pdf", html)
+
+    def run_added_job_without_ocr(self, args, *, fail=False):
+        seen = []
+        def extract(path):
+            seen.append(Path(path).name)
+            if fail:
+                raise RuntimeError("falha simulada no PDF novo")
+            with pymupdf.open(path) as document:
+                for number, page in enumerate(document, start=1):
+                    yield {"pagina_pdf": number, "texto": page.get_text("text"),
+                           "ocr_utilizado": False}
+        with patch("platform_core.qualitative_corpus.pdf_extractor.extrair_paginas", side_effect=extract):
+            _run_added_documents_job(*args)
+        return seen
+
+    def test_incremental_upload_does_not_reprocess_existing_pdf(self):
+        analysis, old_manifest = self.prepared_base()
+        old_document = old_manifest["documents"][0]
+        old_page = read_qualitative_page(analysis, old_document["document_id"], 1)
+        args = self.submit_new_documents(analysis, "novo-a.pdf", "novo-b.pdf")
+        self.assertFalse(args[-1])
+        from platform_core import qualitative_corpus
+        with patch("platform_core.qualitative_corpus._read_verified_page",
+                   wraps=qualitative_corpus._read_verified_page) as verify:
+            processed = self.run_added_job_without_ocr(args)
+        self.assertEqual(len(processed), 2)
+        self.assertNotIn(old_document["stored_name"], processed)
+        self.assertEqual(verify.call_count, 2)
+        self.assertTrue(all(old_document["document_id"] not in call.args[1]["file"]
+                            for call in verify.call_args_list))
+        db.session.expire_all()
+        analysis = db.session.get(Analysis, analysis.id)
+        self.assertEqual(analysis.status, "concluida")
+        manifest = load_qualitative_manifest(analysis)
+        self.assertEqual(len(manifest["documents"]), 3)
+        self.assertEqual(manifest["documents"][0], old_document)
+        self.assertEqual(read_qualitative_page(analysis, old_document["document_id"], 1), old_page)
+        self.assertTrue(is_qualitative_corpus_ready(analysis))
+        html = self.client.get(f"/analise-qualitativa/bases/{analysis.id}",
+                               follow_redirects=True).get_data(as_text=True)
+        self.assertIn("Documentos (3)", html)
+        self.assertIn("novo-a.pdf", html)
+        self.assertIn("novo-b.pdf", html)
+
+    def test_failed_incremental_upload_keeps_old_corpus_usable(self):
+        analysis, old_manifest = self.prepared_base()
+        args = self.submit_new_documents(analysis, "falha.pdf")
+        self.run_added_job_without_ocr(args, fail=True)
+        db.session.expire_all()
+        analysis = db.session.get(Analysis, analysis.id)
+        self.assertEqual(analysis.status, "concluida")
+        self.assertEqual(load_qualitative_manifest(analysis), old_manifest)
+        self.assertEqual(analysis.document_count, 1)
+        self.assertTrue(is_qualitative_corpus_ready(analysis))
+        self.assertEqual(self.client.get(f"/analise-qualitativa/bases/{analysis.id}")
+                         .status_code, 302)
+
+    def test_failed_final_verification_rolls_back_new_documents(self):
+        analysis, old_manifest = self.prepared_base()
+        args = self.submit_new_documents(analysis, "novo.pdf")
+        def extract(path):
+            with pymupdf.open(path) as document:
+                for number, page in enumerate(document, start=1):
+                    yield {"pagina_pdf": number, "texto": page.get_text("text"),
+                           "ocr_utilizado": False}
+        with patch("platform_core.qualitative_corpus._read_verified_page",
+                   side_effect=CorpusUnavailableError("falha após publicação")) as verify, patch(
+                   "platform_core.qualitative_corpus.pdf_extractor.extrair_paginas",
+                   side_effect=extract):
+            _run_added_documents_job(*args)
+        self.assertEqual(verify.call_count, 1)
+        db.session.expire_all()
+        analysis = db.session.get(Analysis, analysis.id)
+        self.assertEqual(analysis.status, "concluida")
+        self.assertEqual(analysis.document_count, 1)
+        self.assertEqual(load_qualitative_manifest(analysis), old_manifest)
+        self.assertTrue(is_qualitative_corpus_ready(analysis))
+        self.assertEqual(len(list((analysis_dir(analysis.id) / "documents").glob("*.pdf"))), 1)
+
     def test_project_creation_routes_permission_and_sidebar(self):
         self.assertEqual(self.client.get("/analise-qualitativa").status_code, 403)
         self.assertEqual(self.client.get("/projetos/qualitativos/novo").status_code, 403)
@@ -104,7 +490,9 @@ class QualitativeCorpusTests(unittest.TestCase):
         self.assertEqual(result.status_code, 302)
         created = db.session.scalar(select(Project).where(Project.name == "Nova pesquisa"))
         self.assertEqual(created.scrape_type, QUALITATIVE)
-        self.assertEqual(result.headers["Location"], f"/analise-qualitativa/projetos/{created.id}/bases/nova")
+        self.assertEqual(result.headers["Location"], f"/analise-qualitativa/projetos/{created.id}")
+        self.assertEqual(db.session.scalar(select(Analysis).where(
+            Analysis.project_id == created.id)).document_count, 0)
         self.assertIn("Nova pesquisa", self.client.get("/projetos/qualitativos").get_data(as_text=True))
         self.assertNotIn("Nova pesquisa", self.client.get("/projetos/livres").get_data(as_text=True))
         self.assertNotIn("Nova pesquisa", self.client.get("/projetos").get_data(as_text=True))
@@ -167,7 +555,7 @@ class QualitativeCorpusTests(unittest.TestCase):
             payload = self.client.get(page_url + "/dados").get_json()
             self.assertEqual(payload["text"], read_qualitative_page(analysis, first["document_id"], 2)["text"])
             self.assertEqual(payload["sha256"], first["pages"][1]["sha256"])
-        self.assertIn("Base de entrevistas", self.client.get(
+        self.assertIn("Acervo 1", self.client.get(
             f"/analise-qualitativa/projetos/{project.id}/bases").get_data(as_text=True))
 
     def test_background_executor_completes_without_request_context(self):
@@ -358,6 +746,10 @@ class QualitativeCorpusTests(unittest.TestCase):
         self.assertEqual(self.client.get(f"/analise-qualitativa/bases/{analysis.id}").status_code, 409)
         self.assertEqual(self.client.get(url).status_code, 409)
         manifest["schema_version"] = 1
+        manifest["documents"] = None
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+        self.assertEqual(self.client.get(url).status_code, 409)
+        manifest["documents"] = [document]
         manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
         page = analysis_dir(analysis.id) / "qualitative_corpus" / document["pages"][0]["file"]
         page.write_bytes(b"\xff")
@@ -398,7 +790,7 @@ class QualitativeCorpusTests(unittest.TestCase):
         project = self.project()
         with patch("app.EXECUTOR_ANALISES.submit"):
             self.upload(project)
-            self.upload(project)
+        self.historical_workspace(project)
         analyses = db.session.scalars(select(Analysis).where(Analysis.project_id == project.id)).all()
         for analysis in analyses:
             self.run_job_without_ocr(analysis.id)
@@ -441,7 +833,7 @@ class QualitativeCorpusTests(unittest.TestCase):
         project = self.project()
         with patch("app.EXECUTOR_ANALISES.submit"):
             self.upload(project)
-            self.upload(project)
+        self.historical_workspace(project)
         analyses = db.session.scalars(select(Analysis).where(Analysis.project_id == project.id)).all()
         for analysis in analyses:
             self.run_job_without_ocr(analysis.id)
@@ -483,8 +875,7 @@ class QualitativeCorpusTests(unittest.TestCase):
     def test_pdf_of_another_base_is_not_exposed(self):
         analysis, manifest = self.prepared_base()
         project = db.session.get(Project, analysis.project_id)
-        with patch("app.EXECUTOR_ANALISES.submit"):
-            self.upload(project)
+        self.historical_workspace(project)
         other = db.session.scalar(select(Analysis).where(Analysis.project_id == project.id,
                                                     Analysis.id != analysis.id))
         foreign_document = db.session.scalar(select(AnalysisDocument).where(
@@ -654,6 +1045,44 @@ class QualitativeCorpusTests(unittest.TestCase):
         self.assertIn('setPointerCapture', viewer_js)
         self.assertIn('movePanelTo', viewer_js)
         self.assertIn('rerenderVisiblePages', viewer_js)
+
+    def test_explorer_menus_are_popovers_shared_by_standard_and_focus_modes(self):
+        analysis, manifest = self.prepared_base(pages=2)
+        document = manifest["documents"][0]
+        url = (f"/analise-qualitativa/bases/{analysis.id}/documentos/"
+               f"{document['document_id']}/paginas/1")
+        html = self.client.get(url).get_data(as_text=True)
+        explorer = html.split('id="qualitative-explorer"', 1)[1].split('class="platform-qualitative-bottom"', 1)[0]
+        for kind in ("documents", "codes", "memos"):
+            menu_id = f"qualitative-{kind}-menu"
+            self.assertIn(f'popovertarget="{menu_id}"', explorer)
+            self.assertIn(f'id="{menu_id}" popover="auto"', explorer)
+            self.assertIn(f'aria-controls="{menu_id}" aria-expanded="false"', explorer)
+        self.assertEqual(explorer.count('data-explorer-trigger'), 3)
+        self.assertEqual(explorer.count('data-explorer-popover'), 3)
+        self.assertIn(f'aria-current="page"', explorer)
+        self.assertIn(f'title="{document["original_name"]}"', explorer)
+        self.assertIn('Nenhum código criado.', explorer)
+        self.assertIn('Nenhum memo criado.', explorer)
+        css = (Path(__file__).resolve().parents[1] / "static/css/platform.css").read_text(encoding="utf-8")
+        self.assertIn('.platform-qualitative-explorer-popover { position: fixed;', css)
+        self.assertIn('max-height: min(22rem, calc(100dvh - 1rem)); overflow-y: auto', css)
+        self.assertNotIn('.platform-qualitative-explorer { overflow-y:', css)
+        js = (Path(__file__).resolve().parents[1] / "static/js/qualitative_viewer.js").read_text(encoding="utf-8")
+        self.assertIn("popover.addEventListener('toggle'", js)
+        self.assertIn('closeExplorerPopovers();', js)
+        self.assertIn('repositionExplorerPopovers();', js)
+
+    def test_pdf_wheel_zoom_uses_existing_control_only_with_ctrl(self):
+        js = (Path(__file__).resolve().parents[1] / "static/js/qualitative_viewer.js").read_text(encoding="utf-8")
+        wheel = js.split("scroll.addEventListener('wheel'", 1)[1].split('}, { passive: false });', 1)[0]
+        self.assertIn('if (!event.ctrlKey || !documentPdf || !event.deltaY) return;', wheel)
+        self.assertIn('event.preventDefault();', wheel)
+        self.assertIn('event.deltaY < 0 ? 1 : -1', wheel)
+        self.assertIn('zoom.options.length - 1', wheel)
+        self.assertIn('zoom.selectedIndex = index;', wheel)
+        self.assertIn('setTimeout(rerenderVisiblePages, 90)', wheel)
+        self.assertEqual(js.count("scroll.addEventListener('wheel'"), 1)
 
     def test_search_controls_are_compact_without_changing_regex_protocol(self):
         analysis, manifest = self.prepared_base(pages=2)

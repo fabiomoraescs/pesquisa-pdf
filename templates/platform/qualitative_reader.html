@@ -1,19 +1,16 @@
 {% extends 'platform/base.html' %}
 {% from 'platform/_icons.html' import icon %}
-{% block title %}Documento — {{ analysis.display_name }}{% endblock %}
-{% block page_intro %}<div class="platform-qualitative-page-intro"><h1 class="h4">{{ analysis.display_name }}</h1><p class="platform-muted">Projeto: {{ project.name }} · Leitura do corpus preparado; a interpretação permanece com o pesquisador.</p></div>{% endblock %}
+{% block title %}{{ project.name }} — Análysis{% endblock %}
+{% block page_intro %}{% include 'platform/_qualitative_page_intro.html' %}{% endblock %}
 {% block body %}
 {% set selected_document = manifest.documents | selectattr('document_id', 'equalto', current.document_id) | first %}
-<div class="platform-toolbar platform-qualitative-page-toolbar d-flex justify-content-between align-items-center gap-2 mb-3">
-  <a class="btn btn-outline-primary btn-sm" href="{{ url_for('qualitative.project_bases', project_id=project.id) }}">Bases do projeto</a>
-  <button class="btn btn-outline-primary info-icon-button" type="button" data-qualitative-info-open aria-label="Como funciona a Análise qualitativa" title="Como funciona a Análise qualitativa"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 10v6M12 7h.01"></path></svg></button>
-</div>
 <div class="platform-qualitative-workspace" data-qualitative-viewer
      data-pdf-url="{{ url_for('qualitative.original_pdf', analysis_id=analysis.id, document_id=current.document_id) }}"
      data-search-url="{{ url_for('qualitative.search', analysis_id=analysis.id, document_id=current.document_id) }}"
      data-layout-url-template="{{ url_for('qualitative.page_layout', analysis_id=analysis.id, document_id=current.document_id, page_number=0) }}"
      data-pdfjs-base="{{ url_for('static', filename='vendor/pdfjs/') }}"
-     data-page-count="{{ current.page_count }}" data-initial-page="{{ current.page_number }}">
+     data-page-count="{{ current.page_count }}" data-initial-page="{{ current.page_number }}"
+     data-document-id="{{ current.document_id }}">
   <div class="platform-panel platform-qualitative-top" aria-label="Explorador e pesquisa" data-focus-panel>
     <div class="platform-qualitative-focus-panel-header">
       <button class="platform-qualitative-focus-handle" type="button" data-focus-handle title="Arrastar painel; use as setas para mover" aria-label="Arrastar painel de controles; use as setas para mover">Controles da leitura</button>
@@ -28,14 +25,23 @@
         <div class="platform-qualitative-search-results" aria-live="polite"><button class="btn btn-outline-primary btn-sm" data-result-prev type="button" aria-label="Resultado anterior" disabled>Anterior</button><span data-result-count>0 de 0</span><button class="btn btn-outline-primary btn-sm" data-result-next type="button" aria-label="Próximo resultado" disabled>Próximo</button><span data-search-message></span></div>
         <p class="platform-muted mb-0" data-result-snippet></p>
       </form>
-      <aside class="platform-qualitative-explorer" id="qualitative-explorer" aria-label="Explorador da Base">
+      <aside class="platform-qualitative-explorer" id="qualitative-explorer" aria-label="Explorador do projeto">
         <h2 class="h6">Explorador</h2>
-        <h3 class="h6">Documentos ({{ manifest.documents | length }})</h3>
-        <nav class="platform-qualitative-documents" aria-label="Documentos da Base">
-          {% for document in manifest.documents %}<a href="{{ url_for('qualitative.page', analysis_id=analysis.id, document_id=document.document_id, page_number=1) }}" class="{{ 'is-current' if document.document_id == current.document_id else '' }}" title="{{ document.original_name }}" {% if document.document_id == current.document_id %}aria-current="page"{% endif %}>{{ document.original_name }}</a>{% endfor %}
-        </nav>
-        <div class="platform-qualitative-future" aria-disabled="true">Códigos (0) <small>Disponível em etapa futura</small></div>
-        <div class="platform-qualitative-future" aria-disabled="true">Memos (0) <small>Disponível em etapa futura</small></div>
+        <button class="platform-qualitative-explorer-trigger" type="button" popovertarget="qualitative-documents-menu" aria-controls="qualitative-documents-menu" aria-expanded="false" data-explorer-trigger data-document-count>Documentos ({{ manifest.documents | length }})</button>
+        <div class="platform-qualitative-explorer-popover" id="qualitative-documents-menu" popover="auto" aria-label="Documentos do projeto" data-explorer-popover>
+          <h3 class="h6">Documentos</h3>
+          <nav class="platform-qualitative-documents" aria-label="Documentos do projeto">
+            {% for document in manifest.documents %}<div class="platform-qualitative-document-row" data-document-row="{{ document.document_id }}"><a href="{{ url_for('qualitative.page', analysis_id=analysis.id, document_id=document.document_id, page_number=1) }}" class="{{ 'is-current' if document.document_id == current.document_id else '' }}" title="{{ document.original_name }}" {% if document.document_id == current.document_id %}aria-current="page"{% endif %}>{{ document.original_name }}</a>{% if project.status == 'active' and project.owner_user_id == current_user.id %}<button class="platform-qualitative-document-delete" type="button" data-delete-document data-document-id="{{ document.document_id }}" data-document-name="{{ document.original_name }}" data-delete-url="{{ url_for('qualitative.delete_document', analysis_id=analysis.id, document_id=document.document_id) }}" title="Excluir {{ document.original_name }}" aria-label="Excluir documento {{ document.original_name }}">{{ icon('lixeira') }}</button>{% endif %}</div>{% endfor %}
+          </nav>
+        </div>
+        <button class="platform-qualitative-explorer-trigger" type="button" popovertarget="qualitative-codes-menu" aria-controls="qualitative-codes-menu" aria-expanded="false" data-explorer-trigger>Códigos (0)</button>
+        <div class="platform-qualitative-explorer-popover" id="qualitative-codes-menu" popover="auto" aria-label="Códigos do projeto" data-explorer-popover>
+          <h3 class="h6">Códigos</h3><p class="platform-muted mb-0">Nenhum código criado.</p>
+        </div>
+        <button class="platform-qualitative-explorer-trigger" type="button" popovertarget="qualitative-memos-menu" aria-controls="qualitative-memos-menu" aria-expanded="false" data-explorer-trigger>Memos (0)</button>
+        <div class="platform-qualitative-explorer-popover" id="qualitative-memos-menu" popover="auto" aria-label="Memos do projeto" data-explorer-popover>
+          <h3 class="h6">Memos</h3><p class="platform-muted mb-0">Nenhum memo criado.</p>
+        </div>
       </aside>
     </div>
   </div>
@@ -53,13 +59,18 @@
     <aside class="platform-panel platform-qualitative-margin" aria-label="Margem analítica"><h2 class="h6">Margem analítica</h2><p class="platform-muted mb-0">Espaço reservado para futuras etiquetas. A busca não cria codificações.</p></aside>
   </div>
 </div>
-<dialog class="platform-qualitative-info platform-panel" data-qualitative-info aria-labelledby="qualitative-info-title">
-  <div class="d-flex justify-content-between gap-2 align-items-center"><h2 class="h5 mb-0" id="qualitative-info-title">Como funciona a Análise qualitativa</h2><button class="btn btn-outline-primary btn-sm" type="button" data-qualitative-info-close aria-label="Fechar instruções">Fechar</button></div>
-  <section><h3 class="h6">O que é e quando utilizar</h3><p>Uma Base qualitativa organiza PDFs para leitura documental sem exigir termos ou entidades definidos previamente. É adequada quando a pesquisa parte da exploração e interpretação do corpus.</p></section>
-  <section><h3 class="h6">Como funciona</h3><p>Crie um projeto, nomeie a Base, escolha uma estratégia metodológica e envie os PDFs. A plataforma prepara o texto uma vez e mantém os documentos originais para leitura visual contínua.</p></section>
-  <section><h3 class="h6">O que você fornece e o que recebe</h3><p>Você fornece PDFs e escolhe a estratégia dedutiva, indutiva ou híbrida como registro metodológico. Depois pode abrir os documentos, ajustar o zoom e pesquisar no texto preparado, inclusive em páginas digitalizadas cujo reconhecimento de texto foi possível.</p></section>
-  <section><h3 class="h6">Pesquisa no documento</h3><p>A busca normal localiza texto literal. “Usar ReGex” permite padrões com expressões regulares; “Distinguir maiúsculas e minúsculas” restringe a correspondência. A busca percorre apenas o documento aberto. Quando a posição visual é verificável, o resultado aparece destacado no PDF; caso contrário, a página e o trecho textual continuam disponíveis.</p></section>
-  <section><h3 class="h6">Observações e limites</h3><p>Erros de reconhecimento em PDFs digitalizados podem afetar a busca. A localização de um termo não constitui interpretação do conteúdo. Códigos, memos e codificação de trechos ainda não estão disponíveis nesta etapa.</p></section>
+{% if project.status == 'active' and project.owner_user_id == current_user.id %}
+<dialog class="platform-qualitative-delete-dialog platform-panel" data-document-delete-dialog aria-labelledby="qualitative-delete-title">
+  <h2 class="h5" id="qualitative-delete-title">Excluir documento?</h2>
+  <p>Excluir “<strong data-delete-name></strong>”?</p>
+  <p>O documento e os dados de análise associados a ele serão removidos deste projeto. Esta ação não pode ser desfeita.</p>
+  <p class="platform-muted" data-delete-error role="alert" hidden></p>
+  <div class="d-flex flex-wrap justify-content-end gap-2"><button class="btn btn-outline-primary" type="button" data-delete-cancel>Cancelar</button><button class="btn btn-outline-danger" type="button" data-delete-confirm>Excluir documento</button></div>
+  <input type="hidden" data-delete-csrf value="{{ csrf_token() }}">
 </dialog>
+{% endif %}
+{% include 'platform/_qualitative_info.html' %}
+<script type="module" src="{{ url_for('static', filename='js/qualitative_info.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='js/qualitative_document_delete.js') }}"></script>
 <script type="module" src="{{ url_for('static', filename='js/qualitative_viewer.js') }}"></script>
 {% endblock %}

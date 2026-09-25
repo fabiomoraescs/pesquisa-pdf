@@ -21,9 +21,9 @@ class SidebarHeaderTests(unittest.TestCase):
         pages = (
             ("/", "Dashboard"),
             ("/perfil", "Perfil"),
-            ("/projetos", "Projetos de Análise estruturada"),
-            ("/projetos/arquivados", "Projetos arquivados de Análise estruturada"),
-            ("/raspagem-livre", "Análise por termos"),
+            ("/projetos", "Projetos de Busca estruturada"),
+            ("/projetos/arquivados", "Projetos arquivados de Busca estruturada"),
+            ("/raspagem-livre", "Busca por termos"),
             ("/admin", "Visão geral"),
             ("/admin/usuarios", "Usuários"),
             ("/admin/planos", "Planos"),
@@ -58,7 +58,7 @@ class SidebarHeaderTests(unittest.TestCase):
         nav = html.split('<nav class="platform-nav"', 1)[1].split("</nav>", 1)[0]
         positions = [nav.index(marker) for marker in (
             'href="/"', '<span>Raspagem de dados</span>',
-            '<span>Análise qualitativa</span>', '<span>Análise quantitativa</span>',
+            '<span>Análise quali-dados</span>', '<span>Análise quantitativa</span>',
             'id="platform-admin-toggle"',
         )]
         self.assertEqual(positions, sorted(positions))
@@ -69,8 +69,8 @@ class SidebarHeaderTests(unittest.TestCase):
         self.assertEqual(nav.count('>Projetos</a>'), 0)
         self.assertIn('href="/projetos/livres"', nav)
         self.assertIn('href="/projetos"', nav)
-        self.assertIn('Análise por termos', nav)
-        self.assertIn('Análise estruturada', nav)
+        self.assertIn('Busca por termos', nav)
+        self.assertIn('Busca estruturada', nav)
         self.assertNotIn('>Bases de análise</a>', nav)
         self.assertNotIn('Projetos arquivados', nav)
         self.assertNotIn('Em breve', nav)
@@ -98,9 +98,9 @@ class SidebarHeaderTests(unittest.TestCase):
         self.assertIsNotNone(theme)
         self.assertIn('<circle cx="12" cy="12" r="3"/>', manage.group(0))
         self.assertNotEqual(manage.group(0), theme.group(0))
-        for path, title in (("/projetos/livres", "Projetos de Análise por termos"),
-                            ("/projetos", "Projetos de Análise estruturada"),
-                            ("/projetos/qualitativos", "Projetos de Análise qualitativa")):
+        for path, title in (("/projetos/livres", "Projetos de Busca por termos"),
+                            ("/projetos", "Projetos de Busca estruturada"),
+                            ("/projetos/qualitativos", "Projetos de Análise quali-dados")):
             with self.subTest(path=path):
                 self.assertIn(title, self.client.get(path).get_data(as_text=True))
 

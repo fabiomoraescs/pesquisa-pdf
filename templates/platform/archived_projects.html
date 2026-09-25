@@ -1,6 +1,6 @@
 {% extends 'platform/base.html' %}
-{% block title %}Projetos arquivados de {{ 'Análise por termos' if scrape_type == 'free' else 'Análise qualitativa' if scrape_type == 'qualitative' else 'Análise estruturada' }}{% endblock %}
-{% block page_intro %}<h1 class="h4">Projetos arquivados de {{ 'Análise por termos' if scrape_type == 'free' else 'Análise qualitativa' if scrape_type == 'qualitative' else 'Análise estruturada' }}</h1>{% endblock %}
+{% block title %}Projetos arquivados de {{ 'Busca por termos' if scrape_type == 'free' else 'Análise quali-dados' if scrape_type == 'qualitative' else 'Busca estruturada' }}{% endblock %}
+{% block page_intro %}<h1 class="h4">Projetos arquivados de {{ 'Busca por termos' if scrape_type == 'free' else 'Análise quali-dados' if scrape_type == 'qualitative' else 'Busca estruturada' }}</h1>{% endblock %}
 {% block body %}
 {% from 'platform/_view_controls.html' import action_link %}
 {% from 'platform/_icons.html' import icon %}

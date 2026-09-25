@@ -92,7 +92,7 @@ def project_history(project_id: UUID):
     if not can_use_tool(current_user, tool_for_project(project)):
         abort(403)
     if project.scrape_type == QUALITATIVE:
-        return redirect(url_for("qualitative.project_bases", project_id=project.id))
+        return redirect(url_for("qualitative.project_workspace", project_id=project.id))
     items = db.session.scalars(select(Analysis).where(
         Analysis.project_id == project.id
     ).order_by(Analysis.created_at.desc())).all()
@@ -214,9 +214,10 @@ def delete(analysis_id: UUID):
         with JOBS_LOCK:
             RESULTADOS_HR.pop(str(analysis_id), None)
             PROGRESSOS_HR.pop(str(analysis_id), None)
-    flash("Base de análise excluída permanentemente.", "success")
+    flash("Ambiente de análise excluído permanentemente." if tool_id == QUALITATIVE_TOOL
+          else "Base de análise excluída permanentemente.", "success")
     if tool_id == QUALITATIVE_TOOL and project_id:
-        return redirect(url_for("qualitative.project_bases", project_id=project_id))
+        return redirect(url_for("qualitative.project_workspace", project_id=project_id))
     if project_id:
         return redirect(url_for("analyses.project_history", project_id=project_id))
     return redirect(url_for("analyses.standard_history"))

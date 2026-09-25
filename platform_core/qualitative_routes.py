@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 import time
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from threading import RLock
-from uuid import UUID
+from uuid import UUID, uuid4
 
-from flask import Blueprint, abort, current_app, jsonify, redirect, render_template, request, send_file, url_for
+from flask import Blueprint, abort, current_app, flash, jsonify, redirect, render_template, request, send_file, url_for
 from flask_login import current_user, login_required
 from sqlalchemy import select
 from werkzeug.utils import secure_filename
@@ -19,10 +20,11 @@ from historico_racial.pdf import PDFInvalidoError, contar_paginas
 
 from .analyses import analysis_dir, create_analysis, preserve_documents, save_error
 from .extensions import db
-from .models import Analysis, Project, utcnow
+from .models import Analysis, AnalysisDocument, Project, utcnow
 from .qualitative import QUALITATIVE_STRATEGIES, get_qualitative_analysis, get_qualitative_document
 from .qualitative_corpus import (
-    CorpusUnavailableError, QualitativePageNotFoundError, load_qualitative_manifest,
+    CorpusUnavailableError, QualitativePageNotFoundError, append_qualitative_corpus,
+    delete_qualitative_document, load_qualitative_manifest,
     prepare_qualitative_corpus, qualitative_corpus_dir, read_qualitative_page,
     validate_qualitative_corpus,
 )
@@ -55,6 +57,31 @@ def _base(analysis_id: UUID) -> Analysis:
     return get_qualitative_analysis(str(analysis_id), current_user)
 
 
+def _project_workspaces(project: Project) -> list[Analysis]:
+    return db.session.scalars(select(Analysis).where(
+        Analysis.project_id == project.id, Analysis.tool_id == QUALITATIVE_TOOL
+    ).order_by(Analysis.created_at, Analysis.id)).all()
+
+
+def ensure_project_workspace(project: Project) -> Analysis | None:
+    """Cria o ambiente técnico vazio somente se não houver histórico ambíguo."""
+    with ACCOUNT_LIFECYCLE_LOCK:
+        workspaces = _project_workspaces(project)
+        if len(workspaces) == 1:
+            return workspaces[0]
+        if len(workspaces) > 1 or project.status != "active" or project.deleted_at is not None:
+            return None
+        if not account_accepts_new_work(project.owner_user_id):
+            return None
+        return create_analysis(user_id=project.owner_user_id, project_id=project.id,
+                               tool_id=QUALITATIVE_TOOL, tool_version="manual-v1",
+                               name=project.name, parameters={})
+
+
+def _upload_lock(analysis_id: str) -> Path:
+    return analysis_dir(analysis_id) / ".qualitative_upload.lock"
+
+
 def _current_progress(analysis: Analysis) -> dict:
     with _progress_lock:
         for identifier, value in list(_progress.items()):
@@ -65,7 +92,7 @@ def _current_progress(analysis: Analysis) -> dict:
             "document_count": current.get("document_count", analysis.document_count),
             "document_name": current.get("document_name"), "page_number": current.get("page_number", 0),
             "result_url": url_for("qualitative.base", analysis_id=analysis.id) if analysis.status == "concluida" else None,
-            "error": analysis.error_message if analysis.status == "erro" else None}
+            "error": current.get("error") or (analysis.error_message if analysis.status == "erro" else None)}
 
 
 def _run_corpus_job(app, analysis_id: str) -> None:
@@ -108,6 +135,24 @@ def index():
     return redirect(url_for("projects.list_qualitative_projects"))
 
 
+@qualitative_bp.get("/projetos/<uuid:project_id>")
+@login_required
+def project_workspace(project_id: UUID):
+    project = _project(project_id)
+    workspaces = _project_workspaces(project)
+    if not workspaces and project.owner_user_id == current_user.id:
+        created = ensure_project_workspace(project)
+        if created is not None:
+            workspaces = [created]
+    if len(workspaces) == 1:
+        return redirect(url_for("qualitative.base", analysis_id=workspaces[0].id))
+    if not workspaces:
+        return render_template("platform/qualitative_empty.html", project=project, analysis=None)
+    # Dados históricos não são fundidos nem atribuídos arbitrariamente.
+    return render_template("platform/qualitative_legacy_choice.html", project=project,
+                           workspaces=workspaces)
+
+
 @qualitative_bp.get("/projetos/<uuid:project_id>/bases")
 @login_required
 def project_bases(project_id: UUID):
@@ -124,6 +169,10 @@ def new_base(project_id: UUID):
     project = _project(project_id, active=True)
     if project.owner_user_id != current_user.id:
         abort(403)
+    if _project_workspaces(project):
+        if request.method == "POST":
+            abort(409)
+        return redirect(url_for("qualitative.project_workspace", project_id=project.id))
     if request.method == "GET":
         return render_template("platform/qualitative_new_base.html", project=project)
 
@@ -183,6 +232,163 @@ def new_base(project_id: UUID):
     return redirect(url_for("qualitative.base", analysis_id=analysis.id))
 
 
+def _run_added_documents_job(app, analysis_id: str, incoming_name: str,
+                             items: list[tuple[str, str, str]], initial: bool) -> None:
+    with app.app_context():
+        incoming = analysis_dir(analysis_id) / incoming_name
+        try:
+            analysis = db.session.get(Analysis, analysis_id)
+            if analysis is None:
+                return
+            if initial:
+                preserve_documents(analysis, [(incoming / stored, original)
+                                              for _, stored, original in items])
+                _run_corpus_job(app, analysis_id)
+            else:
+                additions = [(AnalysisDocument(id=identifier, analysis_id=analysis_id,
+                                               stored_name=stored, original_name=original), incoming / stored)
+                             for identifier, stored, original in items]
+                def report(event: dict) -> None:
+                    with _progress_lock:
+                        _progress.setdefault(analysis_id, {}).update(event)
+                append_qualitative_corpus(analysis, additions, report)
+                with _progress_lock:
+                    _progress.setdefault(analysis_id, {})["finished_at"] = time.monotonic()
+        except Exception:
+            db.session.rollback()
+            logging.getLogger(__name__).exception("Falha ao adicionar documentos qualitativos %s", analysis_id)
+            if initial:
+                save_error(analysis_id, "Não foi possível preparar os documentos enviados.")
+            with _progress_lock:
+                _progress.setdefault(analysis_id, {}).update(
+                    error="Não foi possível preparar os novos documentos; os anteriores foram preservados.",
+                    finished_at=time.monotonic())
+        finally:
+            try:
+                if incoming.exists() and not incoming.is_symlink():
+                    shutil.rmtree(incoming)
+            except OSError:
+                logging.getLogger(__name__).exception("Falha ao limpar upload transitório %s", analysis_id)
+            finally:
+                try:
+                    _upload_lock(analysis_id).unlink(missing_ok=True)
+                finally:
+                    db.session.remove()
+
+
+@qualitative_bp.post("/bases/<uuid:analysis_id>/documentos")
+@login_required
+def add_documents(analysis_id: UUID):
+    analysis = _base(analysis_id)
+    project = _project(UUID(analysis.project_id), active=True)
+    if project.owner_user_id != current_user.id:
+        abort(403)
+    initial = analysis.document_count == 0 and analysis.status == "processando"
+    if not initial and analysis.status != "concluida":
+        abort(409)
+    if not initial:
+        try:
+            load_qualitative_manifest(analysis)
+        except CorpusUnavailableError:
+            abort(409)
+    uploads = [item for item in request.files.getlist("documents") if item.filename]
+    if not uploads:
+        flash("Selecione ao menos um PDF.", "danger")
+        return redirect(url_for("qualitative.project_workspace", project_id=project.id))
+    lock = _upload_lock(analysis.id)
+    with ACCOUNT_LIFECYCLE_LOCK:
+        if not account_accepts_new_work(current_user.id):
+            abort(403)
+        try:
+            fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        except FileExistsError:
+            abort(409)
+        else:
+            os.close(fd)
+        db.session.refresh(analysis)
+        initial = analysis.document_count == 0 and analysis.status == "processando"
+        if not initial and analysis.status != "concluida":
+            lock.unlink(missing_ok=True)
+            abort(409)
+        if not initial:
+            try:
+                load_qualitative_manifest(analysis)
+            except CorpusUnavailableError:
+                lock.unlink(missing_ok=True)
+                abort(409)
+    incoming = analysis_dir(analysis.id) / f".qualitative_upload.{uuid4().hex}.tmp"
+    try:
+        incoming.mkdir()
+        items = []
+        for upload in uploads:
+            original = upload.filename.replace("\\", "/").rsplit("/", 1)[-1].strip()
+            if not original.lower().endswith(".pdf") or len(original) > 255:
+                raise PDFInvalidoError("Envie somente PDFs válidos.")
+            stored = f"{uuid4().hex}-{secure_filename(original) or 'documento.pdf'}"
+            path = incoming / stored
+            upload.save(path)
+            contar_paginas(path)
+            items.append((str(uuid4()), stored, original))
+        from app import EXECUTOR_ANALISES
+        with _progress_lock:
+            _progress[analysis.id] = {"document_count": len(items), "document_index": 0}
+        EXECUTOR_ANALISES.submit(_run_added_documents_job, current_app._get_current_object(),
+                                 analysis.id, incoming.name, items, initial)
+    except (PDFInvalidoError, OSError, ValueError, RuntimeError):
+        if incoming.exists() and not incoming.is_symlink():
+            shutil.rmtree(incoming)
+        lock.unlink(missing_ok=True)
+        flash("Um dos arquivos não é um PDF legível ou não foi possível iniciar o preparo.", "danger")
+        return redirect(url_for("qualitative.project_workspace", project_id=project.id))
+    return redirect(url_for("qualitative.upload_pending", analysis_id=analysis.id))
+
+
+@qualitative_bp.post("/bases/<uuid:analysis_id>/documentos/<uuid:document_id>/excluir")
+@login_required
+def delete_document(analysis_id: UUID, document_id: UUID):
+    analysis = _base(analysis_id)
+    project = _project(UUID(analysis.project_id), active=True)
+    if project.owner_user_id != current_user.id:
+        abort(403)
+    document = get_qualitative_document(analysis, str(document_id))
+    lock = _upload_lock(analysis.id)
+    try:
+        fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    except FileExistsError:
+        return jsonify({"error": "Aguarde a preparação dos documentos terminar."}), 409
+    else:
+        os.close(fd)
+    try:
+        next_id = delete_qualitative_document(analysis, document)
+    except CorpusUnavailableError:
+        return jsonify({"error": "O corpus está inconsistente. Nenhum documento foi removido."}), 409
+    except Exception:
+        logging.getLogger(__name__).exception("Falha ao excluir documento %s", document_id)
+        return jsonify({"error": "Não foi possível excluir o documento. Tente novamente após revisão."}), 500
+    finally:
+        lock.unlink(missing_ok=True)
+    destination = (url_for("qualitative.page", analysis_id=analysis.id,
+                           document_id=next_id, page_number=1) if next_id else
+                   url_for("qualitative.project_workspace", project_id=project.id))
+    return jsonify({"document_id": document.id, "document_count": analysis.document_count,
+                    "next_url": destination})
+
+
+@qualitative_bp.get("/bases/<uuid:analysis_id>/documentos/preparando")
+@login_required
+def upload_pending(analysis_id: UUID):
+    analysis = _base(analysis_id)
+    project = _project(UUID(analysis.project_id))
+    progress_data = _current_progress(analysis)
+    if not _upload_lock(analysis.id).exists():
+        if progress_data["error"]:
+            return render_template("platform/qualitative_pending.html", analysis=analysis,
+                                   project=project, progress=progress_data, upload_error=progress_data["error"])
+        return redirect(url_for("qualitative.project_workspace", project_id=project.id))
+    return render_template("platform/qualitative_pending.html", analysis=analysis,
+                           project=project, progress=progress_data, uploading=True)
+
+
 @qualitative_bp.get("/bases/<uuid:analysis_id>/progresso")
 @login_required
 def progress(analysis_id: UUID):
@@ -194,6 +400,8 @@ def progress(analysis_id: UUID):
 def base(analysis_id: UUID):
     analysis = _base(analysis_id)
     project = _project(UUID(analysis.project_id))
+    if analysis.document_count == 0:
+        return render_template("platform/qualitative_empty.html", project=project, analysis=analysis)
     if analysis.status != "concluida":
         return render_template("platform/qualitative_pending.html", analysis=analysis,
                                project=project, progress=_current_progress(analysis))

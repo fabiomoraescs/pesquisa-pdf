@@ -82,7 +82,7 @@ class QualitativeFoundationTests(unittest.TestCase):
         self.assertEqual(TOOL_BY_TYPE[QUALITATIVE], QUALITATIVE_TOOL)
         self.assertEqual(TOOL_BY_TYPE[FREE], "pdf_scraper")
         self.assertEqual(TOOL_BY_TYPE[SYSTEMATIC], "document_analysis")
-        self.assertEqual(db.session.get(Tool, QUALITATIVE_TOOL).name, "Análise qualitativa")
+        self.assertEqual(db.session.get(Tool, QUALITATIVE_TOOL).name, "Análise quali-dados")
         self.assertEqual(db.session.get(Tool, QUALITATIVE_TOOL).route, "/analise-qualitativa")
         self.assertIsNotNone(db.session.get(Tool, "pdf_scraper"))
         self.assertIsNotNone(db.session.get(Tool, "document_analysis"))

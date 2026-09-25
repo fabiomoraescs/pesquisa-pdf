@@ -7,20 +7,20 @@
 </section>
 <section class="platform-dashboard-stats" aria-label="Resumo da pesquisa">
   <article class="platform-panel"><span>Projetos ativos</span><strong>{{ projects_total }}</strong></article>
-  <article class="platform-panel"><span>Análise por termos</span><strong>{{ projects_by_type['free'] }}</strong></article>
-  <article class="platform-panel"><span>Análise estruturada</span><strong>{{ projects_by_type['systematic'] }}</strong></article>
+  <article class="platform-panel"><span>Busca por termos</span><strong>{{ projects_by_type['free'] }}</strong></article>
+  <article class="platform-panel"><span>Busca estruturada</span><strong>{{ projects_by_type['systematic'] }}</strong></article>
   <article class="platform-panel"><span>Bases de análise</span><strong>{{ bases_total }}</strong></article>
 </section>
 <section class="platform-panel mb-3" aria-labelledby="dashboard-bases-title">
   <div class="platform-toolbar"><h2 id="dashboard-bases-title" class="h5 mb-0">Bases de análise recentes</h2></div>
   {% if recent_bases %}<ul class="platform-dashboard-records">
     {% for base, project_name in recent_bases %}
-    <li><a href="{{ url_for('analyses.dashboard', analysis_id=base.id) }}">{{ base.display_name }}</a><small>Projeto: {{ project_name or 'Sem projeto' }}</small><small>{{ 'Análise por termos' if base.tool_id == 'pdf_scraper' else 'Análise estruturada' }} · {{ base.status | rotulo }} · {{ base.created_at.strftime('%d/%m/%Y') }}</small></li>
+    <li><a href="{{ url_for('analyses.dashboard', analysis_id=base.id) }}">{{ base.display_name }}</a><small>Projeto: {{ project_name or 'Sem projeto' }}</small><small>{{ 'Busca por termos' if base.tool_id == 'pdf_scraper' else 'Busca estruturada' }} · {{ base.status | rotulo }} · {{ base.created_at.strftime('%d/%m/%Y') }}</small></li>
     {% endfor %}
   </ul>{% else %}<p class="platform-muted mb-0">Nenhuma Base de análise disponível.</p>{% endif %}
 </section>
 <div class="platform-dashboard-charts">
-  {% for kind, label in [('free', 'Análise por termos'), ('systematic', 'Análise estruturada')] %}
+  {% for kind, label in [('free', 'Busca por termos'), ('systematic', 'Busca estruturada')] %}
   {% set latest = latest_bases[kind] %}
   <section class="platform-panel" aria-labelledby="dashboard-latest-{{ kind }}">
     <h2 id="dashboard-latest-{{ kind }}" class="h5">Última Base — {{ label }}</h2>

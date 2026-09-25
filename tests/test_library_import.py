@@ -288,7 +288,7 @@ class ImportRouteTests(unittest.TestCase):
             'class="platform-section-title" aria-label="Nome da plataforma"><span class="platform-brand-mark"><strong>Análysis</strong><small>ferramentas para pesquisa</small></span>',
             legacy,
         )
-        self.assertIn('class="platform-header-context">Análise por termos', legacy)
+        self.assertIn('class="platform-header-context">Busca por termos', legacy)
         self.assertNotIn('aria-label="Conta e projetos"', legacy)
         self.assertIn('id="overlay-processamento"', legacy)
 

@@ -1,0 +1,10 @@
+{% extends 'platform/base.html' %}
+{% block title %}{{ project.name }} — Análysis{% endblock %}
+{% block page_intro %}{% include 'platform/_qualitative_page_intro.html' %}{% endblock %}
+{% block body %}
+<section class="platform-panel">
+  <p class="mb-0">Este projeto ainda não possui documentos.</p>
+</section>
+{% include 'platform/_qualitative_info.html' %}
+<script type="module" src="{{ url_for('static', filename='js/qualitative_info.js') }}"></script>
+{% endblock %}

@@ -147,7 +147,7 @@ def _new_project(scrape_type: str):
         elif scrape_type == SYSTEMATIC and (len(selected) != len(selected_ids) or not selected):
             flash("Selecione ao menos uma biblioteca disponível.", "danger")
         elif scrape_type == FREE and selected_ids:
-            flash("Projetos de Análise por termos não usam bibliotecas.", "danger")
+            flash("Projetos de Busca por termos não usam bibliotecas.", "danger")
         elif scrape_type == QUALITATIVE and selected_ids:
             flash("Projetos qualitativos não usam bibliotecas de vocabulário.", "danger")
         else:
@@ -166,9 +166,12 @@ def _new_project(scrape_type: str):
                     db.session.rollback()
                     flash(str(error), "danger")
                 else:
+                    if scrape_type == QUALITATIVE:
+                        from .qualitative_routes import ensure_project_workspace
+                        ensure_project_workspace(project)
                     target = ("inicio" if scrape_type == FREE else
                               "historico_racial.inicio_projeto" if scrape_type == SYSTEMATIC else
-                              "qualitative.new_base")
+                              "qualitative.project_workspace")
                     return redirect(url_for(target, project_id=project.id))
     return render_template("platform/project_new.html", libraries=libraries, scrape_type=scrape_type)
 

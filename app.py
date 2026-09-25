@@ -732,7 +732,7 @@ def home():
         admin_charts = {
             "registrations": {"labels": months,
                               "values": [registration_counts.get(month, 0) for month in months]},
-            "usage": {"labels": ["Análise por termos", "Análise estruturada"],
+            "usage": {"labels": ["Busca por termos", "Busca estruturada"],
                       "values": [usage_counts.get(TOOL_BY_TYPE[kind], 0)
                                  for kind in (FREE, SYSTEMATIC)]},
         }

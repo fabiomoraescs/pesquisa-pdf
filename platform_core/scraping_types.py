@@ -10,9 +10,9 @@ TOOL_BY_TYPE = {
     QUALITATIVE: QUALITATIVE_TOOL,
 }
 LABEL_BY_TYPE = {
-    FREE: "Análise por termos",
-    SYSTEMATIC: "Análise estruturada",
-    QUALITATIVE: "Análise qualitativa",
+    FREE: "Busca por termos",
+    SYSTEMATIC: "Busca estruturada",
+    QUALITATIVE: "Análise quali-dados",
 }
 LABEL_BY_TOOL = {tool: LABEL_BY_TYPE[kind] for kind, tool in TOOL_BY_TYPE.items()}
 
