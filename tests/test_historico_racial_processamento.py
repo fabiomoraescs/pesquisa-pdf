@@ -15,7 +15,7 @@ import pymupdf
 
 from platform_helpers import create_project, create_user, csrf_from, isolated_platform, login
 from historico_racial.context import construir_paragrafos, obter_contexto
-from historico_racial.entities import listar_entidades
+from historico_racial.entities import Entidade, listar_entidades
 from historico_racial.occurrences import BuscadorLexical
 from historico_racial.pdf import PDFInvalidoError, contar_paginas
 from historico_racial.processor import ArquivoPDF, ProcessamentoError, processar_documentos
@@ -77,6 +77,15 @@ class TesteBuscaLexicalHistoricoRacial(unittest.TestCase):
 
     def test_pdf_sem_entidades_retorna_lista_vazia(self):
         self.assertEqual(self.buscador.localizar("Um texto inteiramente fictício sobre nuvens luminosas."), [])
+
+    def test_flexoes_simples_somente_quando_ativadas_para_nova_execucao(self):
+        entidade = Entidade("trabalhador", "trabalhador", ("trabalhador",), "conceito", ("G",))
+        texto = "As trabalhadoras aparecem no documento."
+        self.assertEqual(BuscadorLexical((entidade,)).localizar(texto), [])
+        encontrados = BuscadorLexical((entidade,), incluir_morfologia=True).localizar(texto)
+        self.assertEqual(len(encontrados), 1)
+        self.assertEqual(encontrados[0].termo_encontrado, "trabalhador")
+        self.assertEqual(encontrados[0].forma_original_no_texto, "trabalhadoras")
 
     def test_contexto_anterior_atual_posterior_e_bordas(self):
         paragrafos = construir_paragrafos([{

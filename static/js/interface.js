@@ -5,8 +5,6 @@
   const opcoesVersao = [...document.querySelectorAll('input[name="versao"]')];
   const versaoSelecionada = () => opcoesVersao.find((opcao) => opcao.checked)?.value || '';
   const configuracoesV3 = document.getElementById('configuracoes-v3');
-  const opcaoLexical = document.getElementById('incluir-lexical');
-  const opcaoSemantica = document.getElementById('incluir-semantica');
   const limiarSemantico = document.getElementById('limiar-semantico');
   const valorLimiar = document.getElementById('valor-limiar');
   const controleLimiarSemantico = document.getElementById('controle-limiar-semantico');
@@ -47,18 +45,9 @@
     if (!configuracoesV3 || !opcoesVersao.length) return;
     const ativa = versaoSelecionada() === 'v3';
     configuracoesV3.hidden = !ativa;
-    if (opcaoLexical) opcaoLexical.disabled = !ativa;
-    if (opcaoSemantica) opcaoSemantica.disabled = !ativa;
-    atualizarEstadoSemantico();
-  }
-
-  function atualizarEstadoSemantico() {
-    const semanticaAtiva = Boolean(
-      versaoSelecionada() === 'v3' && opcaoSemantica && opcaoSemantica.checked,
-    );
-    if (controleLimiarSemantico) controleLimiarSemantico.hidden = !semanticaAtiva;
-    if (avisoSemantico) avisoSemantico.hidden = !semanticaAtiva;
-    if (limiarSemantico) limiarSemantico.disabled = !semanticaAtiva;
+    if (controleLimiarSemantico) controleLimiarSemantico.hidden = !ativa;
+    if (avisoSemantico) avisoSemantico.hidden = !ativa;
+    if (limiarSemantico) limiarSemantico.disabled = !ativa;
   }
 
   function atualizarLimiar() {
@@ -69,21 +58,9 @@
     });
   }
 
-  function manterUmaModalidade(evento) {
-    if (!opcaoLexical || !opcaoSemantica) return;
-    if (!opcaoLexical.checked && !opcaoSemantica.checked) {
-      evento.currentTarget.checked = true;
-    }
-    atualizarEstadoSemantico();
-  }
-
   if (opcoesVersao.length) {
     opcoesVersao.forEach((opcao) => opcao.addEventListener('change', atualizarConfiguracoesV3));
     atualizarConfiguracoesV3();
-  }
-  if (opcaoLexical && opcaoSemantica) {
-    opcaoLexical.addEventListener('change', manterUmaModalidade);
-    opcaoSemantica.addEventListener('change', manterUmaModalidade);
   }
   if (limiarSemantico) {
     limiarSemantico.addEventListener('input', atualizarLimiar);

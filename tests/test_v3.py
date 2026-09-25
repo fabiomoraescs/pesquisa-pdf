@@ -70,6 +70,9 @@ def blocos_controlados():
 
 
 class TesteV3(unittest.TestCase):
+    def test_motor_lexical_v1_ja_considera_flexoes_simples(self):
+        self.assertEqual(v1.contar_ocorrencias("As trabalhadoras foram citadas.", "trabalhador"), 1)
+
     def setUp(self):
         self.termos = [
             {"termo": "Rio Grande do Norte", "categoria": "TERMO INFORMADO"},
@@ -705,46 +708,28 @@ class TesteV3(unittest.TestCase):
                         inicio = cliente.get("/raspagem-livre")
                         pagina_v3 = cliente.get(f"/resultado/{identificador}")
                     self.assertEqual(inicio.status_code, 200)
-                    self.assertIn(b"V3: Busca h", inicio.data)
+                    self.assertIn('name="versao" value="v1"', inicio.get_data(as_text=True))
+                    self.assertIn('name="versao" value="v3"', inicio.get_data(as_text=True))
+                    self.assertNotIn('name="versao" value="v2"', inicio.get_data(as_text=True))
                     self.assertIn("© 2026 Análysis. Todos os direitos reservados.", inicio.get_data(as_text=True))
                     html_inicio = inicio.get_data(as_text=True)
-                    self.assertIn("Incluir busca lexical e morfológica", html_inicio)
-                    self.assertIn("Incluir busca semântica", html_inicio)
-                    self.assertIn("Escolha o método de raspagem", html_inicio)
-                    self.assertIn(
-                        "Separe os termos por ponto e vírgula ou coloque um termo por linha. Termos compostos devem permanecer inteiros.",
-                        html_inicio,
-                    )
-                    self.assertIn(
+                    for trecho in (
+                        "Método de raspagem", "Lexical", "Híbrido",
+                        "O que é", "Quando utilizar", "Como funciona",
+                        "O que o pesquisador fornece", "O que a plataforma produz",
+                        "Observações e limitações", "controle-limiar-semantico",
                         "Use ponto e vírgula ou coloque um termo por linha.",
-                        html_inicio,
-                    )
-                    self.assertIn(
-                        "Exemplo: Nordeste; São Paulo; Rio de Janeiro",
-                        html_inicio,
-                    )
-                    self.assertIn("Qual método escolher?", html_inicio)
-                    self.assertIn("controle-limiar-semantico", html_inicio)
-                    self.assertIn(
-                        "Dependendo do método de raspagem escolhido, a busca pode considerar ocorrências lexicais e morfológicas ou também recuperar trechos por similaridade semântica.",
-                        html_inicio,
-                    )
-                    self.assertIn(
-                        "Por isso, uma correspondência semântica não é o mesmo que uma ocorrência textual.",
-                        html_inicio,
-                    )
-                    self.assertIn(
-                        "Quando apenas a busca lexical e morfológica estiver ativada, a V3 utiliza a mesma lógica básica de localização lexical da V1.",
-                        html_inicio,
-                    )
-                    self.assertIn(
-                        "Os arquivos Excel registram também os parâmetros utilizados na análise, permitindo identificar posteriormente como a raspagem foi realizada.",
-                        html_inicio,
-                    )
-                    self.assertIn(
-                        "Para auxiliar a validação qualitativa, a planilha V3 apresenta o trecho recuperado juntamente com o bloco textual anterior e posterior, quando disponíveis.",
-                        html_inicio,
-                    )
+                    ):
+                        self.assertIn(trecho, html_inicio)
+                    self.assertNotIn("Modalidades incluídas", html_inicio)
+                    self.assertNotIn('name="incluir_lexical"', html_inicio)
+                    self.assertNotIn('name="incluir_semantica"', html_inicio)
+                    self.assertNotIn("Lexical e morfológico", html_inicio)
+                    self.assertIn("variações morfológicas simples", html_inicio)
+                    self.assertIn("Combina essa busca lexical e morfológica", html_inicio)
+                    self.assertNotIn("V1: Busca lexical", html_inicio)
+                    self.assertNotIn("V2: Busca lexical", html_inicio)
+                    self.assertNotIn("V3: Busca híbrida", html_inicio)
                     self.assertIn("http://lattes.cnpq.br/0075160400322127", html_inicio)
                     self.assertIn('target="_blank" rel="noopener noreferrer"', html_inicio)
                     self.assertEqual(pagina_v3.status_code, 200)

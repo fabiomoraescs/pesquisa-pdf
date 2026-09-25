@@ -23,8 +23,8 @@ PLANOS = (
     ("institutional", "Institucional", "Plano institucional"),
 )
 FERRAMENTAS = (
-    ("pdf_scraper", "Raspagem livre", "/"),
-    ("document_analysis", "Raspagem sistemática", "/analise-documental"),
+    ("pdf_scraper", "Análise por termos", "/"),
+    ("document_analysis", "Análise estruturada", "/analise-documental"),
     ("qualitative_analysis", "Análise qualitativa", "/analise-qualitativa"),
 )
 ACCOUNT_LIFECYCLE_LOCK = RLock()

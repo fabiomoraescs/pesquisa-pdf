@@ -28,7 +28,7 @@ LABELS = {
     "admin_courtesy": "Cortesia administrativa", "inherit": "Herdar do plano",
     "allow": "Permitir", "deny": "Bloquear", "student": "Estudante",
     "researcher": "Pesquisador", "pro": "Pro", "institutional": "Institucional",
-    "pdf_scraper": "Raspagem livre", "document_analysis": "Raspagem sistemática",
+    "pdf_scraper": "Análise por termos", "document_analysis": "Análise estruturada",
     "user_registered": "Usuário cadastrado", "admin_created": "Administrador criado",
     "user_status_changed": "Estado do usuário alterado",
     "access_grant_changed": "Acesso alterado", "tool_override_changed": "Permissão de ferramenta alterada",
@@ -68,6 +68,20 @@ def label(value: object) -> str:
     return LABELS.get(str(value), EDUCATION.get(str(value), GENDER.get(str(value), RACE_COLOR.get(str(value), str(value)))))
 
 
+def analysis_method(analysis: object) -> str:
+    """Rótulo público; mantém versões históricas legíveis sem expor códigos internos."""
+    tool_id = getattr(analysis, "tool_id", "")
+    version = getattr(analysis, "tool_version", "")
+    return {
+        ("pdf_scraper", "v1"): "Lexical",
+        ("pdf_scraper", "v2"): "Método legado",
+        ("pdf_scraper", "v3"): "Híbrido",
+        ("document_analysis", "lexical"): "Lexical",
+        ("document_analysis", "hibrido"): "Híbrido",
+        ("qualitative_analysis", "manual-v1"): "Leitura manual",
+    }.get((tool_id, version), "Método não informado")
+
+
 def audit_details(value: dict | None) -> str:
     if not value:
         return "—"
@@ -92,6 +106,7 @@ def date_br(value: object) -> str:
 
 def register_presentation(app) -> None:
     app.jinja_env.filters["rotulo"] = label
+    app.jinja_env.filters["metodo_base"] = analysis_method
     app.jinja_env.filters["detalhes_auditoria"] = audit_details
     app.jinja_env.filters["data_br"] = date_br
     app.jinja_env.globals.update(education_options=EDUCATION, gender_options=GENDER, race_options=RACE_COLOR, presentation_labels=LABELS)

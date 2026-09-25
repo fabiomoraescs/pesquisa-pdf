@@ -87,7 +87,7 @@ def _executar_job(
     resultado_url: str, vocabulario: dict, project_id: str, user_id: str,
     project_name: str, library_names: list[str],
     metodo_analise: str = "lexical", limiar_semantico: float | None = None,
-    app_instance=None,
+    app_instance=None, incluir_morfologia: bool = False,
 ) -> None:
     def atualizar(evento: dict) -> None:
         with JOBS_LOCK:
@@ -106,6 +106,7 @@ def _executar_job(
             project_id=project_id, vocabulary_version=vocabulario["version"],
             vocabulary_hash=vocabulario["hash"],
             metodo_analise=metodo_analise, limiar_semantico=limiar_semantico,
+            incluir_morfologia=incluir_morfologia,
         )
         resultado.update({"project_name": project_name, "library_names": library_names, "owner_user_id": user_id,
                           "data_processamento": datetime.now(timezone.utc).isoformat(timespec="seconds")})
@@ -309,6 +310,7 @@ def analisar(project_id: UUID):
                     analysis_id=job_id, user_id=current_user.id, project_id=project.id,
                     tool_id="document_analysis", tool_version=metodo_analise,
                     parameters={"metodo_analise": metodo_analise, "limiar_semantico": limiar_semantico,
+                                "morfologia_automatica": True,
                                 "vocabulario_version": vocabulary["version"], "vocabulario_hash": vocabulary["hash"],
                                 "termos_pesquisados": [{"id_entidade": entity.id_entidade,
                                                         "forma_canonica": entity.forma_canonica,
@@ -337,6 +339,7 @@ def analisar(project_id: UUID):
                 _executar_job, job_id, files, temporary, result_url, vocabulary,
                 project.id, current_user.id, project.name, [item.name for item in _libraries(project.id)],
                 metodo_analise, limiar_semantico, current_app._get_current_object(),
+                incluir_morfologia=True,
             )
         except RuntimeError:
             temporary.cleanup()

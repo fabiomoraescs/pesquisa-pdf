@@ -4,8 +4,7 @@
 {% set endpoint = request.endpoint or '' %}
 {% set free_context = endpoint in ('inicio', 'resultado', 'download', 'progresso', 'projects.list_free_projects', 'projects.new_free_project', 'projects.archived_free_projects', 'projects.free_project', 'analyses.standard_history', 'analyses.free_history') or (analysis is defined and analysis.tool_id == 'pdf_scraper') or (project is defined and project.scrape_type == 'free') %}
 {% set systematic_context = endpoint in ('projects.list_projects', 'projects.new_project', 'projects.archived_projects', 'analyses.systematic_history') or (analysis is defined and analysis.tool_id == 'document_analysis') or (project is defined and project.scrape_type == 'systematic') or endpoint.startswith('historico_racial.') %}
-{% set free_bases_active = endpoint in ('analyses.standard_history', 'analyses.free_history') or (endpoint == 'analyses.project_history' and project is defined and project.scrape_type == 'free') or (analysis is defined and analysis.tool_id == 'pdf_scraper' and endpoint.startswith('analyses.')) %}
-{% set systematic_bases_active = endpoint == 'analyses.systematic_history' or (endpoint == 'analyses.project_history' and project is defined and project.scrape_type == 'systematic') or (analysis is defined and analysis.tool_id == 'document_analysis' and endpoint.startswith('analyses.')) %}
+{% set qualitative_context = endpoint.startswith('qualitative.') or endpoint in ('projects.list_qualitative_projects', 'projects.new_qualitative_project', 'projects.archived_qualitative_projects') or (project is defined and project.scrape_type == 'qualitative') %}
 {% set admin_sections = {
   'admin.home': 'Visão geral', 'admin.users': 'Usuários', 'admin.user_detail': 'Usuários',
   'admin.deleted_users': 'Usuários excluídos', 'admin.delete_user': 'Usuários',
@@ -19,33 +18,26 @@
 } %}
 {% if endpoint == 'home' %}{% set section_title = 'Dashboard' %}
 {% elif endpoint == 'profile.my_profile' or endpoint in ('profile.photo', 'profile.upload_photo', 'profile.remove_photo') %}{% set section_title = 'Perfil' %}
-{% elif endpoint in ('projects.archived_projects', 'projects.archived_free_projects') or endpoint in ('projects.delete_project', 'projects.confirm_batch_delete') %}{% set section_title = 'Projetos arquivados' %}
-{% elif endpoint.startswith('projects.') %}{% set section_title = 'Projetos' %}
-{% elif endpoint == 'inicio' or endpoint in ('resultado', 'download', 'progresso') %}{% set section_title = 'Raspagem livre' %}
+{% elif endpoint in ('projects.archived_projects', 'projects.archived_free_projects', 'projects.archived_qualitative_projects') %}{% set section_title = 'Projetos arquivados de ' ~ ('Análise por termos' if free_context else 'Análise estruturada' if systematic_context else 'Análise qualitativa') %}
+{% elif endpoint.startswith('projects.') %}{% set section_title = 'Projetos de ' ~ ('Análise por termos' if free_context else 'Análise estruturada' if systematic_context else 'Análise qualitativa') %}
+{% elif endpoint.startswith('qualitative.') %}{% set section_title = 'Análise qualitativa' %}
+{% elif endpoint == 'inicio' or endpoint in ('resultado', 'download', 'progresso') %}{% set section_title = 'Análise por termos' %}
 {% elif endpoint in ('analyses.standard_history', 'analyses.free_history', 'analyses.systematic_history', 'analyses.project_history') %}{% set section_title = 'Bases de análise' %}
 {% elif endpoint.startswith('analyses.') %}{% set section_title = 'Base de análise' %}
 {% elif endpoint == 'auth.change_password' %}{% set section_title = 'Alterar senha' %}
 {% elif request.blueprint == 'admin' %}{% set section_title = admin_sections.get(endpoint, 'Gerenciar') %}
 {% elif project is defined %}{% set section_title = project.name %}
-{% else %}{% set section_title = 'Raspagem de Dados' %}{% endif %}
+{% else %}{% set section_title = 'Análysis' %}{% endif %}
 <aside class="platform-sidebar" id="platform-sidebar" aria-label="Menu da plataforma">
   <div class="platform-section-title" aria-label="Nome da plataforma">{{ brand_mark() }}</div>
   <nav class="platform-nav" aria-label="Navegação principal">
     <a class="{{ 'is-current' if endpoint == 'home' else '' }}" {% if endpoint == 'home' %}aria-current="page"{% endif %} href="{{ url_for('home') }}">{{ icon('grade') }}<span>Dashboard</span></a>
     <details class="platform-nav-dropdown" {% if free_context or systematic_context %}open{% endif %}>
       <summary>{{ icon('pdf') }}<span>Raspagem de dados</span></summary>
-      <details class="platform-nav-subdropdown" {% if free_context %}open{% endif %}>
-        <summary class="{{ 'is-current' if free_context else '' }}">Raspagem livre</summary>
-        <a class="{{ 'is-current' if endpoint == 'projects.new_free_project' else '' }}" {% if endpoint == 'projects.new_free_project' %}aria-current="page"{% endif %} href="{{ url_for('projects.new_free_project') }}">Novo projeto</a>
-        <a class="{{ 'is-current' if free_context and not free_bases_active and endpoint != 'projects.new_free_project' else '' }}" {% if free_context and not free_bases_active and endpoint != 'projects.new_free_project' %}aria-current="page"{% endif %} href="{{ url_for('projects.list_free_projects') }}">Projetos</a>
-      </details>
-      <details class="platform-nav-subdropdown" {% if systematic_context %}open{% endif %}>
-        <summary class="{{ 'is-current' if systematic_context else '' }}">Raspagem sistemática</summary>
-        <a class="{{ 'is-current' if endpoint == 'projects.new_project' else '' }}" {% if endpoint == 'projects.new_project' %}aria-current="page"{% endif %} href="{{ url_for('projects.new_project') }}">Novo projeto</a>
-        <a class="{{ 'is-current' if systematic_context and not systematic_bases_active and endpoint != 'projects.new_project' else '' }}" {% if systematic_context and not systematic_bases_active and endpoint != 'projects.new_project' %}aria-current="page"{% endif %} href="{{ url_for('projects.list_projects') }}">Projetos</a>
-      </details>
+      {% if free_access %}<a class="platform-nav-tool-link{{ ' is-current' if free_context else '' }}" href="{{ url_for('projects.list_free_projects') }}" {% if free_context %}aria-current="location"{% endif %}>Análise por termos</a>{% else %}<span class="platform-nav-tool-unavailable" aria-disabled="true">Análise por termos</span>{% endif %}
+      {% if systematic_access %}<a class="platform-nav-tool-link{{ ' is-current' if systematic_context else '' }}" href="{{ url_for('projects.list_projects') }}" {% if systematic_context %}aria-current="location"{% endif %}>Análise estruturada</a>{% else %}<span class="platform-nav-tool-unavailable" aria-disabled="true">Análise estruturada</span>{% endif %}
     </details>
-    <span class="platform-nav-unavailable" aria-disabled="true">{{ icon('qualitativa') }}<span>Análise qualitativa</span></span>
+    {% if qualitative_access %}<a class="{{ 'is-current' if qualitative_context else '' }}" href="{{ url_for('projects.list_qualitative_projects') }}" {% if qualitative_context %}aria-current="location"{% endif %}>{{ icon('qualitativa') }}<span>Análise qualitativa</span></a>{% else %}<span class="platform-nav-unavailable" aria-disabled="true">{{ icon('qualitativa') }}<span>Análise qualitativa</span></span>{% endif %}
     <span class="platform-nav-unavailable" aria-disabled="true">{{ icon('quantitativa') }}<span>Análise quantitativa</span></span>
     {% if current_user.role == 'admin' %}
     <button class="platform-admin-toggle{{ ' is-current' if request.blueprint == 'admin' else '' }}" id="platform-admin-toggle" type="button" aria-expanded="{{ 'true' if request.blueprint == 'admin' else 'false' }}" aria-controls="platform-admin-submenu">{{ icon('gerenciar') }}<span>Gerenciar</span><span class="platform-admin-chevron" aria-hidden="true">▾</span></button>

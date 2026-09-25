@@ -37,8 +37,10 @@ class AnalysisBaseTests(unittest.TestCase):
         free = self.client.get("/projetos/livres").get_data(as_text=True)
         systematic = self.client.get("/projetos").get_data(as_text=True)
         self.assertIn("Raspagem de dados", free)
-        self.assertIn("Raspagem livre", free)
-        self.assertIn("Raspagem sistemática", free)
+        self.assertIn("Análise por termos", free)
+        self.assertIn("Análise estruturada", free)
+        self.assertNotIn("Raspagem livre", free)
+        self.assertNotIn("Raspagem sistemática", free)
         self.assertIn("Análise qualitativa", free)
         self.assertIn("Análise quantitativa", free)
         self.assertNotIn("Raspagem padrão", free)
@@ -54,8 +56,11 @@ class AnalysisBaseTests(unittest.TestCase):
     def test_version_radios_and_project_navigation_keep_existing_values(self):
         page = self.client.get("/raspagem-livre").get_data(as_text=True)
         self.assertNotIn('<select class="form-select" id="versao"', page)
-        for version in ("v1", "v2", "v3"):
+        for version in ("v1", "v3"):
             self.assertIn(f'type="radio" name="versao" value="{version}"', page)
+        self.assertNotIn('type="radio" name="versao" value="v2"', page)
+        self.assertIn('> Lexical</label>', page)
+        self.assertIn('> Híbrido</label>', page)
         self.assertIn('Método de raspagem', page)
         self.assertIn('Escolha o método de raspagem conforme o objetivo', page)
         for path, new_path, archived_path in (
@@ -65,7 +70,7 @@ class AnalysisBaseTests(unittest.TestCase):
             html = self.client.get(path).get_data(as_text=True)
             nav = html.split('<nav class="platform-nav"', 1)[1].split('</nav>', 1)[0]
             self.assertNotIn('Projetos arquivados', nav)
-            self.assertIn(f'href="{new_path}">Novo projeto</a>', nav)
+            self.assertNotIn(f'href="{new_path}">Novo projeto</a>', nav)
             self.assertIn(f'href="{archived_path}">Projetos arquivados</a>', html)
             self.assertIn('btn btn-outline-primary btn-sm', html)
             self.assertNotIn('Criar projeto', html)
@@ -102,7 +107,7 @@ class AnalysisBaseTests(unittest.TestCase):
                          f"/analise-documental/projetos/{systematic_id}")
         systematic_tool = self.client.get(systematic.headers["Location"])
         self.assertEqual(systematic_tool.status_code, 200)
-        self.assertIn("Método de análise", systematic_tool.get_data(as_text=True))
+        self.assertIn("Método de raspagem", systematic_tool.get_data(as_text=True))
 
     def test_project_actions_replace_ficha_and_old_url_redirects(self):
         free_id = self.free_project()
@@ -157,6 +162,7 @@ class AnalysisBaseTests(unittest.TestCase):
         systematic_html = systematic.get_data(as_text=True)
         self.assertIn(free_base.id, free_html)
         self.assertIn(old_base.id, free_html)
+        self.assertIn("Método legado", free_html)
         self.assertNotIn(systematic_base.id, free_html)
         self.assertNotIn(other_base.id, free_html)
         self.assertIn(systematic_base.id, systematic_html)
@@ -208,8 +214,9 @@ class AnalysisBaseTests(unittest.TestCase):
         systematic_id = create_project(self.client)
         free_page = self.client.get(f"/raspagem-livre?project_id={free_id}").get_data(as_text=True)
         system_page = self.client.get(f"/analise-documental/projetos/{systematic_id}").get_data(as_text=True)
-        for version in ("v1", "v2", "v3"):
+        for version in ("v1", "v3"):
             self.assertIn(f'value="{version}"', free_page)
+        self.assertNotIn('name="versao" value="v2"', free_page)
         self.assertIn("Relações raciais", system_page)
         self.assertIn("Bibliotecas", system_page)
 

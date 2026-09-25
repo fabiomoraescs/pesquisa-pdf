@@ -38,10 +38,11 @@ from platform_core.projects import projects_bp
 from platform_core.admin import admin_bp
 from platform_core.profile import profile_bp
 from platform_core.analysis_routes import analyses_bp
+from platform_core.qualitative_routes import qualitative_bp
 from platform_core.presentation import register_presentation
 from platform_core.cli import register_cli
 from platform_core.services import ACCOUNT_LIFECYCLE_LOCK, access_is_active, account_accepts_new_work, can_use_tool, get_project_for_user
-from platform_core.scraping_types import FREE, SYSTEMATIC, TOOL_BY_TYPE, tool_for_project
+from platform_core.scraping_types import FREE, QUALITATIVE_TOOL, SYSTEMATIC, TOOL_BY_TYPE, tool_for_project
 from platform_core.semantic_threshold import normalize as normalize_semantic_threshold, template_settings
 
 from analyzer.common import (
@@ -94,7 +95,10 @@ register_presentation(app)
 
 @app.context_processor
 def _semantic_threshold_template_context():
-    return {"semantic_threshold": template_settings()}
+    return {"semantic_threshold": template_settings(),
+            "free_access": bool(current_user.is_authenticated and can_use_tool(current_user, "pdf_scraper")),
+            "systematic_access": bool(current_user.is_authenticated and can_use_tool(current_user, "document_analysis")),
+            "qualitative_access": bool(current_user.is_authenticated and can_use_tool(current_user, QUALITATIVE_TOOL))}
 
 
 app.register_blueprint(auth_bp)
@@ -103,6 +107,7 @@ app.register_blueprint(admin_bp)
 app.register_blueprint(profile_bp)
 app.register_blueprint(historico_racial_bp)
 app.register_blueprint(analyses_bp)
+app.register_blueprint(qualitative_bp)
 
 
 @login_manager.user_loader
@@ -630,10 +635,14 @@ def _nome_disponivel(pasta: Path, nome: str) -> Path:
 
 
 def _configuracoes_v3() -> dict[str, object]:
-    """Lê controles exclusivos da V3 sem afetar as versões lexicais."""
+    """Novas execuções híbridas combinam sempre as duas modalidades.
+
+    Os flags continuam nos parâmetros para preservar o formato histórico;
+    campos de formulário antigos não podem desativar uma das buscas.
+    """
     return {
-        "incluir_lexical": request.form.get("incluir_lexical") == "on",
-        "incluir_semantica": request.form.get("incluir_semantica") == "on",
+        "incluir_lexical": True,
+        "incluir_semantica": True,
         "limiar_semantico": normalize_semantic_threshold(request.form.get("limiar_semantico", template_settings()["default"])),
     }
 
@@ -723,7 +732,7 @@ def home():
         admin_charts = {
             "registrations": {"labels": months,
                               "values": [registration_counts.get(month, 0) for month in months]},
-            "usage": {"labels": ["Raspagem livre", "Raspagem sistemática"],
+            "usage": {"labels": ["Análise por termos", "Análise estruturada"],
                       "values": [usage_counts.get(TOOL_BY_TYPE[kind], 0)
                                  for kind in (FREE, SYSTEMATIC)]},
         }
@@ -803,12 +812,6 @@ def inicio():
         return _resposta_erro("Use ponto e vírgula (;) para separar os termos de pesquisa.")
 
     configuracoes_v3 = _configuracoes_v3() if versao == "v3" else None
-    if (
-        configuracoes_v3
-        and not configuracoes_v3["incluir_lexical"]
-        and not configuracoes_v3["incluir_semantica"]
-    ):
-        return _resposta_erro("Na V3, selecione a busca lexical, a semântica ou ambas.")
 
     arquivos_pdf = [
         arquivo
@@ -981,6 +984,7 @@ def create_app(test_config: dict | None = None) -> Flask:
     isolated.register_blueprint(profile_bp)
     isolated.register_blueprint(historico_racial_bp)
     isolated.register_blueprint(analyses_bp)
+    isolated.register_blueprint(qualitative_bp)
     isolated.before_request(_enforce_platform_access)
     isolated.register_error_handler(CSRFError, _csrf_error)
     isolated.register_error_handler(413, arquivo_grande)

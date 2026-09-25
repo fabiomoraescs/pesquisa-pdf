@@ -27,7 +27,7 @@ class TesteHistoricoRacial(unittest.TestCase):
         self.assertIn("Análysis", pagina)
         self.assertIn("ferramentas para pesquisa", pagina)
         self.assertIn("Raspagem de dados", pagina)
-        self.assertIn("Raspagem sistemática", pagina)
+        self.assertIn("Análise estruturada", pagina)
         self.assertIn("Processar PDFs", pagina)
         self.assertIn(f'action="/analise-documental/projetos/{projeto}/analisar"', pagina)
 

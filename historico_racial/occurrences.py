@@ -41,17 +41,24 @@ def _padrao_variante(variante: str) -> re.Pattern[str]:
 
 
 class BuscadorLexical:
-    """Compila os padrões uma única vez por job, sem inferir novas variantes."""
+    """Compila padrões por job; flexões automáticas são opt-in para novos jobs."""
 
-    def __init__(self, entidades: tuple[Entidade, ...]):
+    def __init__(self, entidades: tuple[Entidade, ...], *, incluir_morfologia: bool = False):
+        # Reutiliza as mesmas flexões simples da Análise por termos. O padrão
+        # histórico, baseado somente nas variantes explícitas, não muda.
+        if incluir_morfologia:
+            from analyzer.v1 import gerar_variacoes_termo
+
         self._padroes: list[tuple[Entidade, tuple[str, ...], re.Pattern[str]]] = []
         for entidade in entidades:
             variantes_por_forma: dict[str, list[str]] = {}
             for variante in entidade.variantes:
-                chave, _ = normalizar_com_mapa(variante.strip())
-                variantes_por_forma.setdefault(chave, []).append(variante)
-            for variantes in variantes_por_forma.values():
-                self._padroes.append((entidade, tuple(variantes), _padrao_variante(variantes[0])))
+                formas = (gerar_variacoes_termo(variante) if incluir_morfologia
+                          else {normalizar_com_mapa(variante.strip())[0]})
+                for forma in sorted(formas):
+                    variantes_por_forma.setdefault(forma, []).append(variante)
+            for forma, variantes in variantes_por_forma.items():
+                self._padroes.append((entidade, tuple(variantes), _padrao_variante(forma)))
 
     def localizar(self, texto: str) -> list[Correspondencia]:
         """Retorna matches únicos com recortes originais e limites de palavra."""

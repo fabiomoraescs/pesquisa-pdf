@@ -1,0 +1,11 @@
+{% extends 'platform/base.html' %}
+{% block title %}Corpus — {{ analysis.display_name }}{% endblock %}
+{% block page_intro %}<h1 class="h4">{{ analysis.display_name }}</h1><p class="platform-muted">Projeto: {{ project.name }}</p>{% endblock %}
+{% block body %}
+<section class="platform-panel" aria-live="polite">
+  {% if inconsistent %}<div class="alert alert-danger" role="alert">O corpus salvo está ausente ou inconsistente. A Base não será reprocessada automaticamente. Solicite revisão antes de continuar.</div>
+  {% elif analysis.status == 'erro' %}<div class="alert alert-danger" role="alert">{{ analysis.error_message or 'Falha na preparação do corpus.' }}</div>
+  {% else %}<p>Preparando o corpus textual página por página. Os PDFs originais estão preservados.</p><p class="platform-muted">{% if progress.document_name %}Documento {{ progress.document_index }} de {{ progress.document_count }}: {{ progress.document_name }} · página {{ progress.page_number }}{% else %}Aguardando início da extração…{% endif %}</p><p class="platform-muted">Esta página será atualizada enquanto o preparo estiver em andamento.</p><script>setTimeout(() => location.reload(), 3000);</script>{% endif %}
+  <a class="btn btn-outline-primary btn-sm" href="{{ url_for('qualitative.project_bases', project_id=project.id) }}">Bases do projeto</a>
+</section>
+{% endblock %}

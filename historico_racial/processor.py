@@ -43,6 +43,7 @@ def processar_documentos(
     vocabulary_hash: str | None = None,
     metodo_analise: str = "lexical",
     limiar_semantico: float | None = None,
+    incluir_morfologia: bool = False,
 ) -> dict[str, Any]:
     """Um PDF = um documento; resultados são candidatos lexicais à revisão.
 
@@ -58,7 +59,7 @@ def processar_documentos(
         limiar_semantico = DEFAULT
     if vocabulario is None:
         configuracao_entidades = carregar_entidades()
-        buscador = BuscadorLexical(listar_entidades())
+        buscador = BuscadorLexical(listar_entidades(), incluir_morfologia=incluir_morfologia)
         grupos = configuracao_entidades["grupos"]
         vocabulario_version = None
         vocabulario_hash = None
@@ -67,7 +68,7 @@ def processar_documentos(
     else:
         conteudo = vocabulario["vocabulario"]
         entidades_ativas = entidades_pesquisaveis(conteudo)
-        buscador = BuscadorLexical(entidades_ativas)
+        buscador = BuscadorLexical(entidades_ativas, incluir_morfologia=incluir_morfologia)
         grupos = {codigo: grupo["nome"] for codigo, grupo in conteudo["grupos"].items()}
         vocabulario_version = vocabulario["version"]
         vocabulario_hash = vocabulario["hash"]
@@ -254,6 +255,7 @@ def processar_documentos(
         "total_ocorrencias": len(ocorrencias),
         "entidades_distintas": len({item["id_entidade"] for item in ocorrencias}),
         "metodo_analise": metodo_analise,
+        "morfologia_automatica": incluir_morfologia,
         "limiar_semantico": limiar_semantico if metodo_analise == "hibrido" else None,
         "modelo_semantico": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2" if metodo_analise == "hibrido" else None,
         "vocabulario_version": vocabulary_version or vocabulario_version,

@@ -23,7 +23,7 @@
       </div>
     </div>
 
-    {% if analysis is defined %}<section class="download-card mb-4"><p class="text-secondary mb-2">Raspagem livre · {{ analysis.document_count }} PDF(s) · {{ analysis.result_count }} resultado(s) · {{ analysis.tool_version|upper }} · {{ analysis.created_at.strftime('%d/%m/%Y %H:%M') }}{% if analysis.project_id %} · Vinculada a projeto{% endif %}</p><p class="text-secondary mb-2"><strong>Documentos:</strong> {{ documents|map(attribute='original_name')|join(', ') }} · <strong>Termos:</strong> {{ analysis.parameters_json.termos|map(attribute='termo')|join(', ') }}</p>{% include 'platform/_analysis_actions.html' %}</section>{% endif %}
+    {% if analysis is defined %}<section class="download-card mb-4"><p class="text-secondary mb-2">Análise por termos · {{ analysis.document_count }} PDF(s) · {{ analysis.result_count }} resultado(s) · {{ analysis | metodo_base }} · {{ analysis.created_at.strftime('%d/%m/%Y %H:%M') }}{% if analysis.project_id %} · Vinculada a projeto{% endif %}</p><p class="text-secondary mb-2"><strong>Documentos:</strong> {{ documents|map(attribute='original_name')|join(', ') }} · <strong>Termos:</strong> {{ analysis.parameters_json.termos|map(attribute='termo')|join(', ') }}</p>{% include 'platform/_analysis_actions.html' %}</section>{% endif %}
 
     {% if resultado.erros %}
       <div class="alert alert-warning">
@@ -44,7 +44,7 @@
     </section>
 
     <section class="download-card mb-4">
-      <h2 class="h5">Planilhas geradas pela V3</h2>
+      <h2 class="h5">Planilhas geradas pelo método Híbrido</h2>
       <div class="d-flex gap-2 flex-wrap">
         {% for arquivo in resultado.arquivos %}
           <a class="btn {% if arquivo.consolidado %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{{ url_for('analyses.excel', analysis_id=analysis.id, filename=arquivo.nome) if analysis is defined else url_for('download', identificador=identificador, nome_arquivo=arquivo.nome) }}">{{ arquivo.rotulo }}</a>
@@ -53,7 +53,7 @@
       {% if not resultado.arquivos %}<p class="mb-0 text-secondary">Não houve planilha gerada porque nenhum PDF foi processado com sucesso.</p>{% endif %}
     </section>
 
-    <section class="row g-4 mb-4 dashboard-grid" aria-label="Gráficos da V3">
+    <section class="row g-4 mb-4 dashboard-grid" aria-label="Gráficos do método Híbrido">
       <div class="col-12 col-lg-6"><div class="chart-card"><div class="chart-header"><h2>Ocorrências lexicais por consulta</h2><span class="chart-subtitle">Inclui variações morfológicas</span></div><div id="grafico-v3-lexical" class="chart"></div></div></div>
       <div class="col-12 col-lg-6"><div class="chart-card"><div class="chart-header"><h2>Correspondências semânticas por consulta</h2><span class="chart-subtitle">Trechos sem termo literal</span></div><div id="grafico-v3-semantico" class="chart"></div></div></div>
       <div class="col-12 col-lg-6"><div class="chart-card"><div class="chart-header"><h2>Similaridade semântica média por consulta</h2><span class="chart-subtitle">De 0 a 1</span></div><div id="grafico-v3-media" class="chart"></div></div></div>

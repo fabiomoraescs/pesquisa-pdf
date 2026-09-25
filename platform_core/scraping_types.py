@@ -10,8 +10,8 @@ TOOL_BY_TYPE = {
     QUALITATIVE: QUALITATIVE_TOOL,
 }
 LABEL_BY_TYPE = {
-    FREE: "Raspagem livre",
-    SYSTEMATIC: "Raspagem sistemática",
+    FREE: "Análise por termos",
+    SYSTEMATIC: "Análise estruturada",
     QUALITATIVE: "Análise qualitativa",
 }
 LABEL_BY_TOOL = {tool: LABEL_BY_TYPE[kind] for kind, tool in TOOL_BY_TYPE.items()}

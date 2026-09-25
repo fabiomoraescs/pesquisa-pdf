@@ -159,7 +159,7 @@ class DashboardRefinementsTests(unittest.TestCase):
         login(self.client)
         html = self.client.get("/").get_data(as_text=True)
         self.assertIn("Projeto: Sem projeto", html)
-        self.assertEqual(html.count("Nenhuma análise concluída ainda."), 2)
+        self.assertEqual(html.count("Nenhuma Base concluída ainda."), 2)
 
     def test_v3_uses_its_persisted_book_series_and_revoked_tool_is_not_exposed(self):
         owner = create_user()

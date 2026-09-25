@@ -14,7 +14,7 @@ from .extensions import db
 from .models import Project, ProjectLibrary, ProjectVocabularyVersion, VocabularyLibrary
 from .project_lifecycle import ProjectActionError, archive, delete_archived, restore
 from .services import ACCOUNT_LIFECYCLE_LOCK, account_accepts_new_work, can_use_tool, get_project_for_user
-from .scraping_types import FREE, SYSTEMATIC, TOOL_BY_TYPE
+from .scraping_types import FREE, QUALITATIVE, SYSTEMATIC, TOOL_BY_TYPE
 from .vocabularies import create_project_vocabulary, project_store
 
 projects_bp = Blueprint("projects", __name__)
@@ -55,6 +55,12 @@ def list_free_projects():
     return _list_projects(FREE)
 
 
+@projects_bp.get("/projetos/qualitativos")
+@login_required
+def list_qualitative_projects():
+    return _list_projects(QUALITATIVE)
+
+
 def _list_projects(scrape_type: str):
     _require_tool(scrape_type)
     projects = db.session.scalars(
@@ -77,6 +83,12 @@ def archived_projects():
 @login_required
 def archived_free_projects():
     return _archived_projects(FREE)
+
+
+@projects_bp.get("/projetos/qualitativos/arquivados")
+@login_required
+def archived_qualitative_projects():
+    return _archived_projects(QUALITATIVE)
 
 
 def _archived_projects(scrape_type: str):
@@ -102,6 +114,21 @@ def new_free_project():
     return _new_project(FREE)
 
 
+@projects_bp.route("/projetos/qualitativos/novo", methods=["GET", "POST"])
+@login_required
+def new_qualitative_project():
+    return _new_project(QUALITATIVE)
+
+
+def _project_list_endpoint(scrape_type: str, *, archived: bool = False) -> str:
+    endpoints = {
+        FREE: ("projects.list_free_projects", "projects.archived_free_projects"),
+        SYSTEMATIC: ("projects.list_projects", "projects.archived_projects"),
+        QUALITATIVE: ("projects.list_qualitative_projects", "projects.archived_qualitative_projects"),
+    }
+    return endpoints[scrape_type][1 if archived else 0]
+
+
 def _new_project(scrape_type: str):
     _require_tool(scrape_type)
     libraries = db.session.scalars(
@@ -120,7 +147,9 @@ def _new_project(scrape_type: str):
         elif scrape_type == SYSTEMATIC and (len(selected) != len(selected_ids) or not selected):
             flash("Selecione ao menos uma biblioteca disponível.", "danger")
         elif scrape_type == FREE and selected_ids:
-            flash("Projetos de Raspagem livre não usam bibliotecas.", "danger")
+            flash("Projetos de Análise por termos não usam bibliotecas.", "danger")
+        elif scrape_type == QUALITATIVE and selected_ids:
+            flash("Projetos qualitativos não usam bibliotecas de vocabulário.", "danger")
         else:
             with ACCOUNT_LIFECYCLE_LOCK:
                 if not account_accepts_new_work(current_user.id):
@@ -137,8 +166,9 @@ def _new_project(scrape_type: str):
                     db.session.rollback()
                     flash(str(error), "danger")
                 else:
-                    target = ("inicio" if scrape_type == FREE
-                              else "historico_racial.inicio_projeto")
+                    target = ("inicio" if scrape_type == FREE else
+                              "historico_racial.inicio_projeto" if scrape_type == SYSTEMATIC else
+                              "qualitative.new_base")
                     return redirect(url_for(target, project_id=project.id))
     return render_template("platform/project_new.html", libraries=libraries, scrape_type=scrape_type)
 
@@ -168,7 +198,7 @@ def archive_project(project_id: UUID):
     except ProjectActionError:
         abort(400)
     flash("Projeto arquivado; dados e versões foram preservados.", "success")
-    return redirect(url_for("projects.list_free_projects" if project.scrape_type == FREE else "projects.list_projects"))
+    return redirect(url_for(_project_list_endpoint(project.scrape_type)))
 
 
 @projects_bp.post("/projetos/<uuid:project_id>/desarquivar")
@@ -185,7 +215,7 @@ def restore_project(project_id: UUID):
     except ProjectActionError:
         abort(400)
     flash("Projeto desarquivado com todos os dados preservados.", "success")
-    return redirect(url_for("projects.archived_free_projects" if project.scrape_type == FREE else "projects.archived_projects"))
+    return redirect(url_for(_project_list_endpoint(project.scrape_type, archived=True)))
 
 
 def _owned_archived_selection() -> list[Project]:
@@ -225,7 +255,7 @@ def delete_project(project_id: UUID):
                                    action=url_for("projects.delete_project", project_id=project.id), batch=False), 400
         else:
             flash("Projeto excluído permanentemente.", "success")
-            return redirect(url_for("projects.archived_free_projects" if project.scrape_type == FREE else "projects.archived_projects"))
+            return redirect(url_for(_project_list_endpoint(project.scrape_type, archived=True)))
     return render_template("platform/project_delete.html", projects=[project],
                            action=url_for("projects.delete_project", project_id=project.id), batch=False)
 
@@ -249,4 +279,4 @@ def delete_batch():
         return render_template("platform/project_delete.html", projects=projects,
                                action=url_for("projects.delete_batch"), batch=True), 400
     flash(f"{count} projeto(s) excluído(s) permanentemente.", "success")
-    return redirect(url_for("projects.archived_free_projects" if projects[0].scrape_type == FREE else "projects.archived_projects"))
+    return redirect(url_for(_project_list_endpoint(projects[0].scrape_type, archived=True)))

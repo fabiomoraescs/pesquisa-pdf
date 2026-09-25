@@ -21,9 +21,9 @@ class SidebarHeaderTests(unittest.TestCase):
         pages = (
             ("/", "Dashboard"),
             ("/perfil", "Perfil"),
-            ("/projetos", "Projetos"),
-            ("/projetos/arquivados", "Projetos arquivados"),
-            ("/raspagem-livre", "Raspagem livre"),
+            ("/projetos", "Projetos de Análise estruturada"),
+            ("/projetos/arquivados", "Projetos arquivados de Análise estruturada"),
+            ("/raspagem-livre", "Análise por termos"),
             ("/admin", "Visão geral"),
             ("/admin/usuarios", "Usuários"),
             ("/admin/planos", "Planos"),
@@ -65,12 +65,16 @@ class SidebarHeaderTests(unittest.TestCase):
         self.assertIn('href="/projetos/livres"', nav)
         self.assertIn('href="/projetos"', nav)
         self.assertNotIn('href="/perfil"', nav)
-        self.assertEqual(nav.count('>Novo projeto</a>'), 2)
-        self.assertEqual(nav.count('>Projetos</a>'), 2)
+        self.assertEqual(nav.count('>Novo projeto</a>'), 0)
+        self.assertEqual(nav.count('>Projetos</a>'), 0)
+        self.assertIn('href="/projetos/livres"', nav)
+        self.assertIn('href="/projetos"', nav)
+        self.assertIn('Análise por termos', nav)
+        self.assertIn('Análise estruturada', nav)
         self.assertNotIn('>Bases de análise</a>', nav)
         self.assertNotIn('Projetos arquivados', nav)
         self.assertNotIn('Em breve', nav)
-        self.assertIn('class="platform-nav-subdropdown"', nav)
+        self.assertNotIn('class="platform-nav-subdropdown"', nav)
         self.assertIn('aria-disabled="true"', nav)
         self.assertIn('aria-expanded="true"', nav)
         self.assertIn('aria-controls="platform-admin-submenu"', nav)
@@ -78,6 +82,27 @@ class SidebarHeaderTests(unittest.TestCase):
         self.assertIn('id="platform-menu-toggle"', html)
         self.assertIn('aria-label="Nome da plataforma"><span class="platform-brand-mark">', html)
         self.assertIn('<strong>Análysis</strong><small>ferramentas para pesquisa</small>', html)
+
+    def test_tool_links_are_direct_and_manage_icon_is_distinct_from_theme(self):
+        html = self.client.get("/projetos/livres").get_data(as_text=True)
+        nav = html.split('<nav class="platform-nav"', 1)[1].split("</nav>", 1)[0]
+        self.assertIn('href="/projetos/livres"', nav)
+        self.assertIn('href="/projetos"', nav)
+        self.assertIn('href="/projetos/qualitativos"', nav)
+        self.assertNotIn('platform-nav-subdropdown', nav)
+        self.assertNotIn('Raspagem livre', nav)
+        self.assertNotIn('Raspagem sistemática', nav)
+        manage = re.search(r'<button class="platform-admin-toggle".*?</button>', nav, re.S)
+        theme = re.search(r'<button class="btn btn-outline-primary theme-icon-button".*?</button>', html, re.S)
+        self.assertIsNotNone(manage)
+        self.assertIsNotNone(theme)
+        self.assertIn('<circle cx="12" cy="12" r="3"/>', manage.group(0))
+        self.assertNotEqual(manage.group(0), theme.group(0))
+        for path, title in (("/projetos/livres", "Projetos de Análise por termos"),
+                            ("/projetos", "Projetos de Análise estruturada"),
+                            ("/projetos/qualitativos", "Projetos de Análise qualitativa")):
+            with self.subTest(path=path):
+                self.assertIn(title, self.client.get(path).get_data(as_text=True))
 
 
 if __name__ == "__main__":

@@ -65,11 +65,11 @@ class ProjectCleanupTests(unittest.TestCase):
         self.assertIn('aria-label="Como funciona" title="Como funciona"', html)
         self.assertIn('data-bs-target="#modal-sobre-historico-racial"', html)
         self.assertIn('class="modal-dialog modal-dialog-scrollable modal-lg"', html)
-        for term in ("Preparação do projeto", "Documentos e leitura dos PDFs",
-                     "Bibliotecas, grupos, entidades e variantes", "análise lexical",
-                     "busca semântica", "Híbrido", "limiar", "Resultados e contexto",
-                     "CODIFICACAO", "COOCORRENCIAS", "Rastreabilidade metodológica",
-                     "Limites da interpretação automática"):
+        for term in ("O que é", "Quando utilizar", "Como funciona",
+                     "O que o pesquisador fornece", "O que a plataforma produz",
+                     "Método de raspagem", "Observações e limitações",
+                     "biblioteca de vocabulário", "Lexical", "Híbrido", "limiar",
+                     "CODIFICACAO", "COOCORRENCIAS"):
             self.assertIn(term, html)
         self.assertIn('class="modal-body modal-help" id="descricao-modal-sobre-historico-racial"', html)
         self.assertIn('class="modal-help__methodological-note"', html)
@@ -95,8 +95,8 @@ class ProjectCleanupTests(unittest.TestCase):
             html = response.get_data(as_text=True)
             self.assertIn('aria-label="Como funciona" title="Como funciona"', html)
             self.assertIn('class="modal-body modal-help" id="descricao-modal-sobre-historico-racial"', html)
-            for term in ("Preparação do projeto", "busca semântica", "Método de análise e limiar",
-                         "COOCORRENCIAS", "Limites da interpretação automática"):
+            for term in ("Como funciona", "bibliotecas", "Método de raspagem",
+                         "COOCORRENCIAS", "Observações e limitações"):
                 self.assertIn(term, html)
         finally:
             with JOBS_LOCK:

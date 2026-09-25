@@ -1,5 +1,5 @@
 {% extends 'platform/base.html' %}
-{% block title %}Novo projeto — {{ 'Raspagem livre' if scrape_type == 'free' else 'Raspagem sistemática' }}{% endblock %}
+{% block title %}Novo projeto — {{ 'Análise por termos' if scrape_type == 'free' else 'Análise qualitativa' if scrape_type == 'qualitative' else 'Análise estruturada' }}{% endblock %}
 {% block heading %}Novo projeto{% endblock %}
 {% block page_intro %}<h1 class="visually-hidden">Novo projeto</h1>{% endblock %}
 {% block body %}
@@ -15,8 +15,8 @@
         </label>
       {% else %}<p>Nenhuma biblioteca publicada está disponível no momento.</p>{% endfor %}</div>
     </fieldset>
-    <p class="form-text">Uma cópia das bibliotecas selecionadas formará a versão v1.0 deste projeto. Depois, você poderá criar versões próprias.</p>{% else %}<p class="form-text">Neste tipo de projeto, você define os termos livremente ao executar V1, V2 ou V3.</p>{% endif %}
-    <div class="d-flex flex-wrap gap-2"><button class="btn btn-primary" type="submit">Novo projeto</button><a class="btn btn-outline-primary" href="{{ url_for('projects.list_free_projects' if scrape_type == 'free' else 'projects.list_projects') }}">Cancelar</a></div>
+    <p class="form-text">Uma cópia das bibliotecas selecionadas formará a versão v1.0 deste projeto. Depois, você poderá criar versões próprias.</p>{% elif scrape_type == 'qualitative' %}<p class="form-text">Este projeto reúne Bases qualitativas para leitura manual do corpus. A preparação de uma Base não conclui a interpretação da pesquisa.</p>{% else %}<p class="form-text">Neste tipo de projeto, você define os termos livremente e escolhe o método Lexical ou Híbrido em cada nova Base.</p>{% endif %}
+    <div class="d-flex flex-wrap gap-2"><button class="btn btn-primary" type="submit">Novo projeto</button><a class="btn btn-outline-primary" href="{{ url_for('projects.list_free_projects' if scrape_type == 'free' else 'projects.list_qualitative_projects' if scrape_type == 'qualitative' else 'projects.list_projects') }}">Cancelar</a></div>
   </form>
 </section>
 {% endblock %}

@@ -1,11 +1,11 @@
 {% extends 'platform/base.html' %}
-{% block title %}Projetos arquivados — Raspagem de Dados{% endblock %}
-{% block heading %}Projetos arquivados{% endblock %}
+{% block title %}Projetos arquivados de {{ 'Análise por termos' if scrape_type == 'free' else 'Análise qualitativa' if scrape_type == 'qualitative' else 'Análise estruturada' }}{% endblock %}
+{% block page_intro %}<h1 class="h4">Projetos arquivados de {{ 'Análise por termos' if scrape_type == 'free' else 'Análise qualitativa' if scrape_type == 'qualitative' else 'Análise estruturada' }}</h1>{% endblock %}
 {% block body %}
 {% from 'platform/_view_controls.html' import action_link %}
 {% from 'platform/_icons.html' import icon %}
 <p class="platform-muted">Projetos arquivados ficam fora da lista principal, mas preservam dados{% if scrape_type == 'systematic' %}, bibliotecas{% endif %} e bases de análise até que você os desarquive ou exclua definitivamente.</p>
-<p><a class="btn btn-outline-primary btn-sm" href="{{ url_for('projects.list_free_projects' if scrape_type == 'free' else 'projects.list_projects') }}">Voltar aos projetos</a></p>
+<p><a class="btn btn-outline-primary btn-sm" href="{{ url_for('projects.list_free_projects' if scrape_type == 'free' else 'projects.list_qualitative_projects' if scrape_type == 'qualitative' else 'projects.list_projects') }}">Voltar aos projetos</a></p>
 {% if projects %}
 <form id="bulk-delete-form" method="post" action="{{ url_for('projects.confirm_batch_delete') }}">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -26,6 +26,6 @@
 </div>
 <button class="btn btn-danger mt-3" type="submit" form="bulk-delete-form" title="Excluir permanentemente selecionados" aria-label="Excluir permanentemente selecionados">Excluir permanentemente selecionados</button>
 {% else %}
-<div class="platform-empty-state"><h2 class="h5">Nenhum projeto arquivado.</h2><p>Projetos arquivados aparecerão aqui.</p><a class="btn btn-outline-primary" href="{{ url_for('projects.list_free_projects' if scrape_type == 'free' else 'projects.list_projects') }}">Voltar aos projetos</a></div>
+<div class="platform-empty-state"><h2 class="h5">Nenhum projeto arquivado.</h2><p>Projetos arquivados aparecerão aqui.</p><a class="btn btn-outline-primary" href="{{ url_for('projects.list_free_projects' if scrape_type == 'free' else 'projects.list_qualitative_projects' if scrape_type == 'qualitative' else 'projects.list_projects') }}">Voltar aos projetos</a></div>
 {% endif %}
 {% endblock %}

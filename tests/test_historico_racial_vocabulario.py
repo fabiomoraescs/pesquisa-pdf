@@ -254,7 +254,7 @@ class TesteVocabularioHistoricoRacial(unittest.TestCase):
         pdf = _pdf("Du Bois foi citado em debates sobre a população negra e outros temas sociais relevantes.")
         with isolated_platform() as test_app:
             create_user()
-            with test_app.test_client() as cliente, patch.object(routes.EXECUTOR_HR, "submit", side_effect=lambda *args: chamadas.append(args)):
+            with test_app.test_client() as cliente, patch.object(routes.EXECUTOR_HR, "submit", side_effect=lambda *args, **kwargs: chamadas.append((args, kwargs))):
                 login(cliente)
                 project_id = create_project(cliente)
                 path = f"/analise-documental/projetos/{project_id}"
@@ -268,8 +268,10 @@ class TesteVocabularioHistoricoRacial(unittest.TestCase):
                 edited = copy.deepcopy(original["vocabulario"])
                 next(e for e in edited["entidades"] if e["id_entidade"] == "du_bois")["ativo"] = False
                 project_store(project_id).salvar("v1.0", edited)
-                funcao, *args = chamadas[0]
-                funcao(*args)
+                args, kwargs = chamadas[0]
+                funcao, *job_args = args
+                self.assertTrue(kwargs["incluir_morfologia"])
+                funcao(*job_args, **kwargs)
                 self.assertEqual(RESULTADOS_HR[job_id]["vocabulario_version"], "v1.0")
                 self.assertTrue(any(e["id_entidade"] == "du_bois" for e in RESULTADOS_HR[job_id]["ocorrencias"]))
 

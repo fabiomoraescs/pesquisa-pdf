@@ -397,9 +397,9 @@ class RemainingRefinementsTests(unittest.TestCase):
             self.assertEqual(float(re.search(pattern, hybrid_html).group(1)), expected)
         self.assertIn('id="hr-valor-limiar"', hybrid_html)
         self.assertIn('id="hr-limiar" name="limiar_semantico" type="range"', hybrid_html)
-        self.assertIn("valor inicial <strong>0,50</strong>", hybrid_html)
-        self.assertNotIn("valor inicial <strong>0,70</strong>", hybrid_html)
-        self.assertIn("O valor inicial é 0,50", legacy_html)
+        self.assertIn("O valor inicial é 0,50", hybrid_html)
+        self.assertNotIn("O valor inicial é 0,70", hybrid_html)
+        self.assertIn("O limiar inicial 0,50", legacy_html)
         self.assertEqual(normalize(None), DEFAULT)
         self.assertEqual(normalize("invalido"), DEFAULT)
         for selected in (0.55, 0.60, 0.65, 0.70, 0.75, 0.80, 0.85, 0.90):
@@ -407,6 +407,9 @@ class RemainingRefinementsTests(unittest.TestCase):
                 self.assertEqual(normalize(str(selected)), selected)
         with self.app.test_request_context("/", method="POST", data={"incluir_lexical": "on", "incluir_semantica": "on"}):
             self.assertEqual(legacy._configuracoes_v3()["limiar_semantico"], DEFAULT)
+        with self.app.test_request_context("/", method="POST", data={"incluir_lexical": "off", "incluir_semantica": "off"}):
+            self.assertTrue(legacy._configuracoes_v3()["incluir_lexical"])
+            self.assertTrue(legacy._configuracoes_v3()["incluir_semantica"])
         for raw in ("0.49", "0.70", "0.91", "invalido"):
             with self.subTest(raw=raw):
                 with self.app.test_request_context("/", method="POST", data={
@@ -423,7 +426,7 @@ class RemainingRefinementsTests(unittest.TestCase):
         self.assertIn('id="admin-users-list" data-view-container', users_html)
         self.assertIn('class="btn btn-outline-primary btn-sm platform-action-button"', users_html)
         self.assertIn(f"/admin/usuarios/{target.id}/redefinir-senha", users_html)
-        self.assertIn("Raspagem livre", self.client.get("/raspagem-livre").get_data(as_text=True))
+        self.assertIn("Análise por termos", self.client.get("/raspagem-livre").get_data(as_text=True))
 
 
 if __name__ == "__main__":

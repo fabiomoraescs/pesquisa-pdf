@@ -12,7 +12,7 @@ from sqlalchemy import select
 from .analyses import analysis_dir, delete_analysis, documents_for, get_analysis, history_access_filter, load_result, systematic_chart_data
 from .extensions import db
 from .models import Analysis, Project
-from .scraping_types import FREE, SYSTEMATIC, TOOL_BY_TYPE, tool_for_project
+from .scraping_types import FREE, QUALITATIVE, QUALITATIVE_TOOL, SYSTEMATIC, TOOL_BY_TYPE, tool_for_project
 from .services import can_use_tool, get_project_for_user
 
 
@@ -91,6 +91,8 @@ def project_history(project_id: UUID):
     project = get_project_for_user(str(project_id), current_user, include_inactive=True)
     if not can_use_tool(current_user, tool_for_project(project)):
         abort(403)
+    if project.scrape_type == QUALITATIVE:
+        return redirect(url_for("qualitative.project_bases", project_id=project.id))
     items = db.session.scalars(select(Analysis).where(
         Analysis.project_id == project.id
     ).order_by(Analysis.created_at.desc())).all()
@@ -102,6 +104,8 @@ def project_history(project_id: UUID):
 @login_required
 def dashboard(analysis_id: UUID):
     analysis = _authorized(analysis_id)
+    if analysis.tool_id == QUALITATIVE_TOOL:
+        return redirect(url_for("qualitative.base", analysis_id=analysis.id))
     if analysis.status != "concluida":
         return render_template("platform/analysis_pending.html", analysis=analysis,
                                can_manage=_can_manage(analysis), projects=[])
@@ -205,12 +209,14 @@ def delete(analysis_id: UUID):
         with ANALISES_LOCK, PROGRESSOS_LOCK:
             ANALISES.pop(str(analysis_id), None)
             PROGRESSOS.pop(str(analysis_id), None)
-    else:
+    elif tool_id == "document_analysis":
         from historico_racial.routes import JOBS_LOCK, RESULTADOS_HR, PROGRESSOS_HR
         with JOBS_LOCK:
             RESULTADOS_HR.pop(str(analysis_id), None)
             PROGRESSOS_HR.pop(str(analysis_id), None)
     flash("Base de análise excluída permanentemente.", "success")
+    if tool_id == QUALITATIVE_TOOL and project_id:
+        return redirect(url_for("qualitative.project_bases", project_id=project_id))
     if project_id:
         return redirect(url_for("analyses.project_history", project_id=project_id))
     return redirect(url_for("analyses.standard_history"))
@@ -224,6 +230,8 @@ def duplicate(analysis_id: UUID):
         abort(403)
     if analysis.tool_id == "pdf_scraper":
         return redirect(url_for("inicio", duplicate=str(analysis_id)))
+    if analysis.tool_id == QUALITATIVE_TOOL:
+        abort(409)  # Duplicação qualitativa exigirá novo preparo do corpus em etapa futura.
     if analysis.project_id:
         return redirect(url_for("historico_racial.inicio_projeto", project_id=analysis.project_id,
                                 duplicate=str(analysis_id)))

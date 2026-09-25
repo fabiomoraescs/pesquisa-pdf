@@ -14,8 +14,10 @@ from historico_racial.entities import listar_entidades
 from historico_racial.exporter import gerar_xlsx
 from historico_racial.processor import ArquivoPDF, processar_documentos
 from historico_racial.semantic import combinar_semantica
-from historico_racial.routes import JOBS_LOCK, RESULTADOS_HR
-from platform_helpers import create_project, create_user, isolated_platform, login
+from historico_racial.routes import JOBS_LOCK, PROGRESSOS_HR, RESULTADOS_HR
+from platform_helpers import create_project, create_user, csrf_from, isolated_platform, login
+from platform_core.extensions import db
+from platform_core.models import Analysis
 
 
 def pdf_curto(texto: str) -> bytes:
@@ -28,6 +30,30 @@ def pdf_curto(texto: str) -> bytes:
 
 
 class ProjectMethodTests(unittest.TestCase):
+    def test_new_structured_jobs_enable_morphology_without_changing_versions(self):
+        with isolated_platform() as app:
+            create_user()
+            with app.test_client() as client:
+                login(client)
+                project_id = create_project(client)
+                path = f"/analise-documental/projetos/{project_id}"
+                for method in ("lexical", "hibrido"):
+                    with self.subTest(method=method):
+                        token = csrf_from(client.get(path))
+                        with patch("historico_racial.routes.EXECUTOR_HR.submit") as submit:
+                            response = client.post(f"{path}/analisar", data={
+                                "csrf_token": token, "metodo_analise": method,
+                                "pdfs": (io.BytesIO(pdf_curto("As trabalhadoras foram citadas.")), "teste.pdf"),
+                            }, content_type="multipart/form-data")
+                        self.assertEqual(response.status_code, 202)
+                        analysis = db.session.get(Analysis, response.json["job_id"])
+                        self.assertEqual(analysis.tool_version, method)
+                        self.assertTrue(analysis.parameters_json["morfologia_automatica"])
+                        self.assertTrue(submit.call_args.kwargs["incluir_morfologia"])
+                        submit.call_args.args[3].cleanup()
+                        with JOBS_LOCK:
+                            PROGRESSOS_HR.pop(response.json["job_id"], None)
+
     def test_hibrido_sem_limiar_explicito_usa_default_compartilhado(self):
         with tempfile.TemporaryDirectory() as root:
             path = Path(root) / "controle.pdf"

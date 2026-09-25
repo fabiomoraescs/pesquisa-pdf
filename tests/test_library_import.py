@@ -257,7 +257,10 @@ class ImportRouteTests(unittest.TestCase):
     def test_navigation_and_shared_progress_markup(self):
         self._admin()
         projects = self.client.get("/projetos").get_data(as_text=True)
-        self.assertIn('>Novo projeto</a>', projects.split('class="platform-nav"')[1].split('</nav>')[0])
+        sidebar = projects.split('class="platform-nav"')[1].split('</nav>')[0]
+        self.assertNotIn('>Novo projeto</a>', sidebar)
+        self.assertIn('href="/projetos/livres"', sidebar)
+        self.assertIn('href="/projetos"', sidebar)
         self.assertIn('>Novo projeto</a>', projects)
         self.assertNotIn('+ Novo projeto', projects)
         self.assertIn(
@@ -285,7 +288,7 @@ class ImportRouteTests(unittest.TestCase):
             'class="platform-section-title" aria-label="Nome da plataforma"><span class="platform-brand-mark"><strong>Análysis</strong><small>ferramentas para pesquisa</small></span>',
             legacy,
         )
-        self.assertIn('class="platform-header-context">Raspagem livre', legacy)
+        self.assertIn('class="platform-header-context">Análise por termos', legacy)
         self.assertNotIn('aria-label="Conta e projetos"', legacy)
         self.assertIn('id="overlay-processamento"', legacy)
 

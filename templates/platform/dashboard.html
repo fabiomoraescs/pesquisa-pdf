@@ -7,23 +7,23 @@
 </section>
 <section class="platform-dashboard-stats" aria-label="Resumo da pesquisa">
   <article class="platform-panel"><span>Projetos ativos</span><strong>{{ projects_total }}</strong></article>
-  <article class="platform-panel"><span>Raspagem livre</span><strong>{{ projects_by_type['free'] }}</strong></article>
-  <article class="platform-panel"><span>Raspagem sistemática</span><strong>{{ projects_by_type['systematic'] }}</strong></article>
+  <article class="platform-panel"><span>Análise por termos</span><strong>{{ projects_by_type['free'] }}</strong></article>
+  <article class="platform-panel"><span>Análise estruturada</span><strong>{{ projects_by_type['systematic'] }}</strong></article>
   <article class="platform-panel"><span>Bases de análise</span><strong>{{ bases_total }}</strong></article>
 </section>
 <section class="platform-panel mb-3" aria-labelledby="dashboard-bases-title">
   <div class="platform-toolbar"><h2 id="dashboard-bases-title" class="h5 mb-0">Bases de análise recentes</h2></div>
   {% if recent_bases %}<ul class="platform-dashboard-records">
     {% for base, project_name in recent_bases %}
-    <li><a href="{{ url_for('analyses.dashboard', analysis_id=base.id) }}">{{ base.display_name }}</a><small>Projeto: {{ project_name or 'Sem projeto' }}</small><small>{{ 'Raspagem livre' if base.tool_id == 'pdf_scraper' else 'Raspagem sistemática' }} · {{ base.status | rotulo }} · {{ base.created_at.strftime('%d/%m/%Y') }}</small></li>
+    <li><a href="{{ url_for('analyses.dashboard', analysis_id=base.id) }}">{{ base.display_name }}</a><small>Projeto: {{ project_name or 'Sem projeto' }}</small><small>{{ 'Análise por termos' if base.tool_id == 'pdf_scraper' else 'Análise estruturada' }} · {{ base.status | rotulo }} · {{ base.created_at.strftime('%d/%m/%Y') }}</small></li>
     {% endfor %}
   </ul>{% else %}<p class="platform-muted mb-0">Nenhuma Base de análise disponível.</p>{% endif %}
 </section>
 <div class="platform-dashboard-charts">
-  {% for kind, label in [('free', 'Raspagem livre'), ('systematic', 'Raspagem sistemática')] %}
+  {% for kind, label in [('free', 'Análise por termos'), ('systematic', 'Análise estruturada')] %}
   {% set latest = latest_bases[kind] %}
   <section class="platform-panel" aria-labelledby="dashboard-latest-{{ kind }}">
-    <h2 id="dashboard-latest-{{ kind }}" class="h5">Última análise — {{ label }}</h2>
+    <h2 id="dashboard-latest-{{ kind }}" class="h5">Última Base — {{ label }}</h2>
     {% if latest %}
       {% set base = latest[0] %}
       <a class="platform-dashboard-base-link" href="{{ url_for('analyses.dashboard', analysis_id=base.id) }}">{{ base.display_name }}</a>
@@ -31,7 +31,7 @@
       {% if chart_data.get(kind) and chart_data[kind].labels %}
       <div class="chart-card"><h3 class="h6">{{ chart_data[kind].title }}</h3><div id="dashboard-chart-{{ kind }}" class="chart" role="img" aria-label="{{ chart_data[kind].title }} da Base {{ base.display_name }}"></div></div>
       {% else %}<p class="platform-muted mb-0">Não há ocorrências para exibir neste gráfico.</p>{% endif %}
-    {% else %}<p class="platform-muted mb-0">Nenhuma análise concluída ainda.</p>{% endif %}
+    {% else %}<p class="platform-muted mb-0">Nenhuma Base concluída ainda.</p>{% endif %}
   </section>
   {% endfor %}
 </div>
