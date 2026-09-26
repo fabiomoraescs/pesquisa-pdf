@@ -104,6 +104,12 @@ class DashboardAvatarTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.mimetype, "image/webp")
         self.assertTrue(response.cache_control.private)
+        profile_html = self.client.get("/perfil").get_data(as_text=True)
+        actions = profile_html.split('<div class="platform-photo-actions">', 1)[1].split('</div>', 1)[0]
+        self.assertIn("Salvar foto", actions)
+        self.assertIn("Remover foto", actions)
+        self.assertIn('form="profile-photo-remove-form"', actions)
+        self.assertIn('id="profile-photo-remove-form" hidden method="post"', profile_html)
         first_url = re.search(r'/perfil/foto\?v=\d+', self.client.get("/").get_data(as_text=True)).group()
         self.assertEqual(self._send_photo(image_file(400, 800, "green", "JPEG"), "vertical.jpg").status_code, 302)
         with Image.open(path) as photo:

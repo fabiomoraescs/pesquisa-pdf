@@ -1,0 +1,55 @@
+{% from 'platform/_icons.html' import icon %}
+{% set can_manage_records = analysis and project.status == 'active' and project.owner_user_id == current_user.id %}
+{% set records = records or {'codes': [], 'memos': []} %}
+<div data-qualitative-records
+     {% if analysis %}data-codes-url="{{ url_for('qualitative.create_code', analysis_id=analysis.id) }}"
+     data-memos-url="{{ url_for('qualitative.create_memo', analysis_id=analysis.id) }}"{% endif %}>
+  <button class="platform-qualitative-explorer-trigger" type="button" popovertarget="qualitative-codes-menu" aria-controls="qualitative-codes-menu" aria-expanded="false" data-explorer-trigger data-record-count="code">Códigos ({{ records.codes | length }})</button>
+  <div class="platform-qualitative-explorer-popover" id="qualitative-codes-menu" popover="auto" aria-label="Códigos do projeto" data-explorer-popover data-temporary-popover>
+    <h3 class="h6">Códigos</h3>
+    {% if can_manage_records %}<button class="btn btn-outline-primary btn-sm platform-qualitative-record-new" type="button" data-record-new="code">Novo código</button>{% endif %}
+    {% if analysis %}<a class="btn btn-outline-primary btn-sm platform-qualitative-record-new" href="{{ url_for('qualitative.coding_report', analysis_id=analysis.id) }}">Relatório</a>{% endif %}
+    <p class="platform-muted mb-0" data-record-empty="code" {% if records.codes %}hidden{% endif %}>Nenhum código criado.</p>
+    <div class="platform-qualitative-record-list" data-record-list="code">
+      {% for code in records.codes %}
+      <div class="platform-qualitative-record-row"><span class="platform-qualitative-record-label" title="{{ code.name }}">{{ code.name }} ({{ code.excerpt_count }})</span>
+        {% if can_manage_records %}<span class="platform-qualitative-record-actions"><button class="platform-qualitative-record-action" type="button" data-record-edit="code" data-record-id="{{ code.id }}" title="Editar {{ code.name }}" aria-label="Editar código {{ code.name }}">{{ icon('editar') }}</button><button class="platform-qualitative-record-action is-danger" type="button" data-record-delete="code" data-record-id="{{ code.id }}" title="Excluir {{ code.name }}" aria-label="Excluir código {{ code.name }}">{{ icon('lixeira') }}</button></span>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  <button class="platform-qualitative-explorer-trigger" type="button" popovertarget="qualitative-memos-menu" aria-controls="qualitative-memos-menu" aria-expanded="false" data-explorer-trigger data-record-count="memo">Memos ({{ records.memos | length }})</button>
+  <div class="platform-qualitative-explorer-popover" id="qualitative-memos-menu" popover="auto" aria-label="Memos do projeto" data-explorer-popover data-temporary-popover>
+    <h3 class="h6">Memos</h3>
+    {% if can_manage_records %}<button class="btn btn-outline-primary btn-sm platform-qualitative-record-new" type="button" data-record-new="memo">Novo memo</button>{% endif %}
+    <p class="platform-muted mb-0" data-record-empty="memo" {% if records.memos %}hidden{% endif %}>Nenhum memo criado.</p>
+    <div class="platform-qualitative-record-list" data-record-list="memo">
+      {% for memo in records.memos %}
+      {% set preview = memo.text.splitlines()[0] %}
+      <div class="platform-qualitative-record-row"><span class="platform-qualitative-record-label" title="{{ preview }}">{{ preview }}</span>{% if memo.context != 'geral' %}<span class="platform-qualitative-record-context">Vinculado a {{ memo.context }}</span>{% endif %}
+        {% if can_manage_records %}<span class="platform-qualitative-record-actions"><button class="platform-qualitative-record-action" type="button" data-record-edit="memo" data-record-id="{{ memo.id }}" title="Editar memo" aria-label="Editar memo {{ preview }}">{{ icon('editar') }}</button><button class="platform-qualitative-record-action is-danger" type="button" data-record-delete="memo" data-record-id="{{ memo.id }}" title="Excluir memo" aria-label="Excluir memo {{ preview }}">{{ icon('lixeira') }}</button></span>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  <script type="application/json" data-records-initial>{{ records | tojson }}</script>
+  {% if can_manage_records %}
+  <input type="hidden" data-record-csrf value="{{ csrf_token() }}">
+  <template data-record-row-template><div class="platform-qualitative-record-row"><span class="platform-qualitative-record-label"></span><span class="platform-qualitative-record-context" data-record-context hidden></span><span class="platform-qualitative-record-actions"><button class="platform-qualitative-record-action" type="button" data-record-edit title="Editar" aria-label="Editar">{{ icon('editar') }}</button><button class="platform-qualitative-record-action is-danger" type="button" data-record-delete title="Excluir" aria-label="Excluir">{{ icon('lixeira') }}</button></span></div></template>
+  <dialog class="platform-qualitative-record-dialog platform-panel" data-record-dialog aria-labelledby="qualitative-record-dialog-title">
+    <form method="dialog" data-record-form>
+      <h2 class="h5" id="qualitative-record-dialog-title" data-record-dialog-title></h2>
+      <div data-code-fields><label for="qualitative-code-name">Nome</label><input class="form-control" id="qualitative-code-name" name="name" maxlength="160" required><label for="qualitative-code-description">Descrição (opcional)</label><textarea class="form-control" id="qualitative-code-description" name="description" maxlength="4000" rows="3"></textarea></div>
+      <div data-memo-fields hidden><label for="qualitative-memo-text">Conteúdo do memo</label><textarea class="form-control" id="qualitative-memo-text" name="text" maxlength="20000" rows="6"></textarea></div>
+      <p class="platform-qualitative-record-error" data-record-error role="alert" hidden></p>
+      <div class="platform-qualitative-record-dialog-actions"><button class="btn btn-outline-primary" type="button" data-record-cancel>Cancelar</button><button class="btn btn-primary" type="submit" data-record-save>Salvar</button></div>
+    </form>
+  </dialog>
+  <dialog class="platform-qualitative-record-dialog platform-panel" data-record-confirm-dialog aria-labelledby="qualitative-record-confirm-title">
+    <h2 class="h5" id="qualitative-record-confirm-title" data-record-confirm-title></h2>
+    <p data-record-confirm-message></p>
+    <p class="platform-qualitative-record-error" data-record-confirm-error role="alert" hidden></p>
+    <div class="platform-qualitative-record-dialog-actions"><button class="btn btn-outline-primary" type="button" data-record-confirm-cancel>Cancelar</button><button class="btn btn-outline-danger" type="button" data-record-confirm-delete>Excluir</button></div>
+  </dialog>
+  {% endif %}
+</div>

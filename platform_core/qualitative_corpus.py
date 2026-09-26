@@ -19,7 +19,7 @@ from uuid import UUID, uuid4
 import pymupdf
 from sqlalchemy import delete, or_, select
 
-from historico_racial import pdf as pdf_extractor
+from . import qualitative_ocr as pdf_extractor
 
 from .analyses import analysis_dir, documents_for
 from .extensions import db
@@ -73,10 +73,21 @@ def _prepare_document(document: AnalysisDocument, source: Path, staging: Path,
     pages_dir = staging / document.id / "pages"
     pages_dir.mkdir(parents=True)
     page_entries = []
-    # A leitura geométrica não repete OCR; layouts sem correspondência são omitidos.
+    # A TextPage OCR, quando presente, serve ao texto e à geometria sem segundo OCR.
     from .qualitative_layout import build_native_layout
     with pymupdf.open(source) as visual_document:
-        for expected_number, extracted in enumerate(pdf_extractor.extrair_paginas(source), start=1):
+        extracted_pages = iter(pdf_extractor.extrair_paginas(source))
+        for expected_number in range(1, len(visual_document) + 1):
+            if progress:
+                progress({"document_index": document_index, "document_count": document_count,
+                          "document_name": document.original_name, "page_number": expected_number,
+                          "page_count": len(visual_document),
+                          "stage": ("Aplicando OCR…" if pdf_extractor.needs_ocr(
+                              visual_document[expected_number - 1]) else "Extraindo texto…")})
+            try:
+                extracted = next(extracted_pages)
+            except StopIteration as error:
+                raise CorpusUnavailableError("O extrator não percorreu todas as páginas do PDF.") from error
             if extracted["pagina_pdf"] != expected_number:
                 raise CorpusUnavailableError("Numeração de páginas inconsistente na extração.")
             text = canonicalize_page(extracted["texto"])
@@ -84,12 +95,18 @@ def _prepare_document(document: AnalysisDocument, source: Path, staging: Path,
             (staging / relative).write_bytes(text.encode("utf-8"))
             digest = _digest(text)
             layout = None
-            if not extracted["ocr_utilizado"] and expected_number <= len(visual_document):
-                layout = build_native_layout(visual_document[expected_number - 1], text,
-                                             expected_number, digest)
+            page = extracted.get("page") or (visual_document[expected_number - 1]
+                                             if expected_number <= len(visual_document) else None)
+            if page is not None:
+                layout = build_native_layout(page, text, expected_number, digest,
+                                             textpage=extracted.get("textpage"))
             if layout is not None:
                 (pages_dir / f"{expected_number:06d}.layout.json").write_text(
                     json.dumps(layout, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+            elif text.strip():
+                logging.getLogger(__name__).warning(
+                    "Documento %s, página %s: texto %s salvo sem geometria verificável",
+                    document.id, expected_number, "OCR" if extracted["ocr_utilizado"] else "nativo")
             page_entries.append({
                 "page_number": expected_number, "file": relative, "sha256": digest,
                 "char_count": len(text),
@@ -98,7 +115,13 @@ def _prepare_document(document: AnalysisDocument, source: Path, staging: Path,
             })
             if progress:
                 progress({"document_index": document_index, "document_count": document_count,
-                          "document_name": document.original_name, "page_number": expected_number})
+                          "document_name": document.original_name, "page_number": expected_number,
+                          "page_count": extracted.get("page_count", len(visual_document)),
+                          "stage": "Página reconhecida por OCR" if extracted["ocr_utilizado"]
+                                   else "Página extraída"})
+        sentinel = object()
+        if next(extracted_pages, sentinel) is not sentinel:
+            raise CorpusUnavailableError("O extrator retornou páginas além do PDF original.")
     if not page_entries:
         raise CorpusUnavailableError("Um PDF não contém páginas.")
     return {"document_id": document.id, "original_name": document.original_name,
@@ -136,6 +159,8 @@ def prepare_qualitative_corpus(
             source = _safe_child(root / "documents", document.stored_name)
             manifest["documents"].append(_prepare_document(
                 document, source, staging, document_index, len(documents), progress))
+        if progress:
+            progress({"stage": "Finalizando corpus…"})
         (staging / "manifest.json").write_bytes(
             json.dumps(manifest, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         )
@@ -176,6 +201,8 @@ def append_qualitative_corpus(
     try:
         entries = [_prepare_document(document, source, staging, index, len(additions), progress)
                    for index, (document, source) in enumerate(additions, start=1)]
+        if progress:
+            progress({"stage": "Finalizando corpus…"})
         updated = {**previous, "documents": [*previous["documents"], *entries]}
         manifest_path = qualitative_manifest_path(analysis.id)
         pending_manifest = corpus / f".manifest.{uuid4().hex}.tmp"

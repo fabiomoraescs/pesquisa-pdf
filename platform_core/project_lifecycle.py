@@ -15,7 +15,7 @@ from .extensions import db
 from .models import Analysis, AnalysisDocument, Project, ProjectLibrary, ProjectVocabularyVersion, User, utcnow
 from .qualitative import delete_qualitative_dependents
 from .scraping_types import QUALITATIVE_TOOL
-from .services import record_audit
+from .services import ACCOUNT_LIFECYCLE_LOCK, record_audit
 from .vocabularies import forget_project_store
 
 
@@ -56,7 +56,8 @@ def _project_directory(project_id: str) -> Path:
 
 
 def delete_archived(projects: list[Project], actor: User, confirmation: str) -> int:
-    return _delete_projects(projects, actor, confirmation, legacy_cleanup=False)
+    with ACCOUNT_LIFECYCLE_LOCK:
+        return _delete_projects(projects, actor, confirmation, legacy_cleanup=False)
 
 
 def purge_legacy_deleted(projects: list[Project], actor: User | None, confirmation: str) -> int:
@@ -97,14 +98,27 @@ def _delete_projects(projects: list[Project], actor: User | None, confirmation: 
     staged: list[tuple[Path, Path]] = []
     selected = {project.id for project in projects}
     analyses = db.session.scalars(select(Analysis).where(Analysis.project_id.in_(selected))).all()
-    if any(item.status == "processando" for item in analyses):
-        raise ProjectActionError("Aguarde o término das análises antes de excluir o projeto.")
+    from .analyses import analysis_dir
+
+    for item in analyses:
+        if item.tool_id == QUALITATIVE_TOOL:
+            # O workspace vazio usa o estado técnico inicial, mas ainda não tem job.
+            # Já o upload incremental mantém "concluida": seu lock é a evidência
+            # de trabalho em curso. Nunca remover esse diretório enquanto ocupado.
+            lock = analysis_dir(item.id) / ".qualitative_upload.lock"
+            if lock.exists() or lock.is_symlink():
+                raise ProjectActionError("Aguarde o término da preparação dos documentos antes de excluir o projeto.")
+            has_documents = db.session.scalar(select(AnalysisDocument.id).where(
+                AnalysisDocument.analysis_id == item.id).limit(1)) is not None
+            if item.document_count == 0 and not has_documents:
+                continue
+        if item.status == "processando":
+            raise ProjectActionError("Aguarde o término das análises antes de excluir o projeto.")
     with JOBS_LOCK:
         if any(data.get("project_id") in selected and data.get("status") == "processando"
                for data in PROGRESSOS_HR.values()):
             raise ProjectActionError("Aguarde o término do processamento antes de excluir o projeto.")
         try:
-            from .analyses import analysis_dir
             for analysis in analyses:
                 source = analysis_dir(analysis.id)
                 if source.exists():

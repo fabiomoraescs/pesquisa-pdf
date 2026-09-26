@@ -105,6 +105,20 @@ class QualitativeCorpusTests(unittest.TestCase):
         manifest = load_qualitative_manifest(analysis)
         return analysis, manifest
 
+    def test_pending_uses_shared_loading_panel_and_keeps_project_link(self):
+        self.allow()
+        project = self.project()
+        with patch("app.EXECUTOR_ANALISES.submit"):
+            self.assertEqual(self.upload(project, pages=2).status_code, 302)
+        analysis = db.session.scalar(select(Analysis).where(Analysis.project_id == project.id))
+        response = self.client.get(f"/analise-qualitativa/bases/{analysis.id}")
+        html = response.get_data(as_text=True)
+        self.assertEqual(response.status_code, 200)
+        for marker in ("loading-panel", "loading-spinner", "loading-progress",
+                       "Preparando corpus textual", "Voltar ao projeto"):
+            self.assertIn(marker, html)
+        self.assertNotIn("Base de análise", html)
+
     def prepared_two_documents(self):
         self.allow()
         project = self.project()
@@ -173,8 +187,10 @@ class QualitativeCorpusTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json["document_count"], 0)
         empty = self.client.get(response.json["next_url"], follow_redirects=True)
-        self.assertIn("Este projeto ainda não possui documentos.", empty.get_data(as_text=True))
+        self.assertIn("Você ainda não tem arquivos adicionados", empty.get_data(as_text=True))
+        self.assertIn("Adicione para começar a análise quali-dados.", empty.get_data(as_text=True))
         self.assertIn("Adicionar documentos", empty.get_data(as_text=True))
+        self.assertNotIn("data-qualitative-records", empty.get_data(as_text=True))
         db.session.expire_all()
         self.assertEqual(db.session.get(Analysis, analysis.id).status, "processando")
         self.assertFalse((analysis_dir(analysis.id) / "qualitative_corpus").exists())
@@ -287,7 +303,12 @@ class QualitativeCorpusTests(unittest.TestCase):
         response = self.client.get(f"/analise-qualitativa/projetos/{project.id}", follow_redirects=True)
         self.assertEqual(response.status_code, 200)
         html = response.get_data(as_text=True)
-        self.assertIn("Este projeto ainda não possui documentos.", html)
+        self.assertIn("Você ainda não tem arquivos adicionados", html)
+        self.assertIn("Adicione para começar a análise quali-dados.", html)
+        self.assertNotIn("Você ainda não possui projetos qualitativos", html)
+        self.assertNotIn("Códigos (0)", html)
+        self.assertNotIn("Memos (0)", html)
+        self.assertNotIn("data-qualitative-records", html)
         self.assertIn("Adicionar documentos", html)
         self.assertEqual(html.count('>Adicionar documentos</summary>'), 1)
         self.assertEqual(html.count("data-qualitative-info-open"), 1)
@@ -687,7 +708,7 @@ class QualitativeCorpusTests(unittest.TestCase):
         self.allow()
         project = self.project()
         with patch("app.EXECUTOR_ANALISES.submit"):
-            self.assertEqual(self.upload(project, pages=1).status_code, 302)
+            self.assertEqual(self.upload(project, pages=250).status_code, 302)
         analysis = db.session.scalar(select(Analysis).where(Analysis.project_id == project.id))
 
         def many_pages(_source):
@@ -695,7 +716,11 @@ class QualitativeCorpusTests(unittest.TestCase):
                 yield {"pagina_pdf": number, "texto": f"Página {number} — ação 😀",
                        "ocr_utilizado": False}
 
-        with patch("platform_core.qualitative_corpus.pdf_extractor.extrair_paginas", side_effect=many_pages):
+        # O extrator simulado deve corresponder ao PDF físico: a publicação
+        # rejeita corretamente páginas inventadas além do documento original.
+        with patch("platform_core.qualitative_corpus.pdf_extractor.extrair_paginas", side_effect=many_pages), patch(
+            "platform_core.qualitative_layout.build_native_layout", return_value=None,
+        ):
             _run_corpus_job(self.app, analysis.id)
         db.session.expire_all()
         analysis = db.session.get(Analysis, analysis.id)
@@ -999,6 +1024,14 @@ class QualitativeCorpusTests(unittest.TestCase):
         self.assertIn('Usar ReGex', html)
         self.assertNotIn('Usar GREP', html)
         self.assertIn('Códigos (0)', html)
+        self.assertIn('Memos (0)', html)
+        self.assertIn('data-qualitative-records', html)
+        self.assertIn('data-record-dialog', html)
+        self.assertIn('data-record-confirm-dialog', html)
+        self.assertIn('data-record-new="code"', html)
+        self.assertIn('data-record-new="memo"', html)
+        self.assertIn('data-record-edit', html)
+        self.assertIn('data-record-delete', html)
         self.assertIn('Margem analítica', html)
         top = html.split('class="platform-panel platform-qualitative-top"', 1)[1].split(
             'class="platform-qualitative-bottom"', 1)[0]

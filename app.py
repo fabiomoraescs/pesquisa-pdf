@@ -42,7 +42,7 @@ from platform_core.qualitative_routes import qualitative_bp
 from platform_core.presentation import register_presentation
 from platform_core.cli import register_cli
 from platform_core.services import ACCOUNT_LIFECYCLE_LOCK, access_is_active, account_accepts_new_work, can_use_tool, get_project_for_user
-from platform_core.scraping_types import FREE, QUALITATIVE_TOOL, SYSTEMATIC, TOOL_BY_TYPE, tool_for_project
+from platform_core.scraping_types import FREE, QUALITATIVE, QUALITATIVE_TOOL, SYSTEMATIC, TOOL_BY_TYPE, tool_for_project
 from platform_core.semantic_threshold import normalize as normalize_semantic_threshold, template_settings
 
 from analyzer.common import (
@@ -659,17 +659,18 @@ def arquivo_grande(_erro):
 
 @app.get("/")
 def home():
-    available_types = [kind for kind in (FREE, SYSTEMATIC)
+    available_project_types = [kind for kind in TOOL_BY_TYPE
                        if can_use_tool(current_user, TOOL_BY_TYPE[kind])]
     project_filter = (Project.owner_user_id == current_user.id,
                       Project.status == "active", Project.deleted_at.is_(None),
-                      Project.scrape_type.in_(available_types))
-    projects_total = db.session.scalar(select(func.count()).select_from(Project).where(*project_filter))
-    projects_by_type = {
-        kind: db.session.scalar(select(func.count()).select_from(Project).where(*project_filter,
-                                                                                Project.scrape_type == kind))
-        for kind in (FREE, SYSTEMATIC)
-    }
+                      Project.scrape_type.in_(available_project_types))
+    project_counts = dict(db.session.execute(
+        select(Project.scrape_type, func.count()).where(*project_filter)
+        .group_by(Project.scrape_type)).all())
+    projects_by_type = {kind: project_counts.get(kind, 0) for kind in TOOL_BY_TYPE}
+    projects_total = sum(projects_by_type.values())
+    # Bases públicas e gráficos continuam exclusivos das buscas existentes.
+    available_types = [kind for kind in (FREE, SYSTEMATIC) if kind in available_project_types]
     base_filter = (or_(*(history_access_filter(current_user.id, kind)
                          for kind in available_types)) if available_types else false(),)
     base_query = select(Analysis, Project.name).outerjoin(Project, Analysis.project_id == Project.id)
@@ -680,6 +681,12 @@ def home():
                                       .order_by(Analysis.created_at.desc()).limit(5)).all()
     latest_bases = {}
     chart_data = {}
+    # O ambiente qualitativo é apresentado pelo projeto, sem criar uma Base pública
+    # ou tentar carregar resultados/gráficos de raspagem para esta modalidade.
+    latest_bases[QUALITATIVE] = (db.session.execute(base_query.where(
+        history_access_filter(current_user.id, QUALITATIVE), Project.status == "active"
+    ).order_by(Analysis.created_at.desc(), Analysis.id.desc()).limit(1)).first()
+        if QUALITATIVE in available_project_types else None)
     for kind in (FREE, SYSTEMATIC):
         if kind not in available_types:
             latest_bases[kind] = None

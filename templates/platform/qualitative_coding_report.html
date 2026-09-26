@@ -1,0 +1,26 @@
+{% extends 'platform/base.html' %}
+{% block title %}Relatório de codificação — {{ project.name }} — Análysis{% endblock %}
+{% block page_intro %}<h1 class="h4">Relatório de codificação</h1>{% endblock %}
+{% block body %}
+<div class="platform-toolbar platform-toolbar-actions"><span class="platform-muted">{{ project.name }}</span>{% if grouped.values() | map('length') | sum %}<a class="btn btn-outline-primary btn-sm ms-auto" href="{{ url_for('qualitative.coding_report_excel', analysis_id=analysis.id) }}">Exportar Excel</a>{% endif %}<a class="btn btn-outline-primary btn-sm{% if not grouped.values() | map('length') | sum %} ms-auto{% endif %}" href="{{ url_for('qualitative.project_workspace', project_id=project.id) }}">Voltar ao projeto</a></div>
+{% if not codes %}
+<div class="platform-empty-state">Nenhum código foi criado neste projeto.</div>
+{% else %}
+{% set has_codings = grouped.values() | map('length') | sum %}
+{% if not has_codings %}<div class="platform-empty-state">Ainda não há trechos codificados neste projeto.</div>{% endif %}
+<div class="platform-qualitative-report">
+  {% for code in codes %}
+  <section class="platform-panel platform-qualitative-report-group" aria-labelledby="report-code-{{ code.id }}">
+    <h2 class="h5" id="report-code-{{ code.id }}">{{ code.name }} <span class="platform-muted">({{ grouped[code.id] | length }} {{ 'trecho' if grouped[code.id] | length == 1 else 'trechos' }})</span></h2>
+    {% if code.description %}<p class="platform-muted">{{ code.description }}</p>{% endif %}
+    {% for item in grouped[code.id] %}
+    <article class="platform-qualitative-report-excerpt">
+      <div class="platform-qualitative-report-source"><a href="{{ item.url }}">{{ item.document_name }} · p. {{ item.page_number }}</a>{% if item.memo_count %}<span class="platform-muted"> · {{ item.memo_count }} {{ 'memo' if item.memo_count == 1 else 'memos' }}</span>{% endif %}</div>
+      <q>{{ item.text }}</q>
+    </article>
+    {% else %}<p class="platform-muted mb-0">Nenhum trecho associado a este código.</p>{% endfor %}
+  </section>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

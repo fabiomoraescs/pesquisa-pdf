@@ -1,6 +1,5 @@
 {% extends 'platform/base.html' %}
 {% block title %}Projetos arquivados de {{ 'Busca por termos' if scrape_type == 'free' else 'Análise quali-dados' if scrape_type == 'qualitative' else 'Busca estruturada' }}{% endblock %}
-{% block page_intro %}<h1 class="h4">Projetos arquivados de {{ 'Busca por termos' if scrape_type == 'free' else 'Análise quali-dados' if scrape_type == 'qualitative' else 'Busca estruturada' }}</h1>{% endblock %}
 {% block body %}
 {% from 'platform/_view_controls.html' import action_link %}
 {% from 'platform/_icons.html' import icon %}
@@ -24,7 +23,7 @@
 </section>
 {% endfor %}
 </div>
-<button class="btn btn-danger mt-3" type="submit" form="bulk-delete-form" title="Excluir permanentemente selecionados" aria-label="Excluir permanentemente selecionados">Excluir permanentemente selecionados</button>
+<button class="btn btn-danger mt-3" type="submit" form="bulk-delete-form" data-bulk-delete hidden disabled title="Excluir permanentemente selecionados" aria-label="Excluir permanentemente selecionados">Excluir permanentemente selecionados</button>
 {% else %}
 <div class="platform-empty-state"><h2 class="h5">Nenhum projeto arquivado.</h2><p>Projetos arquivados aparecerão aqui.</p><a class="btn btn-outline-primary" href="{{ url_for('projects.list_free_projects' if scrape_type == 'free' else 'projects.list_qualitative_projects' if scrape_type == 'qualitative' else 'projects.list_projects') }}">Voltar aos projetos</a></div>
 {% endif %}

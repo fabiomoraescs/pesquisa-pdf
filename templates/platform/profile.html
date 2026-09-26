@@ -25,11 +25,13 @@
         <input type="hidden" name="crop_x" data-profile-crop-x>
         <input type="hidden" name="crop_y" data-profile-crop-y>
         <input type="hidden" name="crop_size" data-profile-crop-size>
-        <div class="d-flex flex-wrap gap-2"><button class="btn btn-outline-primary" type="submit">Salvar foto</button></div>
+        <div class="platform-photo-actions">
+          <button class="btn btn-outline-primary btn-sm" type="submit">Salvar foto</button>
+          {% if profile_avatar_url %}<button class="btn btn-outline-danger btn-sm" type="submit" form="profile-photo-remove-form">Remover foto</button>{% endif %}
+        </div>
       </form>
-      {% if profile_avatar_url %}<form method="post" action="{{ url_for('profile.remove_photo') }}" onsubmit="return confirm('Remover sua foto do perfil?')">
+      {% if profile_avatar_url %}<form id="profile-photo-remove-form" hidden method="post" action="{{ url_for('profile.remove_photo') }}" onsubmit="return confirm('Remover sua foto do perfil?')">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button class="btn btn-outline-danger" type="submit">Remover foto</button>
       </form>{% endif %}
     </div>
   </div>

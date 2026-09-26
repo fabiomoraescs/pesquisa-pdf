@@ -37,6 +37,8 @@ if (deleteDialog && viewer) {
       }
       button.closest('[data-document-row]').remove();
       viewer.querySelector('[data-document-count]').textContent = `Documentos (${result.document_count})`;
+      if (result.records) document.dispatchEvent(new CustomEvent('qualitative:records-updated',
+        { detail: result.records }));
       deleteDialog.close();
       viewer.querySelector('[data-explorer-popover]:popover-open')?.hidePopover();
     } catch (problem) {

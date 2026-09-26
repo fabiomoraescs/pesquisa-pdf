@@ -8,6 +8,13 @@
      data-pdf-url="{{ url_for('qualitative.original_pdf', analysis_id=analysis.id, document_id=current.document_id) }}"
      data-search-url="{{ url_for('qualitative.search', analysis_id=analysis.id, document_id=current.document_id) }}"
      data-layout-url-template="{{ url_for('qualitative.page_layout', analysis_id=analysis.id, document_id=current.document_id, page_number=0) }}"
+     data-page-data-url-template="{{ url_for('qualitative.page_data', analysis_id=analysis.id, document_id=current.document_id, page_number=0) }}"
+     data-excerpts-url-template="{{ url_for('qualitative.excerpts_on_page', analysis_id=analysis.id, document_id=current.document_id, page_number=0) }}"
+     data-context-url-template="{{ url_for('qualitative.annotate_selection', analysis_id=analysis.id, document_id=current.document_id, page_number=0) }}"
+     data-edit-excerpt-url-template="{{ url_for('qualitative.edit_excerpt', analysis_id=analysis.id, excerpt_id='00000000-0000-0000-0000-000000000000') }}"
+     data-target-excerpt-id="{{ target_excerpt_id or '' }}"
+     data-can-annotate="{{ '1' if project.status == 'active' and project.owner_user_id == current_user.id else '0' }}"
+     data-analysis-id="{{ analysis.id }}"
      data-pdfjs-base="{{ url_for('static', filename='vendor/pdfjs/') }}"
      data-page-count="{{ current.page_count }}" data-initial-page="{{ current.page_number }}"
      data-document-id="{{ current.document_id }}">
@@ -28,20 +35,13 @@
       <aside class="platform-qualitative-explorer" id="qualitative-explorer" aria-label="Explorador do projeto">
         <h2 class="h6">Explorador</h2>
         <button class="platform-qualitative-explorer-trigger" type="button" popovertarget="qualitative-documents-menu" aria-controls="qualitative-documents-menu" aria-expanded="false" data-explorer-trigger data-document-count>Documentos ({{ manifest.documents | length }})</button>
-        <div class="platform-qualitative-explorer-popover" id="qualitative-documents-menu" popover="auto" aria-label="Documentos do projeto" data-explorer-popover>
+        <div class="platform-qualitative-explorer-popover" id="qualitative-documents-menu" popover="auto" aria-label="Documentos do projeto" data-explorer-popover data-temporary-popover>
           <h3 class="h6">Documentos</h3>
           <nav class="platform-qualitative-documents" aria-label="Documentos do projeto">
             {% for document in manifest.documents %}<div class="platform-qualitative-document-row" data-document-row="{{ document.document_id }}"><a href="{{ url_for('qualitative.page', analysis_id=analysis.id, document_id=document.document_id, page_number=1) }}" class="{{ 'is-current' if document.document_id == current.document_id else '' }}" title="{{ document.original_name }}" {% if document.document_id == current.document_id %}aria-current="page"{% endif %}>{{ document.original_name }}</a>{% if project.status == 'active' and project.owner_user_id == current_user.id %}<button class="platform-qualitative-document-delete" type="button" data-delete-document data-document-id="{{ document.document_id }}" data-document-name="{{ document.original_name }}" data-delete-url="{{ url_for('qualitative.delete_document', analysis_id=analysis.id, document_id=document.document_id) }}" title="Excluir {{ document.original_name }}" aria-label="Excluir documento {{ document.original_name }}">{{ icon('lixeira') }}</button>{% endif %}</div>{% endfor %}
           </nav>
         </div>
-        <button class="platform-qualitative-explorer-trigger" type="button" popovertarget="qualitative-codes-menu" aria-controls="qualitative-codes-menu" aria-expanded="false" data-explorer-trigger>Códigos (0)</button>
-        <div class="platform-qualitative-explorer-popover" id="qualitative-codes-menu" popover="auto" aria-label="Códigos do projeto" data-explorer-popover>
-          <h3 class="h6">Códigos</h3><p class="platform-muted mb-0">Nenhum código criado.</p>
-        </div>
-        <button class="platform-qualitative-explorer-trigger" type="button" popovertarget="qualitative-memos-menu" aria-controls="qualitative-memos-menu" aria-expanded="false" data-explorer-trigger>Memos (0)</button>
-        <div class="platform-qualitative-explorer-popover" id="qualitative-memos-menu" popover="auto" aria-label="Memos do projeto" data-explorer-popover>
-          <h3 class="h6">Memos</h3><p class="platform-muted mb-0">Nenhum memo criado.</p>
-        </div>
+        {% include 'platform/_qualitative_records.html' %}
       </aside>
     </div>
   </div>
@@ -52,12 +52,31 @@
         <span class="platform-muted" aria-live="polite">Página <output data-current-page>{{ current.page_number }}</output> de {{ current.page_count }}</span>
         <label class="d-inline-flex align-items-center gap-2" for="qualitative-zoom">Zoom <select class="form-select form-select-sm" id="qualitative-zoom" data-zoom><option value="0.75">75%</option><option value="1" selected>Ajustar</option><option value="1.25">125%</option><option value="1.5">150%</option><option value="2">200%</option></select></label>
         <button class="btn btn-outline-primary btn-sm platform-qualitative-focus-toggle" type="button" data-focus-toggle aria-pressed="false" aria-label="Modo foco" title="Modo foco">{{ icon('abrir') }}<span data-focus-label>Modo foco</span></button>
+        <span class="platform-qualitative-context-notice" data-context-notice role="status" aria-live="polite"></span>
       </div>
       <div class="platform-qualitative-pdf-scroll" data-pdf-scroll aria-label="Páginas do PDF em rolagem contínua"><p class="platform-muted" data-viewer-status>Carregando PDF…</p></div>
       <noscript><p>Ative JavaScript para visualizar as páginas. <a href="{{ url_for('qualitative.original_pdf', analysis_id=analysis.id, document_id=current.document_id) }}">Abrir PDF original</a></p></noscript>
     </section>
-    <aside class="platform-panel platform-qualitative-margin" aria-label="Margem analítica"><h2 class="h6">Margem analítica</h2><p class="platform-muted mb-0">Espaço reservado para futuras etiquetas. A busca não cria codificações.</p></aside>
+    <aside class="platform-panel platform-qualitative-margin" aria-label="Margem analítica"><h2 class="h6">Margem analítica</h2><div class="platform-qualitative-margin-viewport" data-margin-viewport><div class="platform-qualitative-margin-track" data-margin-track></div></div></aside>
   </div>
+  {% if project.status == 'active' and project.owner_user_id == current_user.id %}
+  <div class="platform-qualitative-context-menu" id="qualitative-context-menu" data-temporary-popover data-context-menu role="menu" aria-label="Ações para o trecho selecionado" hidden>
+    <button type="button" role="menuitem" data-context-action="apply_codes">Aplicar código</button>
+    <button type="button" role="menuitem" data-context-action="in_vivo">Código in vivo</button>
+    <button type="button" role="menuitem" data-context-action="create_memo">Criar memo</button>
+  </div>
+  <dialog class="platform-qualitative-record-dialog platform-panel" data-context-dialog aria-labelledby="qualitative-context-title">
+    <form method="dialog" data-context-form>
+      <h2 class="h5" id="qualitative-context-title" data-context-title></h2>
+      <p class="platform-muted" data-context-quote></p>
+      <div data-context-codes hidden><label for="qualitative-context-filter">Buscar ou criar código</label><input class="form-control" id="qualitative-context-filter" type="search" maxlength="160" placeholder="Buscar ou criar código..." data-context-filter><div class="platform-qualitative-context-code-list" data-context-code-list></div><button class="btn btn-outline-primary btn-sm platform-qualitative-inline-create" type="button" data-context-create hidden></button></div>
+      <div data-context-memo-field hidden><label for="qualitative-context-memo">Conteúdo do memo</label><textarea class="form-control" id="qualitative-context-memo" name="memo" maxlength="20000" rows="5"></textarea></div>
+      <p class="platform-qualitative-record-error" data-context-error role="alert" hidden></p>
+      <div class="platform-qualitative-record-dialog-actions"><button class="btn btn-outline-primary" type="button" data-context-cancel>Cancelar</button><button class="btn btn-primary" type="submit" data-context-save>Salvar</button></div>
+    </form>
+  </dialog>
+  <input type="hidden" data-context-csrf value="{{ csrf_token() }}">
+  {% endif %}
 </div>
 {% if project.status == 'active' and project.owner_user_id == current_user.id %}
 <dialog class="platform-qualitative-delete-dialog platform-panel" data-document-delete-dialog aria-labelledby="qualitative-delete-title">
@@ -72,5 +91,6 @@
 {% include 'platform/_qualitative_info.html' %}
 <script type="module" src="{{ url_for('static', filename='js/qualitative_info.js') }}"></script>
 <script type="module" src="{{ url_for('static', filename='js/qualitative_document_delete.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='js/qualitative_records.js') }}"></script>
 <script type="module" src="{{ url_for('static', filename='js/qualitative_viewer.js') }}"></script>
 {% endblock %}

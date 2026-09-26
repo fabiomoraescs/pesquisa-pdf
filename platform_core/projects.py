@@ -223,7 +223,7 @@ def restore_project(project_id: UUID):
 
 def _owned_archived_selection() -> list[Project]:
     ids = request.form.getlist("project_ids")
-    if not ids or len(ids) > 100 or len(set(ids)) != len(ids):
+    if len(ids) < 2 or len(ids) > 100 or len(set(ids)) != len(ids):
         abort(400)
     try:
         ids = [str(UUID(item)) for item in ids]

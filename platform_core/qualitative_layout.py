@@ -1,8 +1,8 @@
 """Geometria opcional, verificável contra o corpus canônico qualitativo.
 
-Somente páginas textuais de rotação zero com reconstrução *exata* dos blocos
-recebem layout. Páginas OCR ou com mapeamento ambíguo permanecem pesquisáveis,
-mas não recebem coordenadas inventadas.
+Páginas nativas e OCR recebem layout somente quando os glifos
+reconstroem *exatamente* o texto salvo. Mapeamento ambíguo permanece
+pesquisável, sem coordenadas inventadas.
 """
 
 from __future__ import annotations
@@ -12,81 +12,81 @@ import logging
 import math
 from pathlib import Path
 
-from .qualitative_corpus import qualitative_corpus_dir, read_qualitative_page
+import pymupdf
+
+from .qualitative_corpus import canonicalize_page, qualitative_corpus_dir, read_qualitative_page
 
 
 LAYOUT_VERSION = 1
 
 
-def build_native_layout(page, text: str, page_number: int, digest: str) -> dict | None:
-    """Mapeia palavras dos blocos nativos para offsets do *mesmo* texto salvo."""
+def build_native_layout(page, text: str, page_number: int, digest: str, *, textpage=None) -> dict | None:
+    """Mapeia glifos nativos ou OCR aos offsets do *mesmo* texto salvo."""
+    def unavailable(reason):
+        logging.getLogger(__name__).debug("Layout da página %s indisponível: %s", page_number, reason)
+        return None
+
     try:
-        if page.rotation != 0:
-            return None
-        blocks = [block[4] for block in page.get_text("blocks", sort=True)
+        options = {"textpage": textpage} if textpage is not None else {}
+        blocks = [block for block in page.get_text("blocks", sort=True, **options)
                   if len(block) > 6 and block[6] == 0 and block[4].strip()]
-        raw = [block for block in page.get_text("rawdict", sort=True)["blocks"]
-               if block.get("type") == 0 and block.get("lines")]
-        if not blocks or "\n\n".join(blocks) != text or len(blocks) != len(raw):
-            return None
+        # Blocos só de espaços não entram no corpus. rawdict pode contê-los:
+        # não comparar quantidades nem fazer zip entre listas filtradas de modo
+        # diferente. O número do bloco identifica a mesma fonte nas duas APIs.
+        raw = {block["number"]: block
+               # Mesmas flags de blocks: imagens não podem deslocar a numeração
+               # dos blocos textuais entre as duas representações.
+               for block in page.get_text("rawdict", sort=True, flags=pymupdf.TEXTFLAGS_BLOCKS, **options)["blocks"]
+               if block.get("type") == 0 and block.get("lines")}
+        if not blocks or canonicalize_page("\n\n".join(block[4] for block in blocks)) != text:
+            return unavailable("texto dos blocos diverge do canônico ou página vazia")
         width, height = float(page.rect.width), float(page.rect.height)
         if width <= 0 or height <= 0:
-            return None
+            return unavailable("dimensões inválidas")
         items = []
         offset = 0
-        for index, (block_text, block) in enumerate(zip(blocks, raw)):
-            reconstructed = "".join(
+        for index, source in enumerate(blocks):
+            block_text = canonicalize_page(source[4])
+            block = raw.get(source[5])
+            if block is None:
+                return unavailable(f"geometria ausente para bloco {source[5]}")
+            reconstructed = canonicalize_page("".join(
                 "".join(char["c"] for span in line["spans"] for char in span["chars"]) + "\n"
                 for line in block["lines"]
-            )
+            ))
             if reconstructed != block_text:
-                return None
+                return unavailable(f"glifos divergem do texto do bloco {source[5]}")
             local = 0
             for line in block["lines"]:
-                word_start = None
-                boxes = []
-
-                def flush():
-                    nonlocal word_start, boxes
-                    if word_start is not None:
-                        # Um glifo na borda pode ultrapassar ligeiramente o
-                        # recorte visível do PDF; só mapeamos sua área visível.
-                        x0 = max(0.0, min(width, min(box[0] for box in boxes)))
-                        y0 = max(0.0, min(height, min(box[1] for box in boxes)))
-                        x1 = max(0.0, min(width, max(box[2] for box in boxes)))
-                        y1 = max(0.0, min(height, max(box[3] for box in boxes)))
-                        if not (0 <= x0 < x1 <= width and 0 <= y0 < y1 <= height):
-                            raise ValueError("Caixa fora da página")
-                        start, end = offset + word_start, offset + local
-                        items.append({"start": start, "end": end,
-                                      "text": text[start:end], "bbox": [x0, y0, x1, y1]})
-                    word_start, boxes = None, []
-
                 for span in line["spans"]:
                     for char in span["chars"]:
-                        value = char["c"]
-                        if len(value) != 1:
-                            return None
-                        if value.isspace():
-                            flush()
-                        else:
-                            if word_start is None:
-                                word_start = local
-                            boxes.append(tuple(float(value) for value in char["bbox"]))
-                        local += 1
-                flush()
+                        value = canonicalize_page(char["c"])
+                        if value and value not in ("\n", "\t"):
+                            # Geometria real do glifo, também em páginas/texto
+                            # rotacionados. Os offsets permanecem no corpus;
+                            # somente as coordenadas seguem a rotação do PDF.
+                            quad = pymupdf.recover_char_quad(line["dir"], span, char) * page.rotation_matrix
+                            rect = quad.rect & page.rect
+                            start = offset + local
+                            if rect.is_empty:
+                                if not value.isspace():
+                                    return unavailable(f"glifo sem área visível no offset {start}")
+                            else:
+                                items.append({"start": start, "end": start + len(value),
+                                              "text": value, "bbox": list(rect),
+                                              "quad": [[float(point.x), float(point.y)] for point in quad]})
+                        local += len(value)
                 local += 1  # quebra de linha presente em get_text("blocks")
             if local != len(block_text):
-                return None
+                return unavailable(f"offsets divergem no bloco {source[5]}")
             offset += local + (2 if index + 1 < len(blocks) else 0)
         if offset != len(text) or not items:
-            return None
+            return unavailable("cobertura de offsets incompleta ou sem glifos")
         return {"layout_version": LAYOUT_VERSION, "page_number": page_number,
                 "page_text_hash": digest, "offset_unit": "unicode_codepoint",
                 "width": width, "height": height, "items": items}
-    except (KeyError, TypeError, ValueError, IndexError, OverflowError) as error:
-        logging.getLogger(__name__).debug("Layout nativo indisponível: %s", error)
-        return None
+    except (KeyError, TypeError, ValueError, IndexError, OverflowError, RuntimeError) as error:
+        return unavailable(str(error))
 
 
 def read_qualitative_layout(analysis, document_id: str, page_number: int, *, manifest=None) -> dict:
@@ -100,11 +100,15 @@ def read_qualitative_layout(analysis, document_id: str, page_number: int, *, man
         raise QualitativePageNotFoundError("Página não encontrada nesta Base.")
     page = document["pages"][page_number - 1]
     unavailable = {"layout_available": False, "items": []}
-    if not page.get("layout_available"):
+    def rejected(reason):
+        logging.getLogger(__name__).debug("Layout rejeitado %s/%s/página %s: %s",
+                                         analysis.id, document_id, page_number, reason)
         return unavailable
+    if not page.get("layout_available"):
+        return rejected("manifest sem layout disponível")
     path = qualitative_corpus_dir(analysis.id) / document_id / "pages" / f"{page_number:06d}.layout.json"
     if path.is_symlink() or not path.is_file() or not path.resolve().is_relative_to(qualitative_corpus_dir(analysis.id).resolve()):
-        return unavailable
+        return rejected("arquivo de layout ausente ou caminho inseguro")
     try:
         layout = json.loads(path.read_text(encoding="utf-8"))
         persisted = read_qualitative_page(analysis, document_id, page_number, manifest=manifest)
@@ -115,7 +119,7 @@ def read_qualitative_layout(analysis, document_id: str, page_number: int, *, man
                 or not all(isinstance(value, (int, float)) and math.isfinite(value) and value > 0
                             for value in (width, height))
                 or not isinstance(layout["items"], list)):
-            return unavailable
+            return rejected("versão, hash, dimensões ou estrutura divergentes")
         text = persisted["text"]
         for item in layout["items"]:
             start, end, bbox = item["start"], item["end"], item["bbox"]
@@ -124,7 +128,12 @@ def read_qualitative_layout(analysis, document_id: str, page_number: int, *, man
                     or not all(isinstance(value, (int, float)) and math.isfinite(value) for value in bbox)
                     or not (0 <= bbox[0] < bbox[2] <= width + 1
                             and 0 <= bbox[1] < bbox[3] <= height + 1)):
-                return unavailable
+                return rejected("glifo, offsets ou bbox incompatíveis com o corpus")
+            if "quad" in item and (len(item["quad"]) != 4 or any(
+                    not isinstance(point, list) or len(point) != 2
+                    or not all(isinstance(value, (int, float)) and math.isfinite(value) for value in point)
+                    for point in item["quad"])):
+                return rejected("quadrilátero inválido")
         return {"layout_available": True, "width": width, "height": height,
                 "page_text_hash": persisted["sha256"], "items": layout["items"]}
     except (OSError, UnicodeError, ValueError, TypeError, KeyError, IndexError) as error:

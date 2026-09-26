@@ -2,11 +2,11 @@
 {% block title %}{{ project.name }} — Análysis{% endblock %}
 {% block page_intro %}<h1 class="h4">{{ project.name }}</h1>{% endblock %}
 {% block body %}
-<section class="platform-panel" aria-live="polite">
+<div class="platform-qualitative-loading"><section class="loading-panel" aria-live="polite">
   {% if inconsistent %}<div class="alert alert-danger" role="alert">O corpus salvo está ausente ou inconsistente. Os documentos não serão reprocessados automaticamente. Solicite revisão antes de continuar.</div>
   {% elif upload_error %}<div class="alert alert-danger" role="alert">{{ upload_error }}</div>
   {% elif analysis.status == 'erro' %}<div class="alert alert-danger" role="alert">{{ analysis.error_message or 'Falha na preparação do corpus.' }}</div>
-  {% else %}<p>Preparando o corpus textual página por página. Os PDFs originais estão preservados.</p><p class="platform-muted">{% if progress.document_name %}Documento {{ progress.document_index }} de {{ progress.document_count }}: {{ progress.document_name }} · página {{ progress.page_number }}{% else %}Aguardando início da extração…{% endif %}</p><p class="platform-muted">Esta página será atualizada enquanto o preparo estiver em andamento.</p><script>setTimeout(() => location.reload(), 3000);</script>{% endif %}
-  <a class="btn btn-outline-primary btn-sm" href="{{ url_for('qualitative.project_workspace', project_id=project.id) }}">Voltar ao projeto</a>
-</section>
+  {% else %}<div class="loading-spinner mx-auto" aria-hidden="true"></div><h2>Preparando corpus textual</h2><p>Os PDFs originais estão preservados.</p><div class="loading-progress is-indeterminate" role="progressbar" aria-label="Progresso da preparação do corpus" aria-valuemin="0" aria-valuemax="100"><div class="loading-progress__bar"></div></div><p class="loading-progress-detail">{{ progress.stage or 'Aguardando início da extração…' }}{% if progress.document_name %}<br>{{ progress.document_name }} · página {{ progress.page_number }}{% if progress.page_count %} de {{ progress.page_count }}{% endif %} (documento {{ progress.document_index }} de {{ progress.document_count }}){% endif %}</p><script>setTimeout(() => location.reload(), 3000);</script>{% endif %}
+  <a class="btn btn-outline-primary btn-sm mt-3" href="{{ url_for('qualitative.project_workspace', project_id=project.id) }}">Voltar ao projeto</a>
+</section></div>
 {% endblock %}

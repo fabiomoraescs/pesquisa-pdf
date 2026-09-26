@@ -1,4 +1,23 @@
 (() => {
+  const bulkDeleteForm = document.getElementById('bulk-delete-form');
+  const bulkDeleteButton = document.querySelector('[data-bulk-delete]');
+  if (bulkDeleteForm && bulkDeleteButton) {
+    // form.elements inclui os checkboxes externos associados pelo atributo form.
+    const selections = Array.from(bulkDeleteForm.elements).filter((input) =>
+      input.type === 'checkbox' && input.name === 'project_ids');
+    const updateBulkDelete = () => {
+      const available = selections.filter((input) => input.checked && !input.disabled).length >= 2;
+      bulkDeleteButton.hidden = !available;
+      bulkDeleteButton.disabled = !available;
+      return available;
+    };
+    selections.forEach((input) => input.addEventListener('change', updateBulkDelete));
+    bulkDeleteForm.addEventListener('submit', (event) => {
+      if (!updateBulkDelete()) event.preventDefault();
+    });
+    window.addEventListener('pageshow', updateBulkDelete);
+    updateBulkDelete();
+  }
   document.querySelectorAll('[data-view-container]').forEach((container) => {
     const buttons = document.querySelectorAll(`[data-view-target="${container.id}"]`);
     const key = container.dataset.viewStorageKey || 'pesquisapdf-view-mode';

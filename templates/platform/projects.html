@@ -1,6 +1,5 @@
 {% extends 'platform/base.html' %}
 {% block title %}Projetos de {{ 'Busca por termos' if scrape_type == 'free' else 'Análise quali-dados' if scrape_type == 'qualitative' else 'Busca estruturada' }}{% endblock %}
-{% block page_intro %}<h1 class="h4">Projetos de {{ 'Busca por termos' if scrape_type == 'free' else 'Análise quali-dados' if scrape_type == 'qualitative' else 'Busca estruturada' }}</h1>{% endblock %}
 {% block body %}
 {% from 'platform/_view_controls.html' import toggle, action_link %}
 {% from 'platform/_icons.html' import icon %}
@@ -12,6 +11,6 @@
   {% endfor %}
 </div>
 {% else %}
-<div class="platform-empty-state"><h2 class="h5">Você ainda não possui projetos {{ 'qualitativos' if scrape_type == 'qualitative' else 'nesta raspagem' }}.</h2><p>Comece um projeto para organizar {{ 'seus documentos' if scrape_type == 'qualitative' else 'suas bases de análise' }}.</p>{% if scrape_type == 'free' %}<a class="btn btn-outline-primary" href="{{ url_for('analyses.standard_history') }}">Bases anteriores sem projeto</a>{% endif %}</div>
+<div class="platform-empty-state"><h2 class="h5">Você ainda não possui projetos {{ 'qualitativos' if scrape_type == 'qualitative' else 'nesta raspagem' }}.</h2><p>Comece um projeto para organizar {{ 'seus documentos' if scrape_type == 'qualitative' else 'suas bases de análise' }}.</p></div>
 {% endif %}
 {% endblock %}
