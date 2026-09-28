@@ -13,6 +13,15 @@
       </div>
       <div class="platform-assistant-messages" data-assistant-messages role="log" aria-live="polite" aria-relevant="additions"></div>
     </div>
+    <form class="platform-assistant-form" data-assistant-form action="{{ url_for('assistant.ask') }}" method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" data-assistant-csrf>
+      <label class="visually-hidden" for="platform-assistant-question">Pergunta ao Assistente Análysis</label>
+      <div class="platform-assistant-composer">
+        <input id="platform-assistant-question" data-assistant-input type="text" name="question" placeholder="Faça uma pergunta..." maxlength="1000" autocomplete="off" required aria-describedby="platform-assistant-error">
+        <button type="submit" data-assistant-send>Enviar</button>
+      </div>
+      <p id="platform-assistant-error" class="platform-assistant-error" data-assistant-error role="alert" hidden></p>
+    </form>
   </section>
   <button class="platform-assistant-avatar" type="button" data-assistant-toggle aria-label="Abrir Assistente Análysis" aria-controls="platform-assistant-panel" aria-expanded="false" title="Assistente Análysis">
     <img src="{{ url_for('static', filename='img/assistant/robot_assistente.png') }}" alt="" width="64" height="64">

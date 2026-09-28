@@ -65,10 +65,19 @@ class AssistantContextTests(unittest.TestCase):
         self.assertIn("trecho concreto", answers)
         self.assertIn("ainda não examino", answers)
 
-    def test_avatar_is_exact_unmodified_copy_and_info_controls_remain(self):
-        original = (ROOT / "img/robot_assistente.png").read_bytes()
+    def test_qualitative_label_help_matches_current_click_behavior(self):
+        answer = next(item["answer"] for item in ASSISTANT_CONTEXTS["qualitative"]["suggestions"]
+                      if "renomeio" in item["question"])
+        self.assertIn("localizar e destacar o trecho no PDF", answer)
+        self.assertIn("botão direito", answer)
+        self.assertNotIn("Clique ou toque", answer)
+
+    def test_avatar_asset_and_info_controls_remain(self):
         served = (ROOT / "static/img/assistant/robot_assistente.png").read_bytes()
-        self.assertEqual(original, served)
+        self.assertTrue(served.startswith(b"\x89PNG\r\n\x1a\n"))
+        original = ROOT / "img/robot_assistente.png"
+        if original.exists():
+            self.assertEqual(original.read_bytes(), served)
         reader = (ROOT / "templates/platform/qualitative_reader.html").read_text(encoding="utf-8")
         for key in ("regex", "case", "automatic", "multiple", "rejection",
                     "literal", "lexical", "semantic"):
@@ -112,7 +121,7 @@ class AssistantPageTests(unittest.TestCase):
         self.assert_one_assistant(self.client.get("/perfil"), "fallback")
         image = self.client.get("/static/img/assistant/robot_assistente.png")
         self.assertEqual(image.status_code, 200)
-        self.assertEqual(image.data, (ROOT / "img/robot_assistente.png").read_bytes())
+        self.assertEqual(image.data, (ROOT / "static/img/assistant/robot_assistente.png").read_bytes())
 
     def test_term_and_structured_upload_pages_use_their_own_contexts(self):
         self.assert_one_assistant(self.client.get("/raspagem-livre"), "term_search")

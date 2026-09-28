@@ -153,9 +153,10 @@ ASSISTANT_CONTEXTS: dict[str, dict[str, Any]] = {
                 "a codificação."
             )},
             {"question": "Como organizo, renomeio e coloro códigos?", "answer": (
-                "Use Códigos no Explorador para organizar seus códigos. Clique ou toque "
-                "em uma etiqueta na Margem analítica para abrir Renomear código e Alterar "
-                "cor. O nome e a cor pertencem ao código e se refletem nas suas etiquetas."
+                "Use Códigos no Explorador para organizar seus códigos. Clique em uma "
+                "etiqueta na Margem analítica para localizar e destacar o trecho no PDF. "
+                "Para renomear o código ou alterar sua cor, clique com o botão direito "
+                "na etiqueta. O nome e a cor pertencem ao código e se refletem nas suas etiquetas."
             )},
             {"question": "Como uso a Margem analítica e o Explorador?", "answer": (
                 "A Margem mostra os códigos associados aos trechos da página em leitura. "

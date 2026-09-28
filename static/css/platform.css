@@ -279,7 +279,7 @@
 .platform-assistant-avatar { display: grid; place-items: center; width: 4rem; height: 4rem; padding: .1rem; border: 1px solid var(--border); border-radius: 50%; background: var(--surface); box-shadow: 0 .35rem 1.1rem var(--shadow); cursor: pointer; transition: transform .15s ease, border-color .15s ease; }
 .platform-assistant-avatar img { display: block; width: 100%; height: 100%; object-fit: contain; }
 .platform-assistant-avatar:hover, .platform-assistant-avatar.is-active { transform: translateY(-2px); border-color: var(--blue); }
-.platform-assistant-avatar:focus-visible, .platform-assistant-close:focus-visible, .platform-assistant-suggestions button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.platform-assistant-avatar:focus-visible, .platform-assistant-close:focus-visible, .platform-assistant-suggestions button:focus-visible, .platform-assistant-composer input:focus-visible, .platform-assistant-composer button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 .platform-assistant-panel { display: flex; flex-direction: column; width: min(25rem, calc(100vw - 2rem)); max-height: min(70dvh, 38rem); min-height: 0; overflow: hidden; border: 1px solid var(--border); border-radius: .85rem; background: var(--surface); color: var(--ink); box-shadow: 0 .65rem 2rem var(--shadow); }
 .platform-assistant-panel[hidden] { display: none; }
 .platform-assistant-header { display: flex; align-items: center; gap: .55rem; flex: none; padding: .65rem .8rem; border-bottom: 1px solid var(--border); background: var(--surface-muted); }
@@ -287,7 +287,7 @@
 .platform-assistant-header h2 { flex: 1; min-width: 0; margin: 0; font-size: .98rem; font-weight: 700; }
 .platform-assistant-close { display: grid; place-items: center; flex: none; width: 2rem; height: 2rem; padding: 0; border: 1px solid transparent; border-radius: .45rem; background: transparent; color: var(--ink); font-size: 1.35rem; line-height: 1; cursor: pointer; }
 .platform-assistant-close:hover { border-color: var(--border); background: var(--surface); }
-.platform-assistant-body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: .8rem; scrollbar-color: var(--border) transparent; }
+.platform-assistant-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: .8rem; scrollbar-color: var(--border) transparent; }
 .platform-assistant-message { width: fit-content; max-width: 90%; margin: 0 0 .55rem; padding: .55rem .7rem; border-radius: .7rem; font-size: .84rem; line-height: 1.4; overflow-wrap: break-word; }
 .platform-assistant-message.is-assistant { background: var(--surface-muted); color: var(--ink); }
 .platform-assistant-message.is-user { margin-left: auto; background: var(--soft-blue); color: var(--ink); }
@@ -295,6 +295,13 @@
 .platform-assistant-suggestions button { width: 100%; padding: .48rem .6rem; border: 1px solid var(--border); border-radius: .5rem; background: var(--surface); color: var(--ink); font-size: .79rem; line-height: 1.3; text-align: left; cursor: pointer; }
 .platform-assistant-suggestions button:hover { border-color: var(--blue); background: var(--soft-blue); }
 .platform-assistant-messages:empty { display: none; }
+.platform-assistant-form { flex: none; padding: .65rem .8rem; border-top: 1px solid var(--border); background: var(--surface); }
+.platform-assistant-composer { display: flex; align-items: center; gap: .45rem; }
+.platform-assistant-composer input { flex: 1; min-width: 0; padding: .5rem .6rem; border: 1px solid var(--border); border-radius: .45rem; background: var(--surface); color: var(--ink); font: inherit; font-size: .84rem; }
+.platform-assistant-composer button { flex: none; padding: .5rem .7rem; border: 1px solid var(--blue); border-radius: .45rem; background: var(--blue); color: white; font: inherit; font-size: .84rem; cursor: pointer; }
+.platform-assistant-composer button:disabled { opacity: .65; cursor: wait; }
+.platform-assistant-error { margin: .4rem 0 0; color: var(--danger, #b42318); font-size: .78rem; }
+.platform-assistant-error[hidden] { display: none; }
 .platform-qualitative-focus .platform-assistant { right: 12rem; }
 @media (max-width: 700px) {
   .platform-assistant { left: .75rem; right: .75rem; bottom: .75rem; }

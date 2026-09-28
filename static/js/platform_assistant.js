@@ -9,7 +9,13 @@
   const messages = assistant.querySelector('[data-assistant-messages]');
   const body = assistant.querySelector('[data-assistant-body]');
   const payload = assistant.querySelector('[data-assistant-payload]');
-  if (!avatar || !panel || !closeButton || !messages || !body || !payload) return;
+  const form = assistant.querySelector('[data-assistant-form]');
+  const input = assistant.querySelector('[data-assistant-input]');
+  const sendButton = assistant.querySelector('[data-assistant-send]');
+  const error = assistant.querySelector('[data-assistant-error]');
+  const csrf = assistant.querySelector('[data-assistant-csrf]');
+  if (!avatar || !panel || !closeButton || !messages || !body || !payload ||
+      !form || !input || !sendButton || !error || !csrf) return;
 
   let context;
   try { context = JSON.parse(payload.textContent); }
@@ -40,6 +46,58 @@
     messages.append(message);
     body.scrollTop = body.scrollHeight;
   };
+
+  let busy = false;
+  const showError = (message) => {
+    error.textContent = message;
+    error.hidden = !message;
+  };
+  const setBusy = (value) => {
+    busy = value;
+    form.setAttribute('aria-busy', String(value));
+    input.disabled = value;
+    sendButton.disabled = value;
+    sendButton.textContent = value ? 'Enviando...' : 'Enviar';
+  };
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (busy) return;
+    const question = input.value.trim();
+    if (!question || question.length > 1000) {
+      showError('Informe uma pergunta de até 1000 caracteres.');
+      input.focus();
+      return;
+    }
+    showError('');
+    addMessage(question, 'user');
+    input.value = '';
+    setBusy(true);
+    try {
+      const response = await fetch(form.action, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-CSRFToken': csrf.value,
+        },
+        body: JSON.stringify({question, context: context.key, page: context.page,
+          reference: context.reference}),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || result.erro || 'Não foi possível enviar a pergunta.');
+      if (!result || typeof result.answer !== 'string' || !result.answer.trim()) {
+        throw new Error('Resposta inválida do Assistente.');
+      }
+      addMessage(result.answer, 'assistant');
+    } catch (failure) {
+      showError(failure.message || 'Não foi possível enviar a pergunta.');
+    } finally {
+      setBusy(false);
+      if (!panel.hidden) input.focus();
+    }
+  });
 
   assistant.addEventListener('click', (event) => {
     const questionButton = event.target.closest('[data-assistant-question]');

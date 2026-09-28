@@ -48,6 +48,7 @@ from platform_core.scraping_types import FREE, QUALITATIVE, QUALITATIVE_TOOL, SY
 from platform_core.semantic_threshold import normalize as normalize_semantic_threshold, template_settings
 from platform_core.term_input import has_invalid_term_separator
 from platform_core.assistant_context import assistant_context_for_endpoint
+from platform_core.assistant_routes import assistant_bp
 
 from analyzer.common import (
     ANALISADORES,
@@ -114,6 +115,7 @@ app.register_blueprint(profile_bp)
 app.register_blueprint(historico_racial_bp)
 app.register_blueprint(analyses_bp)
 app.register_blueprint(qualitative_bp)
+app.register_blueprint(assistant_bp)
 
 
 @login_manager.user_loader
@@ -1014,6 +1016,7 @@ def create_app(test_config: dict | None = None) -> Flask:
     isolated.register_blueprint(historico_racial_bp)
     isolated.register_blueprint(analyses_bp)
     isolated.register_blueprint(qualitative_bp)
+    isolated.register_blueprint(assistant_bp)
     isolated.before_request(_enforce_platform_access)
     isolated.register_error_handler(CSRFError, _csrf_error)
     isolated.register_error_handler(413, arquivo_grande)
