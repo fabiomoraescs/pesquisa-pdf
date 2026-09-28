@@ -47,6 +47,7 @@ from platform_core.services import ACCOUNT_LIFECYCLE_LOCK, access_is_active, acc
 from platform_core.scraping_types import FREE, QUALITATIVE, QUALITATIVE_TOOL, SYSTEMATIC, TOOL_BY_TYPE, tool_for_project
 from platform_core.semantic_threshold import normalize as normalize_semantic_threshold, template_settings
 from platform_core.term_input import has_invalid_term_separator
+from platform_core.assistant_context import assistant_context_for_endpoint
 
 from analyzer.common import (
     ANALISADORES,
@@ -101,7 +102,8 @@ def _semantic_threshold_template_context():
     return {"semantic_threshold": template_settings(),
             "free_access": bool(current_user.is_authenticated and can_use_tool(current_user, "pdf_scraper")),
             "systematic_access": bool(current_user.is_authenticated and can_use_tool(current_user, "document_analysis")),
-            "qualitative_access": bool(current_user.is_authenticated and can_use_tool(current_user, QUALITATIVE_TOOL))}
+            "qualitative_access": bool(current_user.is_authenticated and can_use_tool(current_user, QUALITATIVE_TOOL)),
+            "assistant_context": assistant_context_for_endpoint(request.endpoint, request.view_args)}
 
 
 app.register_blueprint(auth_bp)

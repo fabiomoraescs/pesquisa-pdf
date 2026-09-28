@@ -1,0 +1,21 @@
+{% set assistant_project = project if project is defined else selected_project if selected_project is defined else legacy_project if legacy_project is defined else none %}
+<div class="platform-assistant" data-assistant data-assistant-context="{{ assistant_context.key }}"{% if assistant_project %} data-project-id="{{ assistant_project.id }}" data-project-name="{{ assistant_project.name }}"{% endif %}>
+  <section class="platform-assistant-panel" id="platform-assistant-panel" data-assistant-panel role="dialog" aria-modal="false" aria-labelledby="platform-assistant-title" hidden>
+    <header class="platform-assistant-header">
+      <img src="{{ url_for('static', filename='img/assistant/robot_assistente.png') }}" alt="" width="36" height="36">
+      <h2 id="platform-assistant-title">Assistente Análysis</h2>
+      <button class="platform-assistant-close" type="button" data-assistant-close aria-label="Fechar Assistente Análysis" title="Fechar">×</button>
+    </header>
+    <div class="platform-assistant-body" data-assistant-body>
+      <p class="platform-assistant-message is-assistant">{{ assistant_context.intro }}</p>
+      <div class="platform-assistant-suggestions" aria-label="Perguntas sugeridas">
+        {% for suggestion in assistant_context.suggestions %}<button type="button" data-assistant-question="{{ loop.index0 }}">{{ suggestion.question }}</button>{% endfor %}
+      </div>
+      <div class="platform-assistant-messages" data-assistant-messages role="log" aria-live="polite" aria-relevant="additions"></div>
+    </div>
+  </section>
+  <button class="platform-assistant-avatar" type="button" data-assistant-toggle aria-label="Abrir Assistente Análysis" aria-controls="platform-assistant-panel" aria-expanded="false" title="Assistente Análysis">
+    <img src="{{ url_for('static', filename='img/assistant/robot_assistente.png') }}" alt="" width="64" height="64">
+  </button>
+  <script type="application/json" data-assistant-payload>{{ assistant_context | tojson }}</script>
+</div>
