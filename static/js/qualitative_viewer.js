@@ -498,6 +498,7 @@ if (root) {
         name.className = 'platform-qualitative-coding-name';
         name.dataset.codeId = code.id;
         name.textContent = code.name;
+        name.setAttribute('aria-label', `Ir ao trecho do código ${code.name}`);
         tag.title = ({ manual: 'Manual', assisted: 'Assistida', automatic_literal: 'Automática · Literal',
           automatic_regex: 'Automática · Regex', automatic_lexical: 'Automática · Lexical',
           automatic_semantic: 'Automática · Semântica' })[code.origin] || 'Manual';
@@ -561,8 +562,6 @@ if (root) {
       finally { removingCodings.delete(identifier); remove.disabled = false; }
       return;
     }
-    if (root.dataset.canAnnotate === '1'
-        && event.target.closest('.platform-qualitative-coding-tag[data-code-id]')) return;
     if (card) activateExcerpt(Number(card.dataset.pageNumber), card.dataset.excerptId, true);
   });
   if (codeMenu && marginTrack) {
@@ -590,17 +589,6 @@ if (root) {
       if (!label || event.target.closest('[data-remove-coding]') || root.dataset.canAnnotate !== '1') return;
       event.preventDefault();
       openCodeMenu(label.dataset.codeId, { x: event.clientX, y: event.clientY });
-    });
-    marginTrack.addEventListener('click', (event) => {
-      if (event.target.closest('[data-remove-coding]') || root.dataset.canAnnotate !== '1') return;
-      const label = event.target.closest('.platform-qualitative-coding-tag[data-code-id]');
-      if (!label) return;
-      // O clique que abre o menu não pode alcançar o handler global de click-outside.
-      event.stopPropagation();
-      const rect = label.getBoundingClientRect();
-      openCodeMenu(label.dataset.codeId, {
-        x: event.clientX || rect.left, y: event.clientY || rect.bottom,
-      });
     });
     marginTrack.addEventListener('keydown', (event) => {
       if (event.key !== 'ContextMenu' && !(event.key === 'F10' && event.shiftKey)) return;

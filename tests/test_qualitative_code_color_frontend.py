@@ -34,7 +34,7 @@ class QualitativeCodeColorFrontendTests(unittest.TestCase):
         self.assertIn(".platform-qualitative-context-menu button:hover", css)
         self.assertIn(".platform-qualitative-context-menu button:focus-visible", css)
 
-    def test_tag_click_does_not_also_navigate_excerpt_but_read_only_card_still_does(self):
+    def test_tag_click_navigates_excerpt_for_editor_and_read_only_viewer(self):
         source = VIEWER_SOURCE[VIEWER_SOURCE.index("  marginTrack?.addEventListener('click'"):
                                VIEWER_SOURCE.index("  if (codeMenu && marginTrack) {")]
         self.run_node(r"""
@@ -47,8 +47,8 @@ const event={target:{closest(selector){return selector==='[data-excerpt-id]'?car
   selector==='.platform-qualitative-coding-tag[data-code-id]'?tag:null;}}};
 const activateExcerpt=()=>activated++;
 """ + source + r"""
-handler(event);assert.equal(activated,0);
-root.dataset.canAnnotate='0';handler(event);assert.equal(activated,1);
+handler(event);assert.equal(activated,1);
+root.dataset.canAnnotate='0';handler(event);assert.equal(activated,2);
 """)
 
     def test_color_patch_updates_explorer_repeatedly_and_error_never_changes_local_color(self):
@@ -195,9 +195,8 @@ for(const area of ['text','left-padding','right-padding','empty-area']){
   const target=label('A');target.area=area;
   const event=new Event('click');Object.defineProperty(event,'target',{value:target});
   event.clientX=20;event.clientY=60;marginTrack.dispatchEvent(event);
-  assert.equal(codeMenu.hidden,false);assert.equal(codeMenu.style.left,'20px');
-  assert.equal(event.cancelBubble,true);
-  codeMenu.hidden=true;
+  assert.equal(codeMenu.hidden,true);
+  assert.equal(event.cancelBubble,false);
 }
 const remove={closest(selector){return selector==='[data-remove-coding]'?this:label('A');}};
 const event=new Event('click');Object.defineProperty(event,'target',{value:remove});

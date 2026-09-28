@@ -188,6 +188,23 @@ def free_project(project_id: UUID):
     return redirect(url_for("inicio", project_id=project.id))
 
 
+@projects_bp.post("/projetos/<uuid:project_id>/renomear")
+@login_required
+def rename_project(project_id: UUID):
+    project = get_project_for_user(str(project_id), current_user, include_inactive=True)
+    _require_tool(project.scrape_type)
+    if (project.owner_user_id != current_user.id or project.deleted_at is not None
+            or project.status not in ("active", "blocked", "archived")):
+        abort(404)
+    name = request.form.get("name", "").strip()
+    if not name or len(name) > 200:
+        abort(400)
+    project.name = name
+    db.session.commit()
+    flash("Projeto renomeado.", "success")
+    return redirect(url_for(_project_list_endpoint(project.scrape_type, archived=project.status == "archived")))
+
+
 @projects_bp.post("/projetos/<uuid:project_id>/arquivar")
 @login_required
 def archive_project(project_id: UUID):

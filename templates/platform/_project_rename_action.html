@@ -1,0 +1,9 @@
+{% from 'platform/_icons.html' import icon %}
+<details class="platform-base-action-details">
+  <summary class="btn btn-outline-primary btn-sm platform-action-button" title="Renomear projeto" aria-label="Renomear projeto">{{ icon('editar') }}</summary>
+  <form method="post" action="{{ url_for('projects.rename_project', project_id=project.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input class="form-control form-control-sm" name="name" value="{{ project.name }}" aria-label="Nome do projeto" maxlength="200" required>
+    <button class="btn btn-primary btn-sm" type="submit">Salvar</button>
+  </form>
+</details>

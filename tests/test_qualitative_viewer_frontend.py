@@ -112,6 +112,59 @@ const renderExcerptOverlay = () => {}, renderSearchOverlays = () => {}, schedule
         for rule in ("display: inline-flex", "align-items: center", "justify-content: center"):
             self.assertIn(rule, actions)
 
+    def test_left_click_on_code_tag_selects_excerpt_without_opening_code_actions(self):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("Node não disponível")
+        activation = SOURCE[SOURCE.index("  const activateExcerpt ="):
+                            SOURCE.index("  const renderMargin =")]
+        click_handler = SOURCE[SOURCE.index("  marginTrack?.addEventListener('click', async (event) => {"):
+                               SOURCE.index("  if (codeMenu && marginTrack) {")]
+        menu_handler = SOURCE[SOURCE.index("  if (codeMenu && marginTrack) {"):
+                              SOURCE.index("  const refreshPageExcerpts =")]
+        self.assertIn("box.classList.toggle('is-active', excerpt.id === activeExcerptId)", SOURCE)
+        self.assertIn("card.classList.toggle('is-active', excerpt.id === activeExcerptId)", SOURCE)
+        self.assertIn("name.setAttribute('aria-label', `Ir ao trecho do código ${code.name}`)", SOURCE)
+        script = r"""
+const assert=require('node:assert/strict');
+const marginTrack=new EventTarget(),document=new EventTarget();
+const root={dataset:{canAnnotate:'1'}};
+const excerpt={id:'trecho-1'},page={excerpts:[excerpt],rendered:1};
+const nodes=new Map([[49,page]]),generation=1;
+let activeExcerptId=null;
+const rendered=[],scrolled=[];let marginUpdates=0;
+const renderExcerptOverlay=node=>rendered.push(node);
+const scheduleMargin=()=>marginUpdates++;
+const requestAnimationFrame=callback=>callback();
+const scrollToExcerpt=(number,id)=>scrolled.push([number,id]);
+const removingCodings=new Set(),automaticBusy=false;
+const codeMenu=new EventTarget();codeMenu.hidden=true;codeMenu.style={};
+codeMenu.querySelectorAll=()=>[];
+const closeContextMenu=()=>{},innerWidth=900,innerHeight=700;
+const records={codes:[]},noticeContext=()=>{};
+__ACTIVATION__
+__CLICK__
+__MENU__
+const card={dataset:{pageNumber:'49',excerptId:'trecho-1'}};
+const tag={dataset:{codeId:'codigo-1'},closest(selector){
+  if(selector==='[data-excerpt-id]')return card;
+  if(selector==='.platform-qualitative-coding-tag[data-code-id]')return this;
+  return null;
+}};
+const click=new Event('click');Object.defineProperty(click,'target',{value:tag});
+marginTrack.dispatchEvent(click);
+assert.equal(activeExcerptId,'trecho-1');
+assert.deepEqual(rendered,[page]);
+assert.equal(marginUpdates,1);
+assert.deepEqual(scrolled,[[49,'trecho-1']]);
+assert.equal(codeMenu.hidden,true);
+assert.equal(click.cancelBubble,false);
+"""
+        script = script.replace("__ACTIVATION__", activation).replace("__CLICK__", click_handler).replace("__MENU__", menu_handler)
+        result = subprocess.run([node, "-e", script], cwd=ROOT, capture_output=True,
+                                text=True, encoding="utf-8")
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_code_tag_contextmenu_dispatches_correct_ids_repeatedly_without_pdf_interception(self):
         node = shutil.which("node")
         if not node:
