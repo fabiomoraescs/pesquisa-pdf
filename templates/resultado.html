@@ -19,7 +19,7 @@
         <p class="text-secondary mb-0">Os gráficos têm controles interativos e o ícone de câmera na barra do Plotly baixa o gráfico como PNG.</p>
       </div>
       <div class="app-actions">
-        <a href="{{ url_for('inicio', project_id=analysis.project_id) if analysis is defined and analysis.project_id else url_for('projects.list_free_projects') }}" class="btn btn-outline-primary">Nova raspagem</a>
+        <a href="{{ url_for('inicio', project_id=analysis.project_id) if analysis is defined and analysis.project_id else url_for('projects.list_free_projects') }}" class="btn btn-outline-primary">Adicionar base</a>
       </div>
     </div>
 
@@ -54,7 +54,7 @@
     </section>
 
     <section class="row g-4 mb-4 dashboard-grid" aria-label="Gráficos do método Híbrido">
-      <div class="col-12 col-lg-6"><div class="chart-card"><div class="chart-header"><h2>Ocorrências lexicais por consulta</h2><span class="chart-subtitle">Inclui variações morfológicas</span></div><div id="grafico-v3-lexical" class="chart"></div></div></div>
+      <div class="col-12 col-lg-6"><div class="chart-card"><div class="chart-header"><h2>Ocorrências lexicais por consulta</h2><span class="chart-subtitle">Inclui flexões e família derivacional</span></div><div id="grafico-v3-lexical" class="chart"></div></div></div>
       <div class="col-12 col-lg-6"><div class="chart-card"><div class="chart-header"><h2>Correspondências semânticas por consulta</h2><span class="chart-subtitle">Trechos sem termo literal</span></div><div id="grafico-v3-semantico" class="chart"></div></div></div>
       <div class="col-12 col-lg-6"><div class="chart-card"><div class="chart-header"><h2>Similaridade semântica média por consulta</h2><span class="chart-subtitle">De 0 a 1</span></div><div id="grafico-v3-media" class="chart"></div></div></div>
       <div class="col-12 col-lg-6"><div class="chart-card"><div class="chart-header"><h2>Resultados recuperados por livro</h2><span class="chart-subtitle">Lexicais e semânticos</span></div><div id="grafico-v3-livros" class="chart"></div></div></div>

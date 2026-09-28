@@ -192,6 +192,39 @@ class PersistentAnalysisTests(unittest.TestCase):
         self._name_base(identifier)
         self.assertEqual(self.client.get(f"/analises/{identifier}").status_code, 200)
 
+    def test_free_upload_uses_current_project_and_rejects_cross_project_requests(self):
+        owner = create_user()
+        other = create_user("Outro proprietário", "outro-upload@example.org")
+        project = Project(owner_user_id=owner.id, name="Upload no projeto atual", scrape_type="free")
+        foreign = Project(owner_user_id=other.id, name="Projeto alheio", scrape_type="free")
+        db.session.add_all([project, foreign]); db.session.commit()
+        login(self.client)
+        url = f"/raspagem-livre?project_id={project.id}"
+        page = self.client.get(url)
+        token = csrf_from(page)
+        intro, container = page.text.split('<section class="hero-card">', 1)
+        self.assertIn(f'<p class="h5 mb-0">{project.name}</p>', intro)
+        self.assertIn('aria-label="Como funciona a busca"', intro)
+        self.assertIn(f'name="project_id" value="{project.id}"', container)
+        self.assertNotIn('id="free-project-id"', page.text)
+        self.assertIn('>Processar</button>', page.text)
+
+        def upload(destination, selected):
+            return self.client.post(destination, data={
+                "csrf_token": token, "project_id": selected, "versao": "v1", "termos": "Du Bois",
+                "pdfs": (io.BytesIO(small_pdf()), "projeto.pdf"),
+            }, content_type="multipart/form-data", headers={"X-Requested-With": "XMLHttpRequest"})
+
+        self.assertEqual(upload(url, foreign.id).status_code, 400)
+        self.assertEqual(upload(f"/raspagem-livre?project_id={foreign.id}", foreign.id).status_code, 404)
+        with patch.object(legacy, "executar_analises", side_effect=fake_standard), patch.object(legacy, "criar_dashboard", return_value={}):
+            response = upload(url, project.id)
+            self.assertEqual(response.status_code, 202, response.text)
+            legacy.EXECUTOR_ANALISES.submit(lambda: None).result(timeout=30)
+        record = db.session.get(Analysis, response.json["job_id"])
+        self.assertEqual((record.project_id, record.user_id), (project.id, owner.id))
+        self.assertEqual(record.status, "concluida")
+
     def test_duplicate_v3_shows_original_threshold_in_slider_and_label(self):
         user = create_user()
         login(self.client)

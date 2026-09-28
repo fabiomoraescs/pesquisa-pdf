@@ -13,9 +13,10 @@ from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from .extensions import db
+from .library_access import library_editor, library_url, private_library_flow, user_libraries_bp
 from .models import (
     AccessGrant, Analysis, AuditLog, PasswordRecoveryToken, Plan, PlanTool, Project, ProjectLibrary, ProjectVocabularyVersion,
-    QualitativeCode, QualitativeCoding, QualitativeExcerpt, QualitativeMemo, Tool, User,
+    QualitativeCode, QualitativeCoding, QualitativeExcerpt, QualitativeMemo, QualitativeRejection, Tool, User,
     UserProfile, UserToolOverride, VocabularyLibrary, utcnow,
 )
 from .password_policy import TEMPORARY_PASSWORD
@@ -24,7 +25,7 @@ from .profile import remove_profile_photo
 from .scraping_types import LABEL_BY_TOOL
 from .official_libraries import LibraryError, add_entity, add_group, add_variant, change_publication, create_draft, create_imported_draft, set_item_active
 from .library_spreadsheets import MAX_XLSX_BYTES, SpreadsheetImportError, parse_library_xlsx, previews
-from .services import ACCOUNT_LIFECYCLE_LOCK, access_is_active, current_grant, record_audit, replace_grant
+from .services import ACCOUNT_LIFECYCLE_LOCK, access_is_active, current_grant, record_audit, replace_grant, tool_catalog
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
 
@@ -270,7 +271,7 @@ def _permanent_deletion_block(user: User) -> str | None:
     if db.session.scalar(select(Analysis.id).where(Analysis.user_id == user.id).limit(1)):
         return "Este usuário possui análises vinculadas. Exclua as análises antes de remover a conta."
     if any(db.session.scalar(select(model.id).where(model.created_by_user_id == user.id).limit(1))
-           for model in (QualitativeCode, QualitativeExcerpt, QualitativeCoding, QualitativeMemo)):
+           for model in (QualitativeCode, QualitativeExcerpt, QualitativeCoding, QualitativeMemo, QualitativeRejection)):
         return "Este usuário possui registros de codificação qualitativa vinculados e não pode ser excluído permanentemente."
     from app import PROGRESSOS, PROGRESSOS_LOCK
     from historico_racial.routes import JOBS_LOCK, PROGRESSOS_HR
@@ -325,6 +326,7 @@ def permanently_delete_user(user_id: UUID):
             db.session.execute(delete(AccessGrant).where(AccessGrant.user_id == user.id))
             db.session.execute(delete(PasswordRecoveryToken).where(PasswordRecoveryToken.user_id == user.id))
             db.session.execute(delete(UserProfile).where(UserProfile.user_id == user.id))
+            db.session.execute(delete(VocabularyLibrary).where(VocabularyLibrary.owner_user_id == user.id))
             record_audit(current_user, "user_permanently_deleted", "user", user.id,
                          {"name": user.name, "role": user.role}, {"removed": True})
             db.session.execute(delete(User).where(User.id == user.id))
@@ -344,7 +346,7 @@ def permanently_delete_user(user_id: UUID):
 @admin_bp.get("/ferramentas")
 @admin_only
 def tools():
-    return render_template("platform/admin.html", section="tools", tools=db.session.scalars(select(Tool)).all())
+    return render_template("platform/admin.html", section="tools", tools=tool_catalog())
 
 
 @admin_bp.post("/ferramentas/<tool_id>/estado")
@@ -370,8 +372,8 @@ def plans():
 @admin_only
 def define_access():
     plans = db.session.scalars(select(Plan).order_by(Plan.name)).all()
-    tools = db.session.scalars(select(Tool).order_by(Tool.name)).all()
-    valid = {(plan.id, tool.id) for plan in plans for tool in tools}
+    tools = tool_catalog()
+    valid = {(plan.id, tool["id"]) for plan in plans for tool in tools if tool["implemented"]}
     if request.method == "POST":
         submitted = set()
         for value in request.form.getlist("access"):
@@ -498,11 +500,13 @@ def libraries():
 
 
 @admin_bp.route("/bibliotecas/nova", methods=["GET", "POST"])
-@admin_only
+@user_libraries_bp.route("/nova", methods=["GET", "POST"])
+@library_editor
 def new_library():
     if request.method == "POST":
         try:
-            library = create_draft(request.form.get("name", ""), request.form.get("description", ""))
+            library = create_draft(request.form.get("name", ""), request.form.get("description", ""),
+                                   owner_user_id=current_user.id if private_library_flow() else None)
             db.session.flush()
             record_audit(current_user, "library_created", "library", library.id, {},
                          {"status": "draft", "name": library.name})
@@ -511,12 +515,13 @@ def new_library():
             db.session.rollback()
             flash(str(error), "danger")
         else:
-            return redirect(url_for("admin.library_detail", library_id=library.id))
+            return redirect(library_url("library_detail", library_id=library.id))
     return render_template("platform/library_new.html")
 
 
 @admin_bp.get("/bibliotecas/modelo")
-@admin_only
+@user_libraries_bp.get("/modelo")
+@library_editor
 def library_template():
     path = Path(__file__).resolve().parent.parent / "resources" / "modelo_biblioteca.xlsx"
     if not path.is_file():
@@ -526,7 +531,8 @@ def library_template():
 
 
 @admin_bp.route("/bibliotecas/importar", methods=["GET", "POST"])
-@admin_only
+@user_libraries_bp.route("/importar", methods=["GET", "POST"])
+@library_editor
 def library_import():
     if request.method == "GET":
         return render_template("platform/library_import.html")
@@ -540,20 +546,22 @@ def library_import():
     except SpreadsheetImportError as error:
         flash(str(error), "danger")
         return render_template("platform/library_import.html"), 400
-    token = previews.put(current_user.id, imported)
+    token = previews.put(current_user.id, imported, request.blueprint)
     return render_template("platform/library_import.html", preview=imported, preview_token=token)
 
 
 @admin_bp.post("/bibliotecas/importar/confirmar")
-@admin_only
+@user_libraries_bp.post("/importar/confirmar")
+@library_editor
 def library_import_confirm():
     token = request.form.get("preview_token", "")
-    imported = previews.get(token, current_user.id)
+    imported = previews.get(token, current_user.id, request.blueprint)
     if imported is None:
         flash("A pré-visualização expirou. Envie a planilha novamente.", "danger")
-        return redirect(url_for("admin.library_import"))
+        return redirect(library_url("library_import"))
     try:
-        library = create_imported_draft(imported.name, imported.description, imported.snapshot)
+        library = create_imported_draft(imported.name, imported.description, imported.snapshot,
+                                        owner_user_id=current_user.id if private_library_flow() else None)
         db.session.flush()
         record_audit(current_user, "library_imported", "library", library.id, {},
                      {"status": "draft", "hash": library.content_hash, "counts": library.counts_json})
@@ -564,11 +572,12 @@ def library_import_confirm():
         return render_template("platform/library_import.html", preview=imported, preview_token=token), 400
     previews.discard(token)
     flash("Biblioteca importada como rascunho. Revise antes de publicar.", "success")
-    return redirect(url_for("admin.library_detail", library_id=library.id))
+    return redirect(library_url("library_detail", library_id=library.id))
 
 
 @admin_bp.get("/bibliotecas/<library_id>")
-@admin_only
+@user_libraries_bp.get("/<library_id>")
+@library_editor
 def library_detail(library_id: str):
     library = db.session.get(VocabularyLibrary, library_id)
     if library is None:
@@ -588,10 +597,10 @@ def delete_library(library_id: str):
     linked = db.session.scalar(select(func.count()).select_from(ProjectLibrary).where(ProjectLibrary.library_id == library.id))
     if library.id == "relacoes_raciais":
         flash("A biblioteca padrão do sistema não pode ser excluída.", "danger")
-        return redirect(url_for("admin.library_detail", library_id=library.id))
+        return redirect(library_url("library_detail", library_id=library.id))
     if linked:
         flash("Esta biblioteca não pode ser excluída porque está vinculada a um ou mais projetos.", "danger")
-        return redirect(url_for("admin.library_detail", library_id=library.id))
+        return redirect(library_url("library_detail", library_id=library.id))
     if request.method == "POST":
         if request.form.get("confirmation", "").strip() != library.name or request.form.get("base_hash") != library.content_hash:
             flash("Confirmação inválida. Digite o nome exato da biblioteca.", "danger")
@@ -604,7 +613,7 @@ def delete_library(library_id: str):
         except IntegrityError:
             db.session.rollback()
             flash("Esta biblioteca não pode ser excluída porque está vinculada a um ou mais projetos.", "danger")
-            return redirect(url_for("admin.library_detail", library_id=library.id))
+            return redirect(library_url("library_detail", library_id=library.id))
         flash("Biblioteca excluída.", "success")
         return redirect(url_for("admin.libraries"))
     return render_template("platform/library_delete.html", library=library)
@@ -623,11 +632,12 @@ def _edit_library(library_id: str, action: str, edit) -> object:
     except LibraryError as error:
         db.session.rollback()
         flash(str(error), "danger")
-    return redirect(url_for("admin.library_detail", library_id=library_id))
+    return redirect(library_url("library_detail", library_id=library_id))
 
 
 @admin_bp.post("/bibliotecas/<library_id>/grupos")
-@admin_only
+@user_libraries_bp.post("/<library_id>/grupos")
+@library_editor
 def library_add_group(library_id: str):
     return _edit_library(library_id, "group_added", lambda library: add_group(
         library, request.form.get("base_hash", ""), request.form.get("name", ""),
@@ -636,7 +646,8 @@ def library_add_group(library_id: str):
 
 
 @admin_bp.post("/bibliotecas/<library_id>/entidades")
-@admin_only
+@user_libraries_bp.post("/<library_id>/entidades")
+@library_editor
 def library_add_entity(library_id: str):
     return _edit_library(library_id, "entity_added", lambda library: add_entity(
         library, request.form.get("base_hash", ""), request.form.get("canonical", ""),
@@ -647,7 +658,8 @@ def library_add_entity(library_id: str):
 
 
 @admin_bp.post("/bibliotecas/<library_id>/variantes")
-@admin_only
+@user_libraries_bp.post("/<library_id>/variantes")
+@library_editor
 def library_add_variant(library_id: str):
     return _edit_library(library_id, "variant_added", lambda library: add_variant(
         library, request.form.get("base_hash", ""), request.form.get("entity_key", ""),
@@ -656,7 +668,8 @@ def library_add_variant(library_id: str):
 
 
 @admin_bp.post("/bibliotecas/<library_id>/itens/estado")
-@admin_only
+@user_libraries_bp.post("/<library_id>/itens/estado")
+@library_editor
 def library_item_state(library_id: str):
     return _edit_library(library_id, "item_state_changed", lambda library: set_item_active(
         library, request.form.get("base_hash", ""), request.form.get("kind", ""),
@@ -666,7 +679,8 @@ def library_item_state(library_id: str):
 
 
 @admin_bp.post("/bibliotecas/<library_id>/publicar")
-@admin_only
+@user_libraries_bp.post("/<library_id>/publicar")
+@library_editor
 def publish_library(library_id: str):
     library = db.session.get(VocabularyLibrary, library_id)
     if library is None:
@@ -681,7 +695,9 @@ def publish_library(library_id: str):
         record_audit(current_user, "library_published", "library", library.id,
                      {"status": "draft"}, {"status": "published", "hash": library.content_hash})
         db.session.commit()
-    return redirect(url_for("admin.library_detail", library_id=library.id))
+        if private_library_flow():
+            return redirect(url_for("projects.new_project", library_id=library.id))
+    return redirect(library_url("library_detail", library_id=library.id))
 
 
 @admin_bp.post("/bibliotecas/<library_id>/estado")

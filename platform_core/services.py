@@ -27,7 +27,26 @@ FERRAMENTAS = (
     ("document_analysis", "Busca estruturada", "/analise-documental"),
     ("qualitative_analysis", "Análise quali-dados", "/analise-qualitativa"),
 )
+# Somente apresentação: não semear Tool/PlanTool nem conceder acesso funcional.
+UNAVAILABLE_TOOLS = (
+    {"id": "quantitative_analysis", "name": "Análise quantitativa", "icon": "quantitativa"},
+    {"id": "chatdoc", "name": "ChatDoc", "icon": "chatdoc"},
+)
 ACCOUNT_LIFECYCLE_LOCK = RLock()
+
+
+def tool_catalog() -> list[dict]:
+    """Catálogo administrativo completo, sem omitir ferramentas inativas/sem uso."""
+    unavailable_ids = {tool["id"] for tool in UNAVAILABLE_TOOLS}
+    labels = {code: name for code, name, _ in FERRAMENTAS}
+    order = {code: index for index, (code, _, _) in enumerate(FERRAMENTAS)}
+    persisted = db.session.scalars(select(Tool)).all()
+    catalog = [{"id": tool.id, "name": labels.get(tool.id, tool.name),
+                "active": tool.active, "implemented": True, "icon": None}
+               for tool in persisted if tool.id not in unavailable_ids]
+    catalog.sort(key=lambda tool: (order.get(tool["id"], len(order)), tool["name"]))
+    catalog.extend({**tool, "active": False, "implemented": False} for tool in UNAVAILABLE_TOOLS)
+    return catalog
 
 
 def account_accepts_new_work(user_id: str) -> bool:

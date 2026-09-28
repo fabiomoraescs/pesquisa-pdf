@@ -111,3 +111,55 @@ const renderExcerptOverlay = () => {}, renderSearchOverlays = () => {}, schedule
         actions = css.split(".platform-qualitative-record-new {", 1)[1].split("}", 1)[0]
         for rule in ("display: inline-flex", "align-items: center", "justify-content: center"):
             self.assertIn(rule, actions)
+
+    def test_code_tag_contextmenu_dispatches_correct_ids_repeatedly_without_pdf_interception(self):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("Node não disponível")
+        self.assertIn("tag.dataset.codeId = code.id", SOURCE)
+        self.assertIn("name.dataset.codeId = code.id", SOURCE)
+        template = (ROOT / "templates/platform/qualitative_reader.html").read_text(encoding="utf-8")
+        self.assertIn("data-code-menu", template)
+        self.assertIn("data-code-rename>Renomear código", template)
+        code = SOURCE[SOURCE.index("  if (codeMenu && marginTrack) {"):
+                      SOURCE.index("  const refreshPageExcerpts =")]
+        checks = r"""
+const assert=require('node:assert/strict');
+const marginTrack=new EventTarget(),document=new EventTarget();
+const root={dataset:{canAnnotate:'1'}};
+const menuButton={focused:false,focus(){this.focused=true;},closest(selector){
+  return selector==='[data-code-rename]'?this:null;}};
+const codeMenu=new EventTarget();codeMenu.hidden=true;codeMenu.style={};
+const actions={hidden:false},palette={hidden:true};
+codeMenu.offsetWidth=150;codeMenu.offsetHeight=44;
+codeMenu.querySelector=selector=>selector==='[data-code-rename]'?menuButton:
+  selector==='[data-code-menu-actions]'?actions:selector==='[data-code-palette]'?palette:null;
+codeMenu.querySelectorAll=()=>[];
+const innerWidth=390,innerHeight=700;
+let closed=0;const closeContextMenu=()=>closed++;
+__CODE__
+const requested=[];document.addEventListener('qualitative:rename-code-requested',event=>requested.push(event.detail.codeId));
+const opened=[];document.addEventListener('platform:popover-open',event=>opened.push(event.detail.panel));
+const label=id=>({dataset:{codeId:id},closest(selector){
+  return selector==='.platform-qualitative-coding-tag[data-code-id]'?this:null;},
+  getBoundingClientRect(){return {left:350,bottom:680};}});
+const fire=(target,id)=>{const event=new Event('contextmenu',{cancelable:true});
+  Object.defineProperty(event,'target',{value:target});event.clientX=380;event.clientY=690;
+  marginTrack.dispatchEvent(event);return event;};
+const ordinary={closest:()=>null};assert.equal(fire(ordinary).defaultPrevented,false);
+for(const id of ['A','B','C']){
+  const event=fire(label(id));assert.equal(event.defaultPrevented,true);
+  assert.equal(codeMenu.hidden,false);assert.equal(menuButton.focused,true);
+  assert.equal(parseInt(codeMenu.style.left,10)<=232,true);
+  const click=new Event('click');Object.defineProperty(click,'target',{value:menuButton});
+  codeMenu.dispatchEvent(click);assert.equal(codeMenu.hidden,true);
+}
+assert.deepEqual(requested,['A','B','C']);assert.equal(opened.length,3);
+assert.equal(closed,3);
+const keyboard=new Event('keydown',{cancelable:true});Object.defineProperty(keyboard,'target',{value:label('D')});
+keyboard.key='F10';keyboard.shiftKey=true;marginTrack.dispatchEvent(keyboard);
+assert.equal(keyboard.defaultPrevented,true);assert.equal(codeMenu.hidden,false);
+"""
+        result = subprocess.run([node, "-e", checks.replace("__CODE__", code)], cwd=ROOT,
+                                capture_output=True, text=True, encoding="utf-8")
+        self.assertEqual(result.returncode, 0, result.stderr)

@@ -48,7 +48,7 @@ class QualitativeRecordTests(unittest.TestCase):
         project, analysis = self.workspace()
         page = self.client.get(f"/analise-qualitativa/projetos/{project.id}", follow_redirects=True)
         html = page.get_data(as_text=True)
-        self.assertIn("Você ainda não tem arquivos adicionados", html)
+        self.assertIn("Você ainda não tem documentos adicionados", html)
         self.assertIn("Adicione para começar a análise quali-dados.", html)
         self.assertNotIn("Códigos (0)", html)
         self.assertNotIn("Memos (0)", html)
@@ -64,15 +64,17 @@ class QualitativeRecordTests(unittest.TestCase):
         self.assertEqual(code.name, "Raça")
         self.assertEqual(created.json["codes"][0]["id"], code.id)
         self.assertEqual(self.api("POST", url, {"name": "raça"}).status_code, 409)
-        second = self.api("POST", url, {"name": "Outro tema"})
+        # O formulário manual mantém a compactação histórica dos espaços.
+        second = self.api("POST", url, {"name": "  Outro   tema  "})
         self.assertEqual(second.status_code, 201)
         self.assertEqual(len(second.json["codes"]), 2)
+        self.assertIn("Outro tema", [item["name"] for item in second.json["codes"]])
         # Ocultar os controles sem documentos não apaga registros já persistidos.
         self.assertNotIn("data-qualitative-records", self.client.get(f"/analise-qualitativa/bases/{analysis.id}")
                          .get_data(as_text=True))
         item_url = f"{url}/{code.id}"
         self.assertEqual(self.api("PATCH", item_url, {"name": "outro TEMA"}).status_code, 409)
-        edited = self.api("PATCH", item_url, {"name": "Classificação racial", "description": "Revisado"})
+        edited = self.api("PATCH", item_url, {"name": "Classificação   racial", "description": "Revisado"})
         self.assertEqual(edited.status_code, 200)
         self.assertEqual(next(item for item in edited.json["codes"] if item["name"] == "Classificação racial")["id"], code.id)
         self.assertEqual(db.session.get(QualitativeCode, code.id).description, "Revisado")

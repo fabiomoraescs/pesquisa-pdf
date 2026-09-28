@@ -22,7 +22,7 @@
       <h1 id="titulo-historico-racial">Resultados da análise documental</h1>
       <p>Projeto: <strong>{{ project.name }}</strong> · Bibliotecas: {{ resultado.library_names | join(', ') }}</p>
       <p>Método: <strong>{{ 'Híbrido' if resultado.metodo_analise == 'hibrido' else 'Lexical' }}</strong>{% if resultado.limiar_semantico is not none %} · Limiar semântico: {{ resultado.limiar_semantico }}{% endif %}</p>
-      <a class="btn btn-outline-primary mb-4" href="{{ url_for('historico_racial.inicio_projeto', project_id=project.id) }}">Nova raspagem</a>
+      <a class="btn btn-outline-primary mb-4" href="{{ url_for('historico_racial.inicio_projeto', project_id=project.id) }}">Adicionar base</a>
       <a class="btn btn-primary mb-4" href="{{ url_for('historico_racial.baixar_resultado', project_id=project.id, job_id=request.view_args.job_id) }}">Baixar planilha XLSX</a>
 
       {% if resultado.vocabulario_version %}

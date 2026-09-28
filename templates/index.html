@@ -12,12 +12,15 @@
 <body class="platform-page platform-legacy-page">
   {% include 'platform/_header.html' %}
   <main class="platform-main platform-main-legacy">
-    <section class="hero-card">
-      <div class="hero-actions" aria-label="Controles da aplicação">
+    <div class="app-content-container platform-toolbar mb-4" data-base-intro>
+      {% if selected_project or legacy_project %}<p class="h5 mb-0">{{ (selected_project or legacy_project).name }}</p>{% endif %}
+      <div aria-label="Controles da aplicação">
         <button class="btn btn-outline-primary info-icon-button" type="button" data-bs-toggle="modal" data-bs-target="#modal-como-funciona" aria-label="Como funciona a busca" title="Como funciona a busca">
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 10v6M12 7h.01"></path></svg>
         </button>
       </div>
+    </div>
+    <section class="hero-card">
       <h1 class="visually-hidden">Busca por termos</h1>
 
       {% with mensagens = get_flashed_messages(with_categories=true) %}
@@ -30,7 +33,7 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         {% if duplicate %}<input type="hidden" name="duplicate_id" value="{{ duplicate.id }}"><p class="alert alert-info">Nova execução baseada em {{ duplicate.display_name }}. Os PDFs preservados serão reutilizados se você não selecionar outros.{% if duplicate.tool_version == 'v2' %} A Base anterior usou um método legado; a nova execução inicia em Lexical.{% endif %}</p>{% endif %}
         {% if legacy_project %}<p class="form-text">Esta base anterior continua vinculada ao projeto {{ legacy_project.name }}.</p>{% else %}
-        <div class="mb-4"><label class="form-label" for="free-project-id">Projeto de Busca por termos</label><select class="form-select" id="free-project-id" name="project_id" required><option value="">Selecione um projeto</option>{% for project in free_projects|default([]) %}<option value="{{ project.id }}" {% if project.id == selected_project_id %}selected{% endif %}>{{ project.name }}</option>{% endfor %}</select><div class="form-text">Cada raspagem cria uma nova Base de análise neste projeto. <a href="{{ url_for('projects.new_free_project') }}">Novo projeto</a></div></div>{% endif %}
+        {% if selected_project %}<input type="hidden" name="project_id" value="{{ selected_project.id }}">{% else %}<p class="form-text"><a href="{{ url_for('projects.list_free_projects') }}">Abra um projeto para adicionar uma base.</a></p>{% endif %}{% endif %}
         <div class="mb-4">
           <label for="pdfs" class="form-label file-upload-label">Arquivos PDF</label>
           <input class="form-control file-upload-input" id="pdfs" name="pdfs" type="file" accept="application/pdf,.pdf" multiple {% if not duplicate %}required{% endif %}>
@@ -81,7 +84,7 @@
         </section>
 
         <div class="d-flex align-items-center gap-3 flex-wrap">
-          <button class="btn btn-primary" type="submit" id="botao-analisar">Analisar</button>
+          <button class="btn btn-primary" type="submit" id="botao-analisar">Processar</button>
           <span class="text-secondary" id="status-envio" aria-live="polite"></span>
         </div>
       </form>
@@ -107,6 +110,8 @@
     </div>
   </div>
   {% include 'platform/_progress_overlay.html' %}
+  <script src="{{ url_for('static', filename='js/processing_progress.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/term_input.js') }}"></script>
   <script>
     (() => {
       const formulario = document.getElementById('form-analise');
@@ -199,16 +204,10 @@
         if (percentualDisponivel) {
           const valor = Math.round(percentual);
           tituloProcessamento.textContent = `Processando os arquivos — ${valor}%`;
-          progressoProcessamento.classList.remove('is-indeterminate');
-          progressoProcessamento.setAttribute('aria-valuenow', String(valor));
-          progressoProcessamento.setAttribute('aria-valuetext', `Progresso: ${valor}%`);
-          barraProgresso.style.width = `${valor}%`;
+          window.ProcessingProgress.updateBar(progressoProcessamento, barraProgresso, valor);
         } else {
           tituloProcessamento.textContent = progresso.preparandoModelo ? 'Preparando modelo semântico…' : 'Processando os arquivos...';
-          progressoProcessamento.classList.add('is-indeterminate');
-          progressoProcessamento.removeAttribute('aria-valuenow');
-          progressoProcessamento.setAttribute('aria-valuetext', 'Progresso ainda não disponível');
-          barraProgresso.style.width = '';
+          window.ProcessingProgress.updateBar(progressoProcessamento, barraProgresso, null);
         }
 
         const etaDisponivel = typeof progresso.etaSegundos === 'number'
@@ -248,14 +247,8 @@
       }
 
       function validarSeparadorDosTermos() {
-        const possuiSeparadorInvalido = /[,.]/.test(campoTermos.value) && !(formulario.querySelector('[name="duplicate_id"]') && campoTermos.value === {{ duplicate_terms|default('')|tojson }});
-        if (possuiSeparadorInvalido) {
-          campoTermos.setAttribute('aria-invalid', 'true');
-        } else {
-          campoTermos.removeAttribute('aria-invalid');
-        }
-        erroSeparadorTermos.hidden = !possuiSeparadorInvalido;
-        return !possuiSeparadorInvalido;
+        const reutilizaTermos = formulario.querySelector('[name="duplicate_id"]') && campoTermos.value === {{ duplicate_terms|default('')|tojson }};
+        return window.TermInput.validate(campoTermos, erroSeparadorTermos, !reutilizaTermos);
       }
 
       function restaurarFormulario() {

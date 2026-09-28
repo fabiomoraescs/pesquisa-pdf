@@ -11,13 +11,17 @@ const assert = require('node:assert/strict');
 class Element {
   constructor(tag, id, parent=null) {
     this.tagName=tag; this.id=id; this.parent=parent; this.listeners={}; this.attrs={};
-    this.hidden=true; this._open=false; this.native=false; this.files=[];
+    this.hidden=true; this._open=false; this.native=false; this.files=[]; this.style={};
+    this.offsetWidth=260; this.offsetHeight=100;
+    this.rect={left:350,right:375,top:780,bottom:804};
   }
   addEventListener(name, fn) { (this.listeners[name] ||= []).push(fn); }
   emit(name, fields={}) { for (const fn of this.listeners[name] || []) fn({target:this, ...fields}); }
   contains(target) { return target === this || Boolean(target?.parent && this.contains(target.parent)); }
   setAttribute(key, value) { this.attrs[key]=value; }
-  hasAttribute(key) { return key === 'popover' && this.native; }
+  hasAttribute(key) { return (key === 'popover' && this.native) || key in this.attrs; }
+  getClientRects() { return [this.rect]; }
+  getBoundingClientRect() { return this.rect; }
   querySelector(selector) { return selector === 'summary' ? this.trigger : null; }
   querySelectorAll(selector) { return selector === 'input[type="file"]' ? this.files : []; }
   matches() { return this._open; }
@@ -43,7 +47,13 @@ const docLink = new Element('A','document-link',docs);
 const contextAction = new Element('BUTTON','context-action',context);
 const outside = new Element('BUTTON','outside');
 const dialog = new Element('DIALOG','editor'); dialog.hidden=false;
-const panels=[upload,docs,codes,context], triggers=[docsTrigger,codesTrigger];
+const helpRegex=new Element('DIV','help-regex'), helpLexical=new Element('DIV','help-lexical');
+const helpRegexTrigger=new Element('BUTTON','help-regex-trigger'), helpLexicalTrigger=new Element('BUTTON','help-lexical-trigger');
+for (const [panel,trigger] of [[helpRegex,helpRegexTrigger],[helpLexical,helpLexicalTrigger]]) {
+  panel.native=true; panel.attrs['data-popover-anchor']=''; trigger.attrs['aria-controls']=panel.id;
+}
+const window=new Element('WINDOW','window'); window.innerWidth=390; window.innerHeight=844;
+const panels=[upload,docs,codes,context,helpRegex,helpLexical], triggers=[docsTrigger,codesTrigger,helpRegexTrigger,helpLexicalTrigger];
 document.querySelectorAll = selector => selector === '[data-temporary-popover]' ? panels :
   triggers.filter(t => `[aria-controls="${t.attrs['aria-controls']}"]` === selector);
 """
@@ -57,6 +67,25 @@ class TemporaryPopoverTests(unittest.TestCase):
         result = subprocess.run([node, "-e", DOM + SOURCE + checks], cwd=ROOT,
                                 capture_output=True, text=True, encoding="utf-8")
         self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_help_popovers_share_dismissal_and_stay_inside_viewport_when_anchor_moves(self):
+        self.run_js(r"""
+helpRegexTrigger.focus(); helpRegex.showPopover();
+assert.equal(helpRegexTrigger.attrs['aria-expanded'],'true');
+assert.equal(helpRegex.style.left,'122px'); assert.equal(helpRegex.style.top,'676px');
+document.documentElement={clientWidth:375,clientHeight:844}; window.emit('resize');
+assert.equal(helpRegex.style.left,'107px'); assert.equal(helpRegex.style.maxWidth,'359px');
+helpRegex.focus(); document.emit('click',{target:helpRegex}); assert.equal(helpRegex.matches(),true);
+helpLexicalTrigger.focus(); helpLexical.showPopover();
+assert.equal(helpRegex.matches(),false); assert.equal(helpLexical.matches(),true);
+helpLexicalTrigger.rect={left:10,right:30,top:10,bottom:34};
+document.emit('pointermove',{buttons:1});
+assert.equal(helpLexical.style.left,'10px'); assert.equal(helpLexical.style.top,'38px');
+document.emit('keydown',{key:'Escape'}); assert.equal(helpLexical.matches(),false);
+assert.equal(document.activeElement,helpLexicalTrigger);
+helpRegex.showPopover(); document.emit('click',{target:outside}); assert.equal(helpRegex.matches(),false);
+helpRegex.showPopover(); docs.showPopover(); assert.equal(helpRegex.matches(),false);
+""")
 
     def test_internal_interaction_and_trigger_keep_open_but_outside_click_closes(self):
         self.run_js(r"""
@@ -144,7 +173,7 @@ for (const end of ['change','cancel']) {
                 if "data-temporary-popover" in dict(attrs):
                     self.registered.append((tag, dict(attrs)))
 
-        for template, count in (("_qualitative_page_intro.html", 1), ("qualitative_reader.html", 2),
+        for template, count in (("_qualitative_page_intro.html", 1), ("qualitative_reader.html", 3),
                                 ("_qualitative_records.html", 2), ("_header.html", 0),
                                 ("_analysis_actions.html", 0)):
             tags = Tags()

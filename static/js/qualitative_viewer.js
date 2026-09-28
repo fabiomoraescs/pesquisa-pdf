@@ -1,5 +1,6 @@
 /* PDF.js 5.4.624 servido localmente. Apenas páginas próximas são renderizadas. */
 import * as pdfjsLib from '../vendor/pdfjs/build/pdf.min.mjs';
+import {startSemanticProgress} from './qualitative_semantic_progress.js';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('../vendor/pdfjs/build/pdf.worker.min.mjs', import.meta.url).href;
 
@@ -10,11 +11,24 @@ if (root) {
   const pageOutput = root.querySelector('[data-current-page]');
   const zoom = root.querySelector('[data-zoom]');
   const searchForm = root.querySelector('[data-search-form]');
+  const automaticToggle = searchForm.querySelector('[data-automatic-toggle]');
+  const automaticOptions = searchForm.querySelector('[data-automatic-options]');
+  const automaticSettings = searchForm.querySelector('[data-automatic-settings]');
+  const searchControlRow = searchForm.querySelector('.platform-qualitative-search-control-row');
+  const automaticModes = searchForm.querySelector('.platform-qualitative-automatic-modes');
+  const automaticScope = searchForm.querySelector('.platform-qualitative-automatic-scope');
+  const contextualRejection = searchForm.querySelector('[data-contextual-rejection]');
+  const multipleTerms = searchForm.querySelector('[data-multiple-terms]');
+  const multipleControl = multipleTerms?.closest('.platform-qualitative-search-control');
+  const searchInput = searchForm.querySelector('[name="q"]');
+  const separatorError = searchForm.querySelector('[data-separator-error]');
+  const searchSubmit = searchForm.querySelector('[type="submit"]');
   const searchMessage = root.querySelector('[data-search-message]');
   const resultCount = root.querySelector('[data-result-count]');
   const resultSnippet = root.querySelector('[data-result-snippet]');
   const contextNotice = root.querySelector('[data-context-notice]');
   const contextMenu = root.querySelector('[data-context-menu]');
+  const codeMenu = root.querySelector('[data-code-menu]');
   const contextDialog = root.querySelector('[data-context-dialog]');
   const recordsRoot = root.querySelector('[data-qualitative-records]');
   const margin = root.querySelector('.platform-qualitative-margin');
@@ -22,6 +36,8 @@ if (root) {
   const marginTrack = root.querySelector('[data-margin-track]');
   const prev = root.querySelector('[data-result-prev]');
   const next = root.querySelector('[data-result-next]');
+  const searchResults = root.querySelector('.platform-qualitative-search-results');
+  const focusNavigation = root.querySelector('[data-focus-navigation]');
   const focusPanel = root.querySelector('[data-focus-panel]');
   const focusToggle = root.querySelector('[data-focus-toggle]');
   const focusLabel = root.querySelector('[data-focus-label]');
@@ -48,6 +64,10 @@ if (root) {
   let contextSnapshot;
   let contextAction;
   let contextRequest = 0;
+  let automaticSnapshot;
+  let automaticBusy = false;
+  let searchRequest = 0;
+  const removingCodings = new Set();
   let selectedCodeIds = new Set();
   let activeExcerptId = root.dataset.targetExcerptId || null;
   let excerptDrag;
@@ -60,6 +80,39 @@ if (root) {
       if (node.rendered !== generation) continue;
       refreshPageExcerpts(number);
     }
+  });
+  document.addEventListener('qualitative:code-renamed', (event) => {
+    const { codeId, name } = event.detail;
+    for (const node of nodes.values()) {
+      let changed = false;
+      for (const excerpt of node.excerpts || []) {
+        for (const code of excerpt.codes || []) {
+          if (code.id !== codeId) continue;
+          code.name = name;
+          changed = true;
+        }
+      }
+      if (changed && node.rendered === generation) renderExcerptOverlay(node);
+    }
+    scheduleMargin();
+  });
+  document.addEventListener('qualitative:code-colored', (event) => {
+    const { codeId, color, color_hex: hex, color_text: text } = event.detail;
+    for (const node of nodes.values()) {
+      let changed = false;
+      for (const excerpt of node.excerpts || []) {
+        for (const code of excerpt.codes || []) {
+          if (code.id !== codeId) continue;
+          Object.assign(code, { color, color_hex: hex, color_text: text });
+          changed = true;
+        }
+      }
+      if (changed && node.rendered === generation) renderExcerptOverlay(node);
+    }
+    scheduleMargin();
+  });
+  document.addEventListener('qualitative:rename-code-error', (event) => {
+    noticeContext(event.detail.message);
   });
 
   const pageUrl = (template, number) => template.replace('/paginas/0/', `/paginas/${number}/`);
@@ -333,13 +386,26 @@ if (root) {
     const overlay = document.createElement('div');
     overlay.className = 'platform-qualitative-excerpt-overlay';
     for (const excerpt of node.excerpts) {
+      if (!excerpt.codes.length && !excerpt.memo_count) continue;
       if (excerpt.page_hash !== node.layout.page_text_hash) continue;
       const spans = exactItems(node.layout, excerpt.start, excerpt.end);
       for (const item of mergeGeometry(spans)) {
-        const box = placeBox(item, node.layout, 'platform-qualitative-excerpt-box');
-        box.dataset.excerptId = excerpt.id;
-        box.classList.toggle('is-active', excerpt.id === activeExcerptId);
-        overlay.append(box);
+        const layers = excerpt.codes.length ? excerpt.codes : [null];
+        layers.forEach((code, index) => {
+          const box = placeBox(item, node.layout, 'platform-qualitative-excerpt-box');
+          box.dataset.excerptId = excerpt.id;
+          box.classList.toggle('is-active', excerpt.id === activeExcerptId);
+          box.classList.toggle('is-memo-only', !code);
+          if (code) {
+            box.dataset.codeId = code.id;
+            box.style.setProperty('--qualitative-code-color', code.color_hex || '#93C5FD');
+            if (layers.length > 1) {
+              box.style.clipPath = `inset(${index * 100 / layers.length}% 0 ${
+                (layers.length - index - 1) * 100 / layers.length}% 0)`;
+            }
+          }
+          overlay.append(box);
+        });
       }
       if (excerpt.id === activeExcerptId && root.dataset.canAnnotate === '1'
           && spans.length && node.layout.items.every((item) => item.end - item.start === 1)) {
@@ -414,20 +480,45 @@ if (root) {
     marginTrack.replaceChildren();
     let bottom = 0;
     for (const { number, excerpt, y } of entries) {
-      const card = document.createElement('button');
-      card.type = 'button';
+      const card = document.createElement('div');
+      card.setAttribute('role', 'group');
       card.className = 'platform-qualitative-margin-card';
       card.classList.toggle('is-active', excerpt.id === activeExcerptId);
       card.dataset.excerptId = excerpt.id;
       card.dataset.pageNumber = String(number);
       card.setAttribute('aria-label', `Ir ao trecho da página ${number}: ${excerpt.codes.map((c) => c.name).join(', ') || 'Memo'}`);
       for (const code of excerpt.codes) {
-        const name = document.createElement('span');
+        const tag = document.createElement('span');
+        tag.className = 'platform-qualitative-coding-tag';
+        tag.dataset.codeId = code.id;
+        tag.style.setProperty('--qualitative-code-color', code.color_hex || '#93C5FD');
+        tag.style.setProperty('--qualitative-code-text', code.color_text || '#000000');
+        const name = document.createElement('button');
+        name.type = 'button';
+        name.className = 'platform-qualitative-coding-name';
+        name.dataset.codeId = code.id;
         name.textContent = code.name;
-        card.append(name);
+        tag.title = ({ manual: 'Manual', assisted: 'Assistida', automatic_literal: 'Automática · Literal',
+          automatic_regex: 'Automática · Regex', automatic_lexical: 'Automática · Lexical',
+          automatic_semantic: 'Automática · Semântica' })[code.origin] || 'Manual';
+        tag.append(name);
+        if (root.dataset.canAnnotate === '1' && code.coding_id) {
+          const remove = document.createElement('button');
+          remove.type = 'button';
+          remove.className = 'platform-qualitative-coding-remove';
+          remove.dataset.removeCoding = code.coding_id;
+          remove.disabled = removingCodings.has(code.coding_id);
+          remove.textContent = '×';
+          remove.title = `Remover codificação ${code.name}`;
+          remove.setAttribute('aria-label', remove.title);
+          tag.append(remove);
+        }
+        card.append(tag);
       }
       if (excerpt.memo_count) {
-        const memos = document.createElement('small');
+        const memos = document.createElement('button');
+        memos.type = 'button';
+        memos.className = 'platform-qualitative-coding-name';
         memos.textContent = `${excerpt.memo_count} ${excerpt.memo_count === 1 ? 'memo' : 'memos'}`;
         card.append(memos);
       }
@@ -442,10 +533,121 @@ if (root) {
     }
     syncMarginScroll();
   };
-  marginTrack?.addEventListener('click', (event) => {
+  marginTrack?.addEventListener('click', async (event) => {
     const card = event.target.closest('[data-excerpt-id]');
+    const remove = event.target.closest('[data-remove-coding]');
+    if (remove) {
+      const identifier = remove.dataset.removeCoding;
+      if (removingCodings.has(identifier) || automaticBusy) return;
+      event.stopPropagation();
+      removingCodings.add(identifier);
+      remove.disabled = true;
+      try {
+        const url = root.dataset.deleteCodingUrlTemplate.replace('00000000-0000-0000-0000-000000000000', identifier);
+        const response = await fetch(url, { method: 'DELETE', credentials: 'same-origin',
+          headers: { 'X-CSRFToken': root.querySelector('[data-context-csrf]').value, Accept: 'application/json' } });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || 'Não foi possível remover esta codificação.');
+        const node = nodes.get(payload.page_number);
+        if (node) {
+          node.excerpts = payload.page.excerpts;
+          if (!node.excerpts.some(item => item.id === activeExcerptId)) activeExcerptId = null;
+          if (node.rendered === generation) renderExcerptOverlay(node);
+        }
+        scheduleMargin();
+        document.dispatchEvent(new CustomEvent('qualitative:records-updated', { detail: payload.records }));
+        noticeContext('Codificação removida. Os demais códigos e memos foram preservados.');
+      } catch (error) { noticeContext(error.message); }
+      finally { removingCodings.delete(identifier); remove.disabled = false; }
+      return;
+    }
+    if (root.dataset.canAnnotate === '1'
+        && event.target.closest('.platform-qualitative-coding-tag[data-code-id]')) return;
     if (card) activateExcerpt(Number(card.dataset.pageNumber), card.dataset.excerptId, true);
   });
+  if (codeMenu && marginTrack) {
+    let codeToRename = null;
+    let colorPending = false;
+    const swatches = [...codeMenu.querySelectorAll('[data-code-color]')];
+    const setColorBusy = (busy) => {
+      colorPending = busy;
+      swatches.forEach((swatch) => { swatch.disabled = busy; });
+    };
+    const openCodeMenu = (identifier, point) => {
+      if (colorPending) return;
+      codeToRename = identifier;
+      closeContextMenu();
+      codeMenu.querySelector('[data-code-menu-actions]').hidden = false;
+      codeMenu.querySelector('[data-code-palette]').hidden = true;
+      codeMenu.hidden = false;
+      document.dispatchEvent(new CustomEvent('platform:popover-open', { detail: { panel: codeMenu } }));
+      codeMenu.style.left = `${Math.max(8, Math.min(point.x, innerWidth - codeMenu.offsetWidth - 8))}px`;
+      codeMenu.style.top = `${Math.max(8, Math.min(point.y, innerHeight - codeMenu.offsetHeight - 8))}px`;
+      codeMenu.querySelector('[data-code-rename]').focus();
+    };
+    marginTrack.addEventListener('contextmenu', (event) => {
+      const label = event.target.closest('.platform-qualitative-coding-tag[data-code-id]');
+      if (!label || event.target.closest('[data-remove-coding]') || root.dataset.canAnnotate !== '1') return;
+      event.preventDefault();
+      openCodeMenu(label.dataset.codeId, { x: event.clientX, y: event.clientY });
+    });
+    marginTrack.addEventListener('click', (event) => {
+      if (event.target.closest('[data-remove-coding]') || root.dataset.canAnnotate !== '1') return;
+      const label = event.target.closest('.platform-qualitative-coding-tag[data-code-id]');
+      if (!label) return;
+      // O clique que abre o menu não pode alcançar o handler global de click-outside.
+      event.stopPropagation();
+      const rect = label.getBoundingClientRect();
+      openCodeMenu(label.dataset.codeId, {
+        x: event.clientX || rect.left, y: event.clientY || rect.bottom,
+      });
+    });
+    marginTrack.addEventListener('keydown', (event) => {
+      if (event.key !== 'ContextMenu' && !(event.key === 'F10' && event.shiftKey)) return;
+      const label = event.target.closest('.platform-qualitative-coding-tag[data-code-id]');
+      if (!label || event.target.closest('[data-remove-coding]') || root.dataset.canAnnotate !== '1') return;
+      event.preventDefault();
+      const rect = label.getBoundingClientRect();
+      openCodeMenu(label.dataset.codeId, { x: rect.left, y: rect.bottom });
+    });
+    codeMenu.addEventListener('click', (event) => {
+      if (!codeToRename || colorPending) return;
+      if (event.target.closest('[data-code-color-open]')) {
+        const current = records.codes.find((code) => code.id === codeToRename)?.color || 'blue';
+        swatches.forEach((swatch) => swatch.setAttribute('aria-checked', String(swatch.dataset.codeColor === current)));
+        codeMenu.querySelector('[data-code-menu-actions]').hidden = true;
+        codeMenu.querySelector('[data-code-palette]').hidden = false;
+        codeMenu.style.left = `${Math.max(8, Math.min(parseFloat(codeMenu.style.left) || 8,
+          innerWidth - codeMenu.offsetWidth - 8))}px`;
+        codeMenu.style.top = `${Math.max(8, Math.min(parseFloat(codeMenu.style.top) || 8,
+          innerHeight - codeMenu.offsetHeight - 8))}px`;
+        swatches.find((swatch) => swatch.dataset.codeColor === current)?.focus();
+        return;
+      }
+      const swatch = event.target.closest('[data-code-color]');
+      if (swatch) {
+        setColorBusy(true);
+        document.dispatchEvent(new CustomEvent('qualitative:color-code-requested',
+          { detail: { codeId: codeToRename, color: swatch.dataset.codeColor } }));
+        return;
+      }
+      if (!event.target.closest('[data-code-rename]')) return;
+      const identifier = codeToRename;
+      codeToRename = null;
+      codeMenu.hidden = true;
+      document.dispatchEvent(new CustomEvent('qualitative:rename-code-requested',
+        { detail: { codeId: identifier } }));
+    });
+    document.addEventListener('qualitative:code-colored', () => {
+      setColorBusy(false);
+      codeToRename = null;
+      codeMenu.hidden = true;
+    });
+    document.addEventListener('qualitative:color-code-error', (event) => {
+      setColorBusy(false);
+      noticeContext(event.detail.message);
+    });
+  }
   const refreshPageExcerpts = async (number) => {
     const node = nodes.get(number);
     if (!node || node.rendered !== generation) return;
@@ -670,9 +872,43 @@ if (root) {
   };
   prev.addEventListener('click', () => showResult(resultIndex - 1));
   next.addEventListener('click', () => showResult(resultIndex + 1));
+  const regexInput = searchForm.querySelector('[name="grep"]');
+  const selectedAutomaticMode = () => searchForm.querySelector('[name="automatic_mode"]:checked')?.value || 'literal';
+  const validateAutomaticTerms = () => window.TermInput.validate(searchInput, separatorError,
+    Boolean(automaticToggle?.checked && multipleTerms?.checked && !regexInput.checked));
+  const syncRegexMode = () => {
+    const unavailable = Boolean(automaticToggle?.checked && selectedAutomaticMode() !== 'literal');
+    if (unavailable) regexInput.checked = false;
+    regexInput.disabled = unavailable;
+    validateAutomaticTerms();
+  };
+  searchForm.addEventListener('input', validateAutomaticTerms);
+  searchForm.querySelectorAll('[name="automatic_mode"]').forEach((mode) => mode.addEventListener('change', syncRegexMode));
+  automaticToggle?.addEventListener('change', () => {
+    automaticOptions.hidden = !automaticToggle.checked;
+    automaticSettings.hidden = !automaticToggle.checked;
+    automaticOptions.disabled = !automaticToggle.checked;
+    contextualRejection.disabled = !automaticToggle.checked;
+    multipleTerms.disabled = !automaticToggle.checked;
+    if (!automaticToggle.checked) contextualRejection.checked = multipleTerms.checked = false;
+    automaticToggle.setAttribute('aria-expanded', String(automaticToggle.checked));
+    syncRegexMode();
+  });
   searchForm.addEventListener('submit', async (event) => {
     event.preventDefault();
+    if (automaticBusy || searchSubmit.disabled) return;
+    if (!validateAutomaticTerms()) { searchInput.focus(); return; }
     const form = new FormData(searchForm);
+    if (automaticToggle?.checked) {
+      searchRequest += 1; // uma resposta de busca normal anterior não sobrescreve a operação
+      automaticSnapshot = { q: form.get('q'), grep: form.has('grep'), case_sensitive: form.has('case'),
+        mode: selectedAutomaticMode(), scope: form.get('automatic_scope') || 'document',
+        contextual_rejection_enabled: contextualRejection.checked, multiple_terms: multipleTerms.checked };
+      await sendAutomatic();
+      return;
+    }
+    const requestId = ++searchRequest;
+    searchSubmit.disabled = true;
     const params = new URLSearchParams({ q: form.get('q'), grep: form.has('grep') ? '1' : '0',
       case: form.has('case') ? '1' : '0' });
     results = [];
@@ -685,13 +921,14 @@ if (root) {
     try {
       const response = await fetch(`${root.dataset.searchUrl}?${params}`, { credentials: 'same-origin' });
       const payload = await response.json();
+      if (requestId !== searchRequest) return;
       if (!response.ok) throw new Error(payload.error || 'Não foi possível concluir a busca.');
       results = payload.results;
       prev.disabled = next.disabled = results.length === 0;
-      searchNotice(payload.truncated ? 'Limite de 200 resultados; refine a busca.'
-        : results.length ? '' : 'Nenhuma correspondência neste documento.');
+      searchNotice(results.length ? '' : 'Nenhuma correspondência neste documento.');
       if (results.length) showResult(0);
-    } catch (error) { searchNotice(error.message); }
+    } catch (error) { if (requestId === searchRequest) searchNotice(error.message); }
+    finally { searchSubmit.disabled = false; }
   });
 
   const selectionBoundary = (container, offset, isEnd) => {
@@ -742,8 +979,8 @@ if (root) {
   const renderCodeChoices = () => {
     const list = contextDialog.querySelector('[data-context-code-list]');
     const query = contextFilter.value.trim().toLocaleLowerCase();
-    const node = nodes.get(contextSnapshot.page_number);
-    const existing = node.excerpts.find((item) => item.start === contextSnapshot.start
+    const node = nodes.get(contextSnapshot?.page_number);
+    const existing = node?.excerpts.find((item) => item.start === contextSnapshot.start
       && item.end === contextSnapshot.end && item.page_hash === contextSnapshot.page_hash);
     list.replaceChildren();
     for (const code of records.codes) {
@@ -752,6 +989,7 @@ if (root) {
       label.title = code.name;
       const input = document.createElement('input');
       input.type = 'checkbox';
+      input.name = 'context_code';
       input.value = code.id;
       input.checked = selectedCodeIds.has(code.id);
       if (existing?.code_ids.includes(code.id)) {
@@ -783,8 +1021,8 @@ if (root) {
     contextDialog.querySelector('[data-context-title]').textContent = {
       apply_codes: 'Aplicar código', create_memo: 'Criar memo',
     }[action];
-    contextDialog.querySelector('[data-context-quote]').textContent =
-      `Trecho: “${contextSnapshot.selected_text.slice(0, 240)}${contextSnapshot.selected_text.length > 240 ? '…' : ''}”`;
+    contextDialog.querySelector('[data-context-quote]').textContent = `Trecho: “${contextSnapshot.selected_text.slice(0, 240)}${contextSnapshot.selected_text.length > 240 ? '…' : ''}”`;
+    contextDialog.querySelector('[data-context-save]').textContent = 'Salvar';
     contextDialog.querySelector('[data-context-codes]').hidden = action !== 'apply_codes';
     contextDialog.querySelector('[data-context-memo-field]').hidden = action !== 'create_memo';
     memoText.required = action === 'create_memo';
@@ -828,6 +1066,39 @@ if (root) {
     noticeContext('Trecho salvo no projeto.');
     window.getSelection()?.removeAllRanges();
     return payload;
+  };
+  const sendAutomatic = async () => {
+    if (automaticBusy) throw new Error('Aguarde a codificação em andamento.');
+    automaticBusy = true;
+    searchSubmit.disabled = true;
+    searchNotice('Buscando e codificando…');
+    const progress = automaticSnapshot.mode === 'semantic' ? startSemanticProgress(root) : null;
+    let succeeded = false;
+    try {
+      const response = await fetch(root.dataset.automaticUrl, { method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': root.querySelector('[data-context-csrf]').value,
+          Accept: 'application/json' }, body: JSON.stringify({ ...automaticSnapshot,
+            ...(progress ? { progress_id: progress.id } : {}) }) });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || 'Não foi possível concluir a codificação. Nenhuma alteração foi confirmada.');
+      // Navegação continua restrita ao PDF aberto; os demais documentos recebem os mesmos registros persistentes.
+      results = payload.search.results.filter(item => item.document_id === root.dataset.documentId);
+      resultIndex = -1;
+      resultCount.textContent = '0 de 0';
+      resultSnippet.textContent = '';
+      prev.disabled = next.disabled = !results.length;
+      for (const node of nodes.values()) node.surface.querySelector('.platform-qualitative-search-overlay')?.remove();
+      if (results.length) showResult(0);
+      document.dispatchEvent(new CustomEvent('qualitative:records-updated', { detail: payload.records }));
+      if (!results.length) searchNotice('');
+      succeeded = true;
+      return payload;
+    } catch (error) { searchNotice(error.message); }
+    finally {
+      if (progress) await progress.stop(succeeded);
+      automaticBusy = false;
+      searchSubmit.disabled = false;
+    }
   };
   if (contextMenu && contextDialog) {
     const openContextAt = async (anchor, point) => {
@@ -915,7 +1186,7 @@ if (root) {
       } finally { createInline.disabled = false; }
     });
     contextDialog.querySelector('[data-context-code-list]').addEventListener('change', (event) => {
-      if (event.target.type !== 'checkbox') return;
+      if (!['checkbox', 'radio'].includes(event.target.type)) return;
       if (event.target.checked) selectedCodeIds.add(event.target.value);
       else selectedCodeIds.delete(event.target.value);
     });
@@ -994,6 +1265,26 @@ if (root) {
     }
   };
   focusPanelToggle.addEventListener('click', () => updateFocusPanel(!focusPanel.classList.contains('is-minimized')));
+  const arrangeResultNavigation = (focused) => {
+    // Reutiliza botões e contador com estado/listeners intactos, inclusive recolhido.
+    if (focused) focusNavigation.append(prev, resultCount, next);
+    else {
+      for (const control of [prev, resultCount, next]) searchResults.insertBefore(control, searchMessage);
+    }
+  };
+  const arrangeAutomaticControls = (focused) => {
+    if (!automaticSettings) return;
+    // Move os mesmos inputs: preserva valores/listeners e a ordem de Tab de cada layout.
+    if (focused) {
+      automaticModes.append(multipleControl);
+      automaticOptions.insertBefore(automaticSettings, automaticScope);
+      automaticSettings.append(automaticScope);
+    } else {
+      automaticSettings.insertBefore(multipleControl, automaticSettings.firstElementChild);
+      automaticOptions.append(automaticScope);
+      searchControlRow.append(automaticSettings);
+    }
+  };
   focusToggle.addEventListener('click', () => {
     closeExplorerPopovers();
     closeContextMenu();
@@ -1001,6 +1292,8 @@ if (root) {
     const oldWidth = scroll.clientWidth;
     const focused = !focusActive();
     document.body.classList.toggle('platform-qualitative-focus', focused);
+    arrangeResultNavigation(focused);
+    arrangeAutomaticControls(focused);
     document.body.classList.remove('platform-menu-open');
     focusToggle.setAttribute('aria-pressed', String(focused));
     const action = focused ? 'Sair do modo foco' : 'Modo foco';

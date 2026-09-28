@@ -41,19 +41,23 @@ def _padrao_variante(variante: str) -> re.Pattern[str]:
 
 
 class BuscadorLexical:
-    """Compila padrões por job; flexões automáticas são opt-in para novos jobs."""
+    """Compila variantes por job; expansão lexical é opt-in para novos jobs."""
 
-    def __init__(self, entidades: tuple[Entidade, ...], *, incluir_morfologia: bool = False):
+    def __init__(self, entidades: tuple[Entidade, ...], *, incluir_morfologia: bool = False,
+                 incluir_familia_lexical: bool = False):
         # Reutiliza as mesmas flexões simples da Análise por termos. O padrão
         # histórico, baseado somente nas variantes explícitas, não muda.
-        if incluir_morfologia:
+        if incluir_morfologia or incluir_familia_lexical:
             from analyzer.v1 import gerar_variacoes_termo
+        self._lexical_variants: list[tuple[Entidade, str]] = []
 
         self._padroes: list[tuple[Entidade, tuple[str, ...], re.Pattern[str]]] = []
         for entidade in entidades:
             variantes_por_forma: dict[str, list[str]] = {}
             for variante in entidade.variantes:
-                formas = (gerar_variacoes_termo(variante) if incluir_morfologia
+                if incluir_familia_lexical:
+                    self._lexical_variants.append((entidade, variante))
+                formas = (gerar_variacoes_termo(variante) if incluir_morfologia or incluir_familia_lexical
                           else {normalizar_com_mapa(variante.strip())[0]})
                 for forma in sorted(formas):
                     variantes_por_forma.setdefault(forma, []).append(variante)
@@ -80,6 +84,14 @@ class BuscadorLexical:
                         entidade.id_entidade, entidade, variante, original, inicio, fim
                     )
                 )
+        if self._lexical_variants:
+            from analyzer.lexical_family import find_lexical_spans
+            for entidade, variante in self._lexical_variants:
+                for inicio, fim, _ in find_lexical_spans(texto, variante):
+                    candidatos_por_entidade.setdefault(entidade.id_entidade, []).append(
+                        Correspondencia(entidade.id_entidade, entidade, variante,
+                                        texto[inicio:fim], inicio, fim)
+                    )
         resultados: list[Correspondencia] = []
         for candidatos in candidatos_por_entidade.values():
             usados: list[tuple[int, int]] = []

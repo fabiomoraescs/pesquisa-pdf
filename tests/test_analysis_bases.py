@@ -94,7 +94,18 @@ class AnalysisBaseTests(unittest.TestCase):
         self.assertEqual(urlparse(free.headers["Location"]).path, "/raspagem-livre")
         free_tool = self.client.get(free.headers["Location"])
         self.assertEqual(free_tool.status_code, 200)
-        self.assertIn(f'<option value="{free_id}" selected>', free_tool.get_data(as_text=True))
+        self.assertIn(f'<input type="hidden" name="project_id" value="{free_id}">', free_tool.get_data(as_text=True))
+        self.assertIn('<p class="h5 mb-0">Livre direto</p>', free_tool.get_data(as_text=True))
+        intro, content = free_tool.text.split('<section class="hero-card">', 1)
+        self.assertIn('class="app-content-container platform-toolbar mb-4" data-base-intro', intro)
+        self.assertIn('Livre direto</p>', intro)
+        self.assertIn('data-bs-target="#modal-como-funciona"', intro)
+        self.assertNotIn('data-bs-target="#modal-como-funciona"', content)
+        self.assertNotIn('Livre direto</p>', content)
+        for control in ('id="pdfs"', 'id="termos"', 'name="versao"', 'name="project_id"'):
+            self.assertIn(control, content)
+        self.assertNotIn('id="free-project-id"', free_tool.get_data(as_text=True))
+        self.assertIn('>Processar</button>', free_tool.get_data(as_text=True))
 
         systematic_token = csrf_from(self.client.get("/projetos/novo"))
         systematic = self.client.post("/projetos/novo", data={
@@ -108,6 +119,10 @@ class AnalysisBaseTests(unittest.TestCase):
         systematic_tool = self.client.get(systematic.headers["Location"])
         self.assertEqual(systematic_tool.status_code, 200)
         self.assertIn("Método de raspagem", systematic_tool.get_data(as_text=True))
+        self.assertIn('<p class="h5 mb-4">Sistemático direto</p>', systematic_tool.text)
+        self.assertIn('>Processar</button>', systematic_tool.text)
+        self.assertNotIn('>Meus projetos</a>', systematic_tool.text)
+        self.assertNotIn('>Bases de análise</a>', systematic_tool.text)
 
     def test_project_actions_replace_ficha_and_old_url_redirects(self):
         free_id = self.free_project()
@@ -126,7 +141,7 @@ class AnalysisBaseTests(unittest.TestCase):
             self.assertIn(f'class="btn btn-outline-primary btn-sm" href="{archive_url}">Projetos arquivados</a>', toolbar)
             self.assertNotIn("+ Novo projeto", toolbar)
             self.assertNotIn("Abrir ficha", html)
-            self.assertIn(f'href="{scraper_url}" title="Nova raspagem em {project_name}"', html)
+            self.assertIn(f'href="{scraper_url}" title="Adicionar base em {project_name}"', html)
             self.assertIn(f'href="/analises/projeto/{project_id}" title="Bases de análise de {project_name}"', html)
             self.assertEqual(self.client.get(scraper_url).status_code, 200)
             self.assertEqual(self.client.get(f"/analises/projeto/{project_id}").status_code, 200)

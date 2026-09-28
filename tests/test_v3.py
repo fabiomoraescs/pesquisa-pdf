@@ -725,7 +725,7 @@ class TesteV3(unittest.TestCase):
                     self.assertNotIn('name="incluir_lexical"', html_inicio)
                     self.assertNotIn('name="incluir_semantica"', html_inicio)
                     self.assertNotIn("Lexical e morfológico", html_inicio)
-                    self.assertIn("variações morfológicas simples", html_inicio)
+                    self.assertIn("derivações da mesma família lexical", html_inicio)
                     self.assertIn("Combina essa busca lexical e morfológica", html_inicio)
                     self.assertNotIn("V1: Busca lexical", html_inicio)
                     self.assertNotIn("V2: Busca lexical", html_inicio)

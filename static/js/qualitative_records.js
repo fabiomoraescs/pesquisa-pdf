@@ -27,6 +27,10 @@ if (recordsRoot) {
       const label = row.querySelector('[data-record-label], .platform-qualitative-record-label');
       label.textContent = kind === 'code' ? `${name} (${item.excerpt_count ?? 0})` : name;
       label.title = name;
+      if (kind === 'code') {
+        label.classList.add('has-code-color');
+        label.style.setProperty('--qualitative-code-color', item.color_hex || '#93C5FD');
+      }
       const context = row.querySelector('[data-record-context]');
       if (kind === 'memo' && item.context && item.context !== 'geral') {
         context.textContent = `Vinculado a ${item.context}`;
@@ -56,13 +60,17 @@ if (recordsRoot) {
     const response = await fetch(url, { method, credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf, Accept: 'application/json' },
       body: body ? JSON.stringify(body) : undefined });
-    const payload = await response.json();
+    const payload = await response.json().catch(() => ({
+      error: response.status === 404 ? 'Este registro não está mais disponível.'
+        : 'Não foi possível salvar a alteração.'
+    }));
     if (!response.ok) throw new Error(payload.error || 'Não foi possível salvar a alteração.');
     return payload;
   };
   const editError = recordsRoot.querySelector('[data-record-error]');
   const deleteError = recordsRoot.querySelector('[data-record-confirm-error]');
   const codeFields = recordsRoot.querySelector('[data-code-fields]');
+  const codeDescriptionField = recordsRoot.querySelector('[data-code-description-field]');
   const memoFields = recordsRoot.querySelector('[data-memo-fields]');
   const codeName = recordsRoot.querySelector('[name="name"]');
   const codeDescription = recordsRoot.querySelector('[name="description"]');
@@ -70,33 +78,85 @@ if (recordsRoot) {
   const form = recordsRoot.querySelector('[data-record-form]');
 
   if (dialog && confirmDialog && rowTemplate && csrf) {
-    const openEditor = (kind, item = null) => {
-      editing = { kind, id: item?.id };
+    const deleteButton = recordsRoot.querySelector('[data-record-confirm-delete]');
+    const cancelDelete = recordsRoot.querySelector('[data-record-confirm-cancel]');
+    let deleting = false;
+    const resetRemoval = () => {
+      removing = null;
+      recordsRoot.querySelector('[data-record-confirm-title]').textContent = '';
+      recordsRoot.querySelector('[data-record-confirm-message]').textContent = '';
+      deleteError.hidden = true;
+      deleteError.textContent = '';
+    };
+    confirmDialog.addEventListener('close', () => {
+      if (!confirmDialog.open) resetRemoval();
+    });
+    confirmDialog.addEventListener('cancel', (event) => {
+      if (deleting) event.preventDefault();
+    });
+    const openEditor = (kind, item = null, renameOnly = false) => {
+      if (dialog.open) return;
+      editing = { kind, id: item?.id, renameOnly };
       codeFields.hidden = kind !== 'code';
       memoFields.hidden = kind !== 'memo';
-      codeName.disabled = codeDescription.disabled = kind !== 'code';
+      codeDescriptionField.hidden = kind !== 'code' || renameOnly;
+      codeName.disabled = kind !== 'code';
+      codeDescription.disabled = kind !== 'code' || renameOnly;
       memoText.disabled = kind !== 'memo';
       memoText.required = kind === 'memo';
       codeName.value = item?.name || '';
       codeDescription.value = item?.description || '';
       memoText.value = item?.text || '';
       recordsRoot.querySelector('[data-record-dialog-title]').textContent =
-        `${item ? 'Editar' : 'Novo'} ${kinds[kind].label}`;
+        renameOnly ? 'Renomear código' : `${item ? 'Editar' : 'Novo'} ${kinds[kind].label}`;
       editError.hidden = true;
       editError.textContent = '';
       dialog.showModal();
       (kind === 'code' ? codeName : memoText).focus();
+      if (renameOnly) codeName.select();
     };
+    dialog.addEventListener('close', () => { editing = null; });
+    document.addEventListener('qualitative:rename-code-requested', (event) => {
+      const item = records.codes.find((code) => code.id === event.detail?.codeId);
+      if (item) openEditor('code', item, true);
+      else document.dispatchEvent(new CustomEvent('qualitative:rename-code-error',
+        { detail: { message: 'Código não encontrado. Atualize a lista antes de renomear.' } }));
+    });
+    let coloring = false;
+    document.addEventListener('qualitative:color-code-requested', async (event) => {
+      if (coloring) return;
+      const { codeId, color } = event.detail || {};
+      if (!records.codes.some((code) => code.id === codeId)) {
+        document.dispatchEvent(new CustomEvent('qualitative:color-code-error',
+          { detail: { message: 'Código não encontrado. Atualize a lista antes de alterar a cor.' } }));
+        return;
+      }
+      coloring = true;
+      try {
+        const payload = await request(`${kinds.code.url}/${codeId}`, 'PATCH', { color });
+        update(payload);
+        const saved = payload.codes.find((code) => code.id === codeId);
+        if (saved) document.dispatchEvent(new CustomEvent('qualitative:code-colored', { detail: {
+          codeId, color: saved.color, color_hex: saved.color_hex, color_text: saved.color_text
+        } }));
+      } catch (error) {
+        document.dispatchEvent(new CustomEvent('qualitative:color-code-error',
+          { detail: { message: error.message } }));
+      } finally { coloring = false; }
+    });
     recordsRoot.addEventListener('click', (event) => {
       const add = event.target.closest('[data-record-new]');
       if (add && recordsRoot.contains(add)) return openEditor(add.dataset.recordNew);
       const edit = event.target.closest('[data-record-edit]');
       if (edit && recordsRoot.contains(edit)) {
         const kind = edit.dataset.recordEdit;
-        return openEditor(kind, records[kinds[kind].key].find((item) => item.id === edit.dataset.recordId));
+        const item = records[kinds[kind].key].find((entry) => entry.id === edit.dataset.recordId);
+        if (item) return openEditor(kind, item);
+        return;
       }
       const remove = event.target.closest('[data-record-delete]');
       if (remove && recordsRoot.contains(remove)) {
+        if (deleting || confirmDialog.open) return;
         const kind = remove.dataset.recordDelete;
         const item = records[kinds[kind].key].find((entry) => entry.id === remove.dataset.recordId);
         if (!item) return;
@@ -108,39 +168,57 @@ if (recordsRoot) {
           : `Excluir o memo “${name}”? Esta ação não pode ser desfeita.`;
         deleteError.hidden = true;
         deleteError.textContent = '';
+        deleteButton.disabled = false;
         confirmDialog.showModal();
       }
     });
     recordsRoot.querySelector('[data-record-cancel]').addEventListener('click', () => dialog.close());
-    recordsRoot.querySelector('[data-record-confirm-cancel]').addEventListener('click', () => confirmDialog.close());
+    cancelDelete.addEventListener('click', () => {
+      if (!deleting) { confirmDialog.close(); resetRemoval(); }
+    });
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
       if (!editing) return;
       const save = recordsRoot.querySelector('[data-record-save]');
       save.disabled = true;
       try {
-        const { kind, id } = editing;
+        const { kind, id, renameOnly } = editing;
         const url = id ? `${kinds[kind].url}/${id}` : kinds[kind].url;
-        const body = kind === 'code' ? { name: codeName.value, description: codeDescription.value }
+        const body = kind === 'code' ? (renameOnly ? { name: codeName.value }
+          : { name: codeName.value, description: codeDescription.value })
           : { text: memoText.value };
-        update(await request(url, id ? 'PATCH' : 'POST', body));
+        const payload = await request(url, id ? 'PATCH' : 'POST', body);
+        update(payload);
+        if (renameOnly) {
+          const saved = payload.codes.find((code) => code.id === id);
+          if (saved) document.dispatchEvent(new CustomEvent('qualitative:code-renamed',
+            { detail: { codeId: id, name: saved.name } }));
+        }
         dialog.close();
       } catch (error) {
         editError.textContent = error.message;
         editError.hidden = false;
       } finally { save.disabled = false; }
     });
-    recordsRoot.querySelector('[data-record-confirm-delete]').addEventListener('click', async (event) => {
-      if (!removing) return;
-      event.currentTarget.disabled = true;
+    deleteButton.addEventListener('click', async () => {
+      if (!removing || deleting) return;
+      deleting = true;
+      deleteButton.disabled = cancelDelete.disabled = true;
+      deleteError.hidden = true;
+      deleteError.textContent = '';
       try {
         const { kind, item } = removing;
         update(await request(`${kinds[kind].url}/${item.id}`, 'DELETE'));
         confirmDialog.close();
+        resetRemoval();
       } catch (error) {
         deleteError.textContent = error.message;
         deleteError.hidden = false;
-      } finally { event.currentTarget.disabled = false; }
+      } finally {
+        // currentTarget deixa de existir após o dispatch; use a referência estável.
+        deleting = false;
+        deleteButton.disabled = cancelDelete.disabled = false;
+      }
     });
   }
 

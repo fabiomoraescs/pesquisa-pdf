@@ -149,11 +149,17 @@ class QualitativeFoundationTests(unittest.TestCase):
             self.assertEqual(base.project_id, project.id)
             self.assertEqual(base.user_id, self.user.id)
 
-    def test_code_name_is_normalized_unique_within_base_only(self):
+    def test_code_name_preserves_expression_but_normalized_key_is_unique_within_base(self):
         base = self.base()
         first = self.code(base, "  Identidade   DOCENTE  ")
-        self.assertEqual(first.name, "Identidade DOCENTE")
+        # Nomes derivados da busca preservam espaços internos; só a chave de
+        # unicidade compacta espaços e caixa, sem permitir códigos equivalentes.
+        self.assertEqual(first.name, "Identidade   DOCENTE")
         self.assertEqual(first.normalized_name, "identidade docente")
+        db.session.expire_all()
+        first.description = "Descrição posterior não modifica a expressão"
+        db.session.commit()
+        self.assertEqual(first.name, "Identidade   DOCENTE")
         self.rejects(QualitativeCode(analysis_id=base.id, name="identidade docente",
                                      created_by_user_id=self.user.id))
         second = self.code(self.base(), "identidade docente")
@@ -338,8 +344,8 @@ class QualitativeMigrationTests(unittest.TestCase):
             })
             migrations = str(Path(__file__).resolve().parent.parent / "migrations")
             with app.app_context():
-                upgrade(directory=migrations, revision="c94a67b2d501")
-                seed_platform()
+                from platform_helpers import seed_legacy_platform
+                seed_legacy_platform(migrations, "c94a67b2d501")
                 user = create_user("Legado", "legado-qualitativo@example.org")
                 project = Project(owner_user_id=user.id, name="Projeto anterior", scrape_type=SYSTEMATIC)
                 db.session.add(project)

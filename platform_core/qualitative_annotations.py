@@ -6,7 +6,7 @@ futuro da seleção sem perder códigos ou memos associados.
 
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from .extensions import db
 from .models import (
@@ -14,6 +14,7 @@ from .models import (
     QualitativeMemo, normalized_qualitative_code_name,
 )
 from .qualitative_corpus import read_qualitative_page
+from .qualitative_colors import code_color_style
 
 
 MAX_SELECTION_LENGTH = 10_000
@@ -25,6 +26,15 @@ class SelectionError(ValueError):
 
 class SelectionConflict(SelectionError):
     """O corpus mudou desde que a seleção foi capturada."""
+
+
+def lock_annotation_write(analysis: Analysis) -> None:
+    """Serializa escrita antes de buscar/reutilizar âncoras, inclusive no SQLite.
+
+    UPDATE sem mudança de valor adquire lock transacional (também entre workers).
+    O chamador controla commit/rollback. Não altera status nem reprocessa corpus.
+    """
+    db.session.execute(update(Analysis).where(Analysis.id == analysis.id).values(status=Analysis.status))
 
 
 def validated_selection(analysis: Analysis, document_id: str, page_number: int,
@@ -140,7 +150,9 @@ def page_excerpts(analysis: Analysis, document_id: str, page_number: int) -> dic
                 QualitativeCoding.analysis_id == analysis.id,
                 QualitativeCoding.excerpt_id.in_(ids)).order_by(QualitativeCode.name)).all():
             coding_map[coding.excerpt_id].append(coding.code_id)
-            code_map[coding.excerpt_id].append({"id": code.id, "name": code.name})
+            code_map[coding.excerpt_id].append({"id": code.id, "name": code.name,
+                                               **code_color_style(code.color),
+                                               "coding_id": coding.id, "origin": coding.origin})
         for memo in db.session.scalars(select(QualitativeMemo).where(
                 QualitativeMemo.analysis_id == analysis.id,
                 QualitativeMemo.excerpt_id.in_(ids))).all():
@@ -152,5 +164,5 @@ def page_excerpts(analysis: Analysis, document_id: str, page_number: int) -> dic
          "page_hash": item.page_text_hash, "code_ids": coding_map[item.id],
          "codes": code_map[item.id],
          "memo_count": memo_map[item.id]}
-        for item in valid
+        for item in valid if code_map[item.id] or memo_map[item.id]
     ]}

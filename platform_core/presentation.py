@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from .services import UNAVAILABLE_TOOLS
+
 
 EDUCATION = {
     "elementary": "Ensino fundamental", "high_school": "Ensino médio",
@@ -110,4 +112,5 @@ def register_presentation(app) -> None:
     app.jinja_env.filters["metodo_base"] = analysis_method
     app.jinja_env.filters["detalhes_auditoria"] = audit_details
     app.jinja_env.filters["data_br"] = date_br
-    app.jinja_env.globals.update(education_options=EDUCATION, gender_options=GENDER, race_options=RACE_COLOR, presentation_labels=LABELS)
+    app.jinja_env.globals.update(education_options=EDUCATION, gender_options=GENDER, race_options=RACE_COLOR,
+                                presentation_labels=LABELS, unavailable_tools=UNAVAILABLE_TOOLS)

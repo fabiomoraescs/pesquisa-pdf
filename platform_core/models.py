@@ -143,6 +143,8 @@ class Project(db.Model):
 class VocabularyLibrary(db.Model):
     __tablename__ = "vocabulary_libraries"
     id: Mapped[str] = mapped_column(db.String(60), primary_key=True)
+    # NULL preserva bibliotecas administrativas globais; proprietário define a privada.
+    owner_user_id: Mapped[str | None] = mapped_column(db.ForeignKey("users.id"), index=True)
     name: Mapped[str] = mapped_column(db.String(160), nullable=False)
     description: Mapped[str] = mapped_column(db.Text, default="", nullable=False)
     active: Mapped[bool] = mapped_column(db.Boolean, default=True, nullable=False)
@@ -231,6 +233,8 @@ class QualitativeCode(db.Model):
     name: Mapped[str] = mapped_column(db.String(160), nullable=False)
     normalized_name: Mapped[str] = mapped_column(db.String(160), nullable=False)
     description: Mapped[str] = mapped_column(db.Text, default="", nullable=False)
+    # NULL nos registros legados usa o azul padrão; a escolha explícita é global ao código.
+    color: Mapped[str | None] = mapped_column(db.String(16))
     active: Mapped[bool] = mapped_column(db.Boolean, default=True, nullable=False)
     created_by_user_id: Mapped[str] = mapped_column(db.ForeignKey("users.id"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=utcnow, nullable=False)
@@ -246,7 +250,9 @@ class QualitativeCode(db.Model):
 @event.listens_for(QualitativeCode, "before_insert")
 @event.listens_for(QualitativeCode, "before_update")
 def _prepare_qualitative_code(_mapper, _connection, code: QualitativeCode) -> None:
-    name = " ".join(code.name.split())
+    # O nome automático preserva a expressão pesquisada; a chave de unicidade
+    # continua normalizando espaços. Formulários manuais normalizam na entrada.
+    name = code.name.strip()
     normalized = normalized_qualitative_code_name(name)
     if not name or len(name) > 160 or len(normalized) > 160:
         raise ValueError("Informe um nome de código válido (até 160 caracteres).")
@@ -289,7 +295,15 @@ class QualitativeCoding(db.Model):
     excerpt_id: Mapped[str] = mapped_column(db.String(36), nullable=False)
     code_id: Mapped[str] = mapped_column(db.String(36), nullable=False)
     created_by_user_id: Mapped[str] = mapped_column(db.ForeignKey("users.id"), nullable=False)
-    origin: Mapped[str] = mapped_column(db.String(16), default="manual", nullable=False)
+    origin: Mapped[str] = mapped_column(db.String(32), default="manual", nullable=False)
+    # Âncora da busca original: não muda quando o pesquisador ajusta o trecho.
+    source_query: Mapped[str | None] = mapped_column(db.String(200))
+    source_case_sensitive: Mapped[bool | None] = mapped_column(db.Boolean)
+    source_start: Mapped[int | None] = mapped_column(db.Integer)
+    source_end: Mapped[int | None] = mapped_column(db.Integer)
+    source_page_hash: Mapped[str | None] = mapped_column(db.String(64))
+    # Preferência da operação que criou o vínculo; não depende do checkbox futuro.
+    contextual_rejection_enabled: Mapped[bool] = mapped_column(db.Boolean, default=False, server_default=db.false(), nullable=False)
     created_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=utcnow, nullable=False)
     __table_args__ = (
         ForeignKeyConstraint(["excerpt_id", "analysis_id"],
@@ -299,7 +313,50 @@ class QualitativeCoding(db.Model):
                              ["qualitative_codes.id", "qualitative_codes.analysis_id"],
                              name="fk_qualitative_coding_code_base"),
         UniqueConstraint("excerpt_id", "code_id", name="uq_qualitative_coding_excerpt_code"),
-        CheckConstraint("origin IN ('manual', 'assisted')", name="ck_qualitative_coding_origin"),
+        CheckConstraint("origin IN ('manual', 'assisted', 'automatic_literal', 'automatic_regex', "
+                        "'automatic_lexical', 'automatic_semantic')", name="ck_qualitative_coding_origin"),
+        CheckConstraint("origin IN ('manual', 'assisted') OR (source_query IS NOT NULL "
+                        "AND length(source_query) > 0 AND source_case_sensitive IS NOT NULL "
+                        "AND source_start IS NOT NULL AND source_end IS NOT NULL "
+                        "AND source_start >= 0 AND source_end > source_start "
+                        "AND source_page_hash IS NOT NULL AND length(source_page_hash) = 64)",
+                        name="ck_qualitative_coding_source"),
+    )
+
+
+class QualitativeRejection(db.Model):
+    """Decisão local sobre uma ocorrência/consulta; nunca exclusão global de texto."""
+
+    __tablename__ = "qualitative_rejections"
+    id: Mapped[str] = mapped_column(db.String(36), primary_key=True, default=lambda: str(uuid4()))
+    analysis_id: Mapped[str] = mapped_column(db.ForeignKey("analyses.id"), nullable=False, index=True)
+    document_id: Mapped[str] = mapped_column(db.String(36), nullable=False)
+    code_id: Mapped[str] = mapped_column(db.String(36), nullable=False)
+    page_number: Mapped[int] = mapped_column(db.Integer, nullable=False)
+    start_offset: Mapped[int] = mapped_column(db.Integer, nullable=False)
+    end_offset: Mapped[int] = mapped_column(db.Integer, nullable=False)
+    page_text_hash: Mapped[str] = mapped_column(db.String(64), nullable=False)
+    origin: Mapped[str] = mapped_column(db.String(32), nullable=False)
+    query: Mapped[str] = mapped_column(db.String(200), nullable=False)
+    case_sensitive: Mapped[bool] = mapped_column(db.Boolean, nullable=False)
+    created_by_user_id: Mapped[str] = mapped_column(db.ForeignKey("users.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+    __table_args__ = (
+        ForeignKeyConstraint(["document_id", "analysis_id"],
+                             ["analysis_documents.id", "analysis_documents.analysis_id"],
+                             name="fk_qualitative_rejection_document_base"),
+        ForeignKeyConstraint(["code_id", "analysis_id"],
+                             ["qualitative_codes.id", "qualitative_codes.analysis_id"],
+                             name="fk_qualitative_rejection_code_base"),
+        UniqueConstraint("analysis_id", "document_id", "page_number", "start_offset", "end_offset",
+                         "page_text_hash", "code_id", "origin", "query", "case_sensitive",
+                         name="uq_qualitative_rejection_context"),
+        CheckConstraint("page_number >= 1 AND start_offset >= 0 AND end_offset > start_offset",
+                        name="ck_qualitative_rejection_offsets"),
+        CheckConstraint("length(page_text_hash) = 64 AND length(query) > 0",
+                        name="ck_qualitative_rejection_source"),
+        CheckConstraint("origin IN ('automatic_literal', 'automatic_regex', 'automatic_lexical', "
+                        "'automatic_semantic')", name="ck_qualitative_rejection_origin"),
     )
 
 

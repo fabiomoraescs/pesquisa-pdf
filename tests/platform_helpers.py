@@ -34,6 +34,15 @@ def csrf_from(response) -> str:
     return match.group(1)
 
 
+def seed_legacy_platform(migrations, revision):
+    """Semeia com models atuais e volta ao schema-alvo antes de criar o legado."""
+    from flask_migrate import downgrade, upgrade
+    upgrade(directory=migrations, revision="head")
+    seed_platform()
+    db.session.remove()
+    downgrade(directory=migrations, revision=revision)
+
+
 def create_user(name="Pesquisador", email="pesquisador@example.org", role="user", plan="student") -> User:
     user = User(name=name, email=email, role=role, status="active")
     user.set_password("senha-de-teste-segura-123")

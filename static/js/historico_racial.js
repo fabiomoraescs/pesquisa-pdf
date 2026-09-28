@@ -68,17 +68,7 @@
       : dados.arquivo_indice && dados.paginas_total
       ? `PDF ${dados.arquivo_indice} de ${dados.arquivos_total} · página ${dados.pagina_atual} de ${dados.paginas_total}`
       : dados.arquivo_atual || 'Preparando análise…';
-    if (percentual === null) {
-      barra.classList.add('is-indeterminate');
-      barra.removeAttribute('aria-valuenow');
-      barra.setAttribute('aria-valuetext', 'Progresso ainda não disponível');
-      barraValor.style.width = '';
-    } else {
-      barra.classList.remove('is-indeterminate');
-      barra.setAttribute('aria-valuenow', String(percentual));
-      barra.setAttribute('aria-valuetext', `Progresso: ${percentual}%`);
-      barraValor.style.width = `${percentual}%`;
-    }
+    window.ProcessingProgress.updateBar(barra, barraValor, percentual);
     tempo.textContent = `Tempo decorrido: ${formatarDuracao(dados.tempo_decorrido || 0)}`;
     restante.textContent = Number.isFinite(dados.eta_segundos)
       ? `Tempo restante estimado: ~${formatarDuracao(dados.eta_segundos)}`

@@ -383,15 +383,11 @@ def criar_regex(termo):
 
 def contar_ocorrencias(texto, termo):
     """
-    Conta o termo e suas variações automáticas de gênero/número.
+    Conta forma literal, flexões e derivações controladas da família lexical.
     """
-    return len(
-        criar_regex(
-            termo
-        ).findall(
-            normalizar(texto)
-        )
-    )
+    from .lexical_family import count_lexical_occurrences
+
+    return count_lexical_occurrences(texto, termo, criar_regex(termo))
 
 
 def carregar_termos_referencia():

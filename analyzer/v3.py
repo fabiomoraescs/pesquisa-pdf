@@ -264,15 +264,18 @@ def _contexto_amplo(blocos: list[dict[str, Any]], indice: int) -> str:
 
 
 def _tipo_lexical(texto: str, consulta: str) -> tuple[str, str]:
-    """Diferencia a forma literal da variação morfológica encontrada."""
-    encontrado = v1.criar_regex(consulta).search(v1.normalizar(texto))
-    termo_encontrado = encontrado.group(0) if encontrado else consulta
-    tipo = (
-        "Lexical"
-        if termo_encontrado == v1.normalizar(consulta)
-        else "Morfológica"
-    )
-    return tipo, termo_encontrado
+    """Flexões são morfológicas; derivações pertencem à modalidade lexical."""
+    from .lexical_family import find_lexical_spans
+
+    encontrado = next(find_lexical_spans(texto, consulta), None)
+    if encontrado is not None:
+        inicio, fim, relacao = encontrado
+        return ("Morfológica" if relacao == "morphological" else "Lexical", texto[inicio:fim])
+    fallback = v1.criar_regex(consulta).search(v1.normalizar(texto))
+    if fallback is None:
+        return "Lexical", consulta
+    termo_encontrado = fallback.group(0)
+    return ("Lexical" if termo_encontrado == v1.normalizar(consulta) else "Morfológica", termo_encontrado)
 
 
 def _registros_lexicais(

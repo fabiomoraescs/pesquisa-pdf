@@ -28,7 +28,7 @@ class TesteHistoricoRacial(unittest.TestCase):
         self.assertIn("ferramentas para pesquisa", pagina)
         self.assertIn("Raspagem de dados", pagina)
         self.assertIn("Busca estruturada", pagina)
-        self.assertIn("Processar PDFs", pagina)
+        self.assertIn(">Processar</button>", pagina)
         self.assertIn(f'action="/analise-documental/projetos/{projeto}/analisar"', pagina)
 
     def test_rota_principal_permanece_disponivel(self):

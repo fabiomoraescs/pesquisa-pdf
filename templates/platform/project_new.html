@@ -3,6 +3,7 @@
 {% block heading %}Novo projeto{% endblock %}
 {% block page_intro %}<h1 class="visually-hidden">Novo projeto</h1>{% endblock %}
 {% block body %}
+{% if scrape_type == 'systematic' %}<div class="platform-toolbar platform-toolbar-actions"><a class="btn btn-outline-primary btn-sm ms-auto" href="{{ url_for('user_libraries.new_library') }}">Inserir biblioteca</a></div>{% endif %}
 <section class="platform-panel">
   <form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="platform-form-group"><label class="form-label" for="name">Nome do projeto</label><input class="form-control" id="name" name="name" maxlength="200" required value="{{ request.form.get('name', '') }}" placeholder="Ex.: Meu projeto de pesquisa"></div>
@@ -10,7 +11,7 @@
     {% if scrape_type == 'systematic' %}<fieldset class="platform-form-section"><legend>Bibliotecas de vocabulário</legend><p class="platform-muted">Selecione pelo menos uma biblioteca para a versão inicial do projeto.</p>
       <div class="platform-view-list">{% for library in libraries %}
         <label class="platform-list-item platform-library-choice d-flex align-items-center gap-3">
-          <input class="form-check-input m-0 flex-shrink-0" type="checkbox" name="libraries" value="{{ library.id }}" {% if library.id in request.form.getlist('libraries') or (not request.form and library.id == 'relacoes_raciais') %}checked{% endif %}>
+          <input class="form-check-input m-0 flex-shrink-0" type="checkbox" name="libraries" value="{{ library.id }}" {% if library.id in request.form.getlist('libraries') or (not request.form and library.id == request.args.get('library_id', 'relacoes_raciais')) %}checked{% endif %}>
           <span class="d-block flex-grow-1"><span class="platform-list-title">{{ library.name }}:</span> <span class="platform-list-meta">{{ library.counts_json.grupos }} grupos · {{ library.counts_json.entidades }} entidades · {{ library.counts_json.variantes }} variantes · {{ library.version }}</span></span>
         </label>
       {% else %}<p>Nenhuma biblioteca publicada está disponível no momento.</p>{% endfor %}</div>

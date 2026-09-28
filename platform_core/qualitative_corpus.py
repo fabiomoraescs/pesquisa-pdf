@@ -23,7 +23,7 @@ from . import qualitative_ocr as pdf_extractor
 
 from .analyses import analysis_dir, documents_for
 from .extensions import db
-from .models import Analysis, AnalysisDocument, QualitativeCoding, QualitativeExcerpt, QualitativeMemo
+from .models import Analysis, AnalysisDocument, QualitativeCoding, QualitativeExcerpt, QualitativeMemo, QualitativeRejection
 
 
 SCHEMA_VERSION = 1
@@ -64,6 +64,26 @@ def _safe_child(root: Path, relative: str) -> Path:
     return candidate
 
 
+def _page_progress(sources: list[Path], progress: Callable[[dict], None] | None):
+    """Pondera PDFs pelo número real de páginas, como o processamento estruturado."""
+    if progress is None:
+        return None
+    counts = []
+    for source in sources:
+        with pymupdf.open(source) as pdf:
+            counts.append(len(pdf))
+    total = sum(counts)
+    progress({"total_pages": total, "pages_completed": 0, "percentual": 0})
+
+    def report(event):
+        if "document_index" in event:
+            completed = sum(counts[:event["document_index"] - 1]) + event["pages_completed_in_document"]
+            event = {**event, "total_pages": total, "pages_completed": completed,
+                     "percentual": min(99, int(100 * completed / max(1, total)))}
+        progress(event)
+    return report
+
+
 def _prepare_document(document: AnalysisDocument, source: Path, staging: Path,
                       document_index: int, document_count: int,
                       progress: Callable[[dict], None] | None) -> dict:
@@ -81,7 +101,7 @@ def _prepare_document(document: AnalysisDocument, source: Path, staging: Path,
             if progress:
                 progress({"document_index": document_index, "document_count": document_count,
                           "document_name": document.original_name, "page_number": expected_number,
-                          "page_count": len(visual_document),
+                          "page_count": len(visual_document), "pages_completed_in_document": expected_number - 1,
                           "stage": ("Aplicando OCR…" if pdf_extractor.needs_ocr(
                               visual_document[expected_number - 1]) else "Extraindo texto…")})
             try:
@@ -117,6 +137,7 @@ def _prepare_document(document: AnalysisDocument, source: Path, staging: Path,
                 progress({"document_index": document_index, "document_count": document_count,
                           "document_name": document.original_name, "page_number": expected_number,
                           "page_count": extracted.get("page_count", len(visual_document)),
+                          "pages_completed_in_document": expected_number,
                           "stage": "Página reconhecida por OCR" if extracted["ocr_utilizado"]
                                    else "Página extraída"})
         sentinel = object()
@@ -155,6 +176,7 @@ def prepare_qualitative_corpus(
         "documents": [],
     }
     try:
+        progress = _page_progress([_safe_child(root / "documents", doc.stored_name) for doc in documents], progress)
         for document_index, document in enumerate(documents, start=1):
             source = _safe_child(root / "documents", document.stored_name)
             manifest["documents"].append(_prepare_document(
@@ -199,6 +221,7 @@ def append_qualitative_corpus(
     database_committed = False
     manifest_replaced = False
     try:
+        progress = _page_progress([source for _, source in additions], progress)
         entries = [_prepare_document(document, source, staging, index, len(additions), progress)
                    for index, (document, source) in enumerate(additions, start=1)]
         if progress:
@@ -321,6 +344,8 @@ def delete_qualitative_document(analysis: Analysis, document: AnalysisDocument) 
             os.replace(replacement, qualitative_manifest_path(analysis.id))
         published = True
 
+        db.session.execute(delete(QualitativeRejection).where(
+            QualitativeRejection.analysis_id == analysis.id, QualitativeRejection.document_id == document.id))
         excerpt_ids = select(QualitativeExcerpt.id).where(
             QualitativeExcerpt.analysis_id == analysis.id,
             QualitativeExcerpt.document_id == document.id)

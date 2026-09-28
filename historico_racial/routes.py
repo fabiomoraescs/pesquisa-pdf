@@ -87,7 +87,7 @@ def _executar_job(
     resultado_url: str, vocabulario: dict, project_id: str, user_id: str,
     project_name: str, library_names: list[str],
     metodo_analise: str = "lexical", limiar_semantico: float | None = None,
-    app_instance=None, incluir_morfologia: bool = False,
+    app_instance=None, incluir_morfologia: bool = False, incluir_familia_lexical: bool = False,
 ) -> None:
     def atualizar(evento: dict) -> None:
         with JOBS_LOCK:
@@ -107,6 +107,7 @@ def _executar_job(
             vocabulary_hash=vocabulario["hash"],
             metodo_analise=metodo_analise, limiar_semantico=limiar_semantico,
             incluir_morfologia=incluir_morfologia,
+            incluir_familia_lexical=incluir_familia_lexical,
         )
         resultado.update({"project_name": project_name, "library_names": library_names, "owner_user_id": user_id,
                           "data_processamento": datetime.now(timezone.utc).isoformat(timespec="seconds")})
@@ -340,6 +341,7 @@ def analisar(project_id: UUID):
                 project.id, current_user.id, project.name, [item.name for item in _libraries(project.id)],
                 metodo_analise, limiar_semantico, current_app._get_current_object(),
                 incluir_morfologia=True,
+                incluir_familia_lexical=True,
             )
         except RuntimeError:
             temporary.cleanup()

@@ -1,8 +1,8 @@
 """Ponte reutilizável para a lógica analítica preservada da V2.
 
-O arquivo ``varredura_pdf_v2.py`` permanece como a referência íntegra da
-versão V2. Esta ponte expõe suas funções para a aplicação web sem misturar
-a análise ou a exportação V2 com a V1.
+O arquivo ``varredura_pdf_v2.py`` preserva o fluxo legado da versão V2,
+compartilhando apenas o núcleo linguístico lexical com as demais ferramentas.
+Esta ponte expõe suas funções sem misturar análise ou exportação V2 com a V1.
 """
 
 from copy import copy

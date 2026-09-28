@@ -1,5 +1,6 @@
 {% extends 'platform/base.html' %}
 {% from 'platform/_icons.html' import icon %}
+{% from 'platform/_qualitative_search_help.html' import help_button, help_popovers %}
 {% block title %}{{ project.name }} — Análysis{% endblock %}
 {% block page_intro %}{% include 'platform/_qualitative_page_intro.html' %}{% endblock %}
 {% block body %}
@@ -7,6 +8,9 @@
 <div class="platform-qualitative-workspace" data-qualitative-viewer
      data-pdf-url="{{ url_for('qualitative.original_pdf', analysis_id=analysis.id, document_id=current.document_id) }}"
      data-search-url="{{ url_for('qualitative.search', analysis_id=analysis.id, document_id=current.document_id) }}"
+     data-automatic-url="{{ url_for('qualitative.automatically_code', analysis_id=analysis.id, document_id=current.document_id) }}"
+     data-semantic-progress-url-template="{{ url_for('qualitative.semantic_job_progress', analysis_id=analysis.id, job_id='00000000-0000-0000-0000-000000000000') }}"
+     data-delete-coding-url-template="{{ url_for('qualitative.delete_coding', analysis_id=analysis.id, coding_id='00000000-0000-0000-0000-000000000000') }}"
      data-layout-url-template="{{ url_for('qualitative.page_layout', analysis_id=analysis.id, document_id=current.document_id, page_number=0) }}"
      data-page-data-url-template="{{ url_for('qualitative.page_data', analysis_id=analysis.id, document_id=current.document_id, page_number=0) }}"
      data-excerpts-url-template="{{ url_for('qualitative.excerpts_on_page', analysis_id=analysis.id, document_id=current.document_id, page_number=0) }}"
@@ -21,14 +25,39 @@
   <div class="platform-panel platform-qualitative-top" aria-label="Explorador e pesquisa" data-focus-panel>
     <div class="platform-qualitative-focus-panel-header">
       <button class="platform-qualitative-focus-handle" type="button" data-focus-handle title="Arrastar painel; use as setas para mover" aria-label="Arrastar painel de controles; use as setas para mover">Controles da leitura</button>
+      <div class="platform-qualitative-focus-navigation" data-focus-navigation aria-label="Navegar pelas ocorrências" aria-live="polite" aria-atomic="true"></div>
       <button class="btn btn-outline-primary btn-sm" type="button" data-focus-panel-toggle aria-controls="qualitative-controls" aria-expanded="true" aria-label="Minimizar painel" title="Minimizar painel">Recolher</button>
     </div>
     <button class="btn btn-outline-primary btn-sm platform-qualitative-explorer-toggle" type="button" data-explorer-toggle aria-controls="qualitative-explorer" aria-expanded="false">Explorador</button>
     <div class="platform-qualitative-controls" id="qualitative-controls">
       <form class="platform-qualitative-search" data-search-form role="search">
         <label for="qualitative-query">Pesquisar no documento</label>
-        <div class="d-flex gap-2"><input class="form-control form-control-sm" id="qualitative-query" name="q" type="search" maxlength="200" required><button class="btn btn-outline-primary btn-sm" type="submit">Buscar</button></div>
-        <div class="platform-qualitative-search-options"><label><input type="checkbox" name="grep"> Usar ReGex</label><label><input type="checkbox" name="case"> Distinguir maiúsculas e minúsculas</label></div>
+        <div class="d-flex gap-2"><input class="form-control form-control-sm" id="qualitative-query" name="q" type="search" maxlength="200" aria-describedby="qualitative-separator-error" required><button class="btn btn-outline-primary btn-sm" type="submit">Buscar</button></div>
+        <div class="terms-separator-error" id="qualitative-separator-error" data-separator-error role="alert" hidden>Para pesquisar múltiplos termos, separe cada palavra ou expressão com ponto e vírgula (;). Vírgulas e pontos não são usados como separadores de múltiplos termos.</div>
+        <div class="platform-qualitative-search-options platform-qualitative-search-control-row">
+          <span class="platform-qualitative-search-control"><label><input class="platform-qualitative-switch" type="checkbox" name="grep"> Regex</label>{{ help_button('regex') }}</span>
+          <span class="platform-qualitative-search-control"><label><input class="platform-qualitative-switch" type="checkbox" name="case"> Maiúsculas e minúsculas</label>{{ help_button('case') }}</span>
+          {% if project.status == 'active' and project.owner_user_id == current_user.id %}
+          <span class="platform-qualitative-search-control"><label><input class="platform-qualitative-switch" type="checkbox" name="automatic" data-automatic-toggle role="switch" aria-controls="qualitative-automatic-options qualitative-automatic-settings" aria-expanded="false"> Autocodificação</label>{{ help_button('automatic') }}</span>
+          <div class="platform-qualitative-search-options platform-qualitative-automatic-settings" id="qualitative-automatic-settings" data-automatic-settings hidden>
+            <span class="platform-qualitative-search-control"><label><input class="platform-qualitative-switch" type="checkbox" name="multiple_terms" data-multiple-terms disabled> Múltiplos termos</label>{{ help_button('multiple') }}</span>
+            <span class="platform-qualitative-search-control"><label><input class="platform-qualitative-switch" type="checkbox" name="contextual_rejection_enabled" data-contextual-rejection role="switch" disabled> Rejeição contextual</label>{{ help_button('rejection') }}</span>
+          </div>
+          {% endif %}
+        </div>
+        {% if project.status == 'active' and project.owner_user_id == current_user.id %}
+          <fieldset class="platform-qualitative-automatic-options" id="qualitative-automatic-options" data-automatic-options hidden disabled>
+            <legend class="visually-hidden">Modalidade de codificação automática</legend>
+            <div class="platform-qualitative-search-options platform-qualitative-automatic-modes">
+              <span class="platform-qualitative-search-control"><label><input class="platform-qualitative-switch" type="radio" name="automatic_mode" value="literal" checked> Literal</label>{{ help_button('literal') }}</span>
+              <span class="platform-qualitative-search-control"><label><input class="platform-qualitative-switch" type="radio" name="automatic_mode" value="lexical"> Lexical</label>{{ help_button('lexical') }}</span>
+              <span class="platform-qualitative-search-control"><label><input class="platform-qualitative-switch" type="radio" name="automatic_mode" value="semantic"> Semântica</label>{{ help_button('semantic') }}</span>
+            </div>
+            <div class="platform-qualitative-automatic-scope">
+              <label for="qualitative-automatic-scope">Escopo</label><select class="form-select form-select-sm" id="qualitative-automatic-scope" name="automatic_scope"><option value="document">Documento atual</option><option value="project">Todos os documentos do projeto</option></select>
+            </div>
+          </fieldset>
+        {% endif %}
         <div class="platform-qualitative-search-results" aria-live="polite"><button class="btn btn-outline-primary btn-sm" data-result-prev type="button" aria-label="Resultado anterior" disabled>Anterior</button><span data-result-count>0 de 0</span><button class="btn btn-outline-primary btn-sm" data-result-next type="button" aria-label="Próximo resultado" disabled>Próximo</button><span data-search-message></span></div>
         <p class="platform-muted mb-0" data-result-snippet></p>
       </form>
@@ -65,6 +94,18 @@
     <button type="button" role="menuitem" data-context-action="in_vivo">Código in vivo</button>
     <button type="button" role="menuitem" data-context-action="create_memo">Criar memo</button>
   </div>
+  <div class="platform-qualitative-context-menu" id="qualitative-code-menu" data-temporary-popover data-code-menu role="menu" aria-label="Ações do código" hidden>
+    <div data-code-menu-actions>
+      <button type="button" role="menuitem" data-code-rename>Renomear código</button>
+      <button type="button" role="menuitem" data-code-color-open>Alterar cor</button>
+    </div>
+    <div data-code-palette hidden>
+      <p class="platform-qualitative-code-palette-title">Cor do código</p>
+      <div class="platform-qualitative-code-palette" role="group" aria-label="Escolher cor do código">
+        {% for option in code_palette %}<button type="button" role="menuitemradio" data-code-color="{{ option.id }}" aria-label="{{ option.label }}" aria-checked="false" title="{{ option.label }}" style="--swatch-color: {{ option.color_hex }}; --swatch-text: {{ option.color_text }}"></button>{% endfor %}
+      </div>
+    </div>
+  </div>
   <dialog class="platform-qualitative-record-dialog platform-panel" data-context-dialog aria-labelledby="qualitative-context-title">
     <form method="dialog" data-context-form>
       <h2 class="h5" id="qualitative-context-title" data-context-title></h2>
@@ -77,7 +118,12 @@
   </dialog>
   <input type="hidden" data-context-csrf value="{{ csrf_token() }}">
   {% endif %}
+  {{ help_popovers() }}
 </div>
+{% if project.status == 'active' and project.owner_user_id == current_user.id %}
+{% set progress_prefix = 'qualitative-semantic-' %}
+{% include 'platform/_progress_overlay.html' %}
+{% endif %}
 {% if project.status == 'active' and project.owner_user_id == current_user.id %}
 <dialog class="platform-qualitative-delete-dialog platform-panel" data-document-delete-dialog aria-labelledby="qualitative-delete-title">
   <h2 class="h5" id="qualitative-delete-title">Excluir documento?</h2>
@@ -92,5 +138,7 @@
 <script type="module" src="{{ url_for('static', filename='js/qualitative_info.js') }}"></script>
 <script type="module" src="{{ url_for('static', filename='js/qualitative_document_delete.js') }}"></script>
 <script type="module" src="{{ url_for('static', filename='js/qualitative_records.js') }}"></script>
+<script src="{{ url_for('static', filename='js/term_input.js') }}"></script>
+<script src="{{ url_for('static', filename='js/processing_progress.js') }}"></script>
 <script type="module" src="{{ url_for('static', filename='js/qualitative_viewer.js') }}"></script>
 {% endblock %}

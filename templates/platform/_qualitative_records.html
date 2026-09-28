@@ -12,7 +12,7 @@
     <p class="platform-muted mb-0" data-record-empty="code" {% if records.codes %}hidden{% endif %}>Nenhum código criado.</p>
     <div class="platform-qualitative-record-list" data-record-list="code">
       {% for code in records.codes %}
-      <div class="platform-qualitative-record-row"><span class="platform-qualitative-record-label" title="{{ code.name }}">{{ code.name }} ({{ code.excerpt_count }})</span>
+      <div class="platform-qualitative-record-row"><span class="platform-qualitative-record-label has-code-color" title="{{ code.name }}" style="--qualitative-code-color: {{ code.color_hex }}">{{ code.name }} ({{ code.excerpt_count }})</span>
         {% if can_manage_records %}<span class="platform-qualitative-record-actions"><button class="platform-qualitative-record-action" type="button" data-record-edit="code" data-record-id="{{ code.id }}" title="Editar {{ code.name }}" aria-label="Editar código {{ code.name }}">{{ icon('editar') }}</button><button class="platform-qualitative-record-action is-danger" type="button" data-record-delete="code" data-record-id="{{ code.id }}" title="Excluir {{ code.name }}" aria-label="Excluir código {{ code.name }}">{{ icon('lixeira') }}</button></span>{% endif %}
       </div>
       {% endfor %}
@@ -39,7 +39,7 @@
   <dialog class="platform-qualitative-record-dialog platform-panel" data-record-dialog aria-labelledby="qualitative-record-dialog-title">
     <form method="dialog" data-record-form>
       <h2 class="h5" id="qualitative-record-dialog-title" data-record-dialog-title></h2>
-      <div data-code-fields><label for="qualitative-code-name">Nome</label><input class="form-control" id="qualitative-code-name" name="name" maxlength="160" required><label for="qualitative-code-description">Descrição (opcional)</label><textarea class="form-control" id="qualitative-code-description" name="description" maxlength="4000" rows="3"></textarea></div>
+      <div data-code-fields><label for="qualitative-code-name">Nome</label><input class="form-control" id="qualitative-code-name" name="name" maxlength="160" required><div data-code-description-field><label for="qualitative-code-description">Descrição (opcional)</label><textarea class="form-control" id="qualitative-code-description" name="description" maxlength="4000" rows="3"></textarea></div></div>
       <div data-memo-fields hidden><label for="qualitative-memo-text">Conteúdo do memo</label><textarea class="form-control" id="qualitative-memo-text" name="text" maxlength="20000" rows="6"></textarea></div>
       <p class="platform-qualitative-record-error" data-record-error role="alert" hidden></p>
       <div class="platform-qualitative-record-dialog-actions"><button class="btn btn-outline-primary" type="button" data-record-cancel>Cancelar</button><button class="btn btn-primary" type="submit" data-record-save>Salvar</button></div>

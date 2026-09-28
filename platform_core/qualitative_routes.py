@@ -14,7 +14,7 @@ from uuid import UUID, uuid4
 
 from flask import Blueprint, abort, current_app, flash, jsonify, redirect, render_template, request, send_file, url_for
 from flask_login import current_user, login_required
-from sqlalchemy import delete, distinct, func, select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.exc import IntegrityError
 from werkzeug.utils import secure_filename
 from openpyxl import Workbook
@@ -26,10 +26,10 @@ from .analyses import analysis_dir, create_analysis, preserve_documents, save_er
 from .extensions import db
 from .models import (
     Analysis, AnalysisDocument, Project, QualitativeCode, QualitativeCoding,
-    QualitativeExcerpt, QualitativeMemo, normalized_qualitative_code_name, utcnow,
+    QualitativeExcerpt, QualitativeMemo, QualitativeRejection, normalized_qualitative_code_name, utcnow,
 )
 from .qualitative import (
-    QUALITATIVE_STRATEGIES, get_qualitative_analysis, get_qualitative_code,
+    QUALITATIVE_STRATEGIES, code_excerpt_counts, get_qualitative_analysis, get_qualitative_code,
     get_qualitative_document, get_qualitative_excerpt, get_qualitative_memo,
 )
 from .qualitative_corpus import (
@@ -38,11 +38,14 @@ from .qualitative_corpus import (
     prepare_qualitative_corpus, qualitative_corpus_dir, read_qualitative_page,
     validate_qualitative_corpus,
 )
+from .qualitative_colors import QUALITATIVE_CODE_PALETTE, code_color_style, code_palette_options
 from .qualitative_layout import read_qualitative_layout
 from .qualitative_annotations import (
     SelectionConflict, SelectionError, apply_codes, find_code_by_name,
-    get_or_create_excerpt, page_excerpts, update_excerpt_bounds, validated_selection,
+    get_or_create_excerpt, lock_annotation_write, page_excerpts, update_excerpt_bounds, validated_selection,
 )
+from .qualitative_automatic import automatic_coding, remove_coding
+from .qualitative_expanded_search import SemanticModelUnavailable
 from .qualitative_search import QualitativeSearchError, search_qualitative_document
 from .scraping_types import QUALITATIVE, QUALITATIVE_TOOL
 from .services import ACCOUNT_LIFECYCLE_LOCK, account_accepts_new_work, can_use_tool, get_project_for_user
@@ -52,6 +55,61 @@ qualitative_bp = Blueprint("qualitative", __name__, url_prefix="/analise-qualita
 _progress: dict[str, dict] = {}
 _progress_lock = RLock()
 _progress_retention_seconds = 60 * 60
+_semantic_jobs: dict[str, dict] = {}
+_semantic_jobs_lock = RLock()
+_semantic_stage_labels = {
+    "preparing": "Preparando busca semântica",
+    "literal": "Localizando correspondências literais",
+    "lexical": "Analisando famílias lexicais",
+    "model": "Carregando modelo semântico",
+    "semantic": "Processando e comparando segmentos",
+    "coding": "Registrando codificações",
+    "finalizing": "Finalizando análise",
+    "complete": "Busca semântica concluída",
+    "error": "Busca semântica interrompida",
+}
+
+
+def _semantic_job_update(job_id: str, *, stage: str, percent: int,
+                         document_id: str | None = None, page_number: int | None = None,
+                         document_names: dict[str, str] | None = None, error: str | None = None) -> None:
+    with _semantic_jobs_lock:
+        job = _semantic_jobs[job_id]
+        job["percent"] = max(job["percent"], min(100, max(0, int(percent))))
+        job["stage"] = _semantic_stage_labels[stage]
+        if document_id:
+            job["document"] = (document_names or {}).get(document_id, job.get("document", ""))
+        if page_number:
+            job["page_number"] = page_number
+        if stage in {"complete", "error"}:
+            job["state"] = stage
+            job["finished_at"] = time.monotonic()
+        if error:
+            job["error"] = error
+
+
+def _semantic_job_begin(job_id: str, analysis: Analysis, user_id: str) -> None:
+    with _semantic_jobs_lock:
+        for identifier, value in list(_semantic_jobs.items()):
+            if value.get("finished_at") and time.monotonic() - value["finished_at"] > _progress_retention_seconds:
+                _semantic_jobs.pop(identifier, None)
+        if job_id in _semantic_jobs:
+            raise ValueError("Esta operação semântica já foi iniciada.")
+        _semantic_jobs[job_id] = {"analysis_id": analysis.id, "owner_user_id": user_id,
+                                  "state": "running", "stage": _semantic_stage_labels["preparing"],
+                                  "percent": 0, "document": "", "page_number": None}
+
+
+@qualitative_bp.get("/bases/<uuid:analysis_id>/progresso-semantico/<uuid:job_id>")
+@login_required
+def semantic_job_progress(analysis_id: UUID, job_id: UUID):
+    analysis = _base(analysis_id)
+    with _semantic_jobs_lock:
+        job = _semantic_jobs.get(str(job_id))
+        if job is None or job["analysis_id"] != analysis.id or job["owner_user_id"] != current_user.id:
+            abort(404)
+        return jsonify({key: job.get(key) for key in
+                        ("state", "stage", "percent", "document", "page_number", "error")})
 
 
 def _require_tool() -> None:
@@ -90,12 +148,10 @@ def _analytic_records(analysis: Analysis) -> tuple[list[QualitativeCode], list[Q
 
 def _records_payload(analysis: Analysis) -> dict:
     codes, memos = _analytic_records(analysis)
-    counts = dict(db.session.execute(select(
-        QualitativeCoding.code_id,
-        func.count(distinct(QualitativeCoding.excerpt_id)),
-    ).where(QualitativeCoding.analysis_id == analysis.id).group_by(QualitativeCoding.code_id)).all())
+    counts = code_excerpt_counts(analysis)
     return {
         "codes": [{"id": code.id, "name": code.name, "description": code.description,
+                   **code_color_style(code.color),
                    "excerpt_count": counts.get(code.id, 0)}
                   for code in codes],
         "memos": [{"id": memo.id, "text": memo.text,
@@ -121,12 +177,12 @@ def _input_text(field: str, limit: int, *, required: bool = True) -> str:
     return value
 
 
-def _code_fields() -> tuple[str, str]:
+def _code_fields(*, default_description: str = "") -> tuple[str, str]:
     payload = request.get_json(silent=True)
-    name = _input_text("name", 160)
-    if not isinstance(payload.get("description", ""), str):
+    name = " ".join(_input_text("name", 160).split())
+    if not isinstance(payload.get("description", default_description), str):
         raise ValueError("Descrição inválida.")
-    description = payload.get("description", "").strip()
+    description = payload.get("description", default_description).strip()
     if len(description) > 4000:
         raise ValueError("Descrição deve ter até 4000 caracteres.")
     return name, description
@@ -174,12 +230,16 @@ def _current_progress(analysis: Analysis) -> dict:
             if value.get("finished_at") and time.monotonic() - value["finished_at"] > _progress_retention_seconds:
                 _progress.pop(identifier, None)
         current = dict(_progress.get(analysis.id, {}))
-    return {"status": analysis.status, "document_index": current.get("document_index", 0),
+    error = current.get("error") or (analysis.error_message if analysis.status == "erro" else None)
+    state = "erro" if error else "processando" if _upload_lock(analysis.id).exists() else analysis.status
+    percent = 100 if state == "concluida" else min(99, max(0, current.get("percentual", 0)))
+    return {"status": state, "percentual": percent, "pages_completed": current.get("pages_completed", 0),
+            "total_pages": current.get("total_pages", 0), "document_index": current.get("document_index", 0),
             "document_count": current.get("document_count", analysis.document_count),
             "document_name": current.get("document_name"), "page_number": current.get("page_number", 0),
             "page_count": current.get("page_count", 0), "stage": current.get("stage"),
-            "result_url": url_for("qualitative.base", analysis_id=analysis.id) if analysis.status == "concluida" else None,
-            "error": current.get("error") or (analysis.error_message if analysis.status == "erro" else None)}
+            "result_url": url_for("qualitative.base", analysis_id=analysis.id) if state == "concluida" else None,
+            "error": error}
 
 
 def _run_corpus_job(app, analysis_id: str) -> None:
@@ -491,13 +551,24 @@ def create_code(analysis_id: UUID):
 def edit_code(analysis_id: UUID, code_id: UUID):
     analysis = _editable_base(analysis_id)
     code = get_qualitative_code(analysis, str(code_id))
+    if request.content_length is None or request.content_length > 131_072:
+        return jsonify({"error": "O registro enviado excede o limite permitido."}), 400
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict) or not ({"name", "color"} & payload.keys()):
+        return jsonify({"error": "Informe o nome ou uma cor válida para o código."}), 400
+    if "color" in payload and (type(payload["color"]) is not str
+                               or payload["color"] not in QUALITATIVE_CODE_PALETTE):
+        return jsonify({"error": "Cor inválida. Escolha uma das cores da paleta."}), 400
     try:
-        name, description = _code_fields()
+        name, description = (_code_fields(default_description=code.description)
+                             if "name" in payload else (code.name, code.description))
     except ValueError as error:
         return jsonify({"error": str(error)}), 400
     if _duplicate_code(analysis, name, except_id=code.id):
         return jsonify({"error": "Já existe um código com esse nome neste projeto."}), 409
     code.name, code.description = name, description
+    if "color" in payload:
+        code.color = payload["color"]
     try:
         db.session.commit()
     except IntegrityError:
@@ -511,6 +582,8 @@ def edit_code(analysis_id: UUID, code_id: UUID):
 def delete_code(analysis_id: UUID, code_id: UUID):
     analysis = _editable_base(analysis_id)
     code = get_qualitative_code(analysis, str(code_id))
+    db.session.execute(delete(QualitativeRejection).where(
+        QualitativeRejection.analysis_id == analysis.id, QualitativeRejection.code_id == code.id))
     db.session.execute(delete(QualitativeCoding).where(
         QualitativeCoding.analysis_id == analysis.id, QualitativeCoding.code_id == code.id))
     # Memos contextuais são preservados como memos gerais; trechos mantêm sua identidade.
@@ -654,7 +727,8 @@ def coding_report(analysis_id: UUID):
                            excerpt=excerpt.id),
         })
     return render_template("platform/qualitative_coding_report.html", analysis=analysis,
-                           project=project, codes=codes, grouped=grouped)
+                           project=project, codes=codes, grouped=grouped,
+                           code_styles={code.id: code_color_style(code.color) for code in codes})
 
 
 @qualitative_bp.get("/bases/<uuid:analysis_id>/relatorio-codificacao.xlsx")
@@ -668,6 +742,7 @@ def coding_report_excel(analysis_id: UUID):
         flash("Ainda não há trechos codificados para exportar.", "warning")
         return redirect(url_for("qualitative.coding_report", analysis_id=analysis.id))
     code_names = {code.id: code.name for code in codes}
+    code_styles = {code.id: code_color_style(code.color) for code in codes}
     excerpt_ids = {excerpt.id for _, excerpt, _ in rows}
     memos = db.session.scalars(select(QualitativeMemo).where(
         QualitativeMemo.analysis_id == analysis.id,
@@ -694,6 +769,10 @@ def coding_report_excel(analysis_id: UUID):
                       _safe_excel_text(document.original_name),
                       excerpt.page_number, _safe_excel_text(excerpt.quoted_text),
                       _safe_excel_text("\n---\n".join(memo_texts.get(excerpt.id, [])))])
+        code_cell = sheet.cell(row=sheet.max_row, column=1)
+        style = code_styles[coding.code_id]
+        code_cell.fill = PatternFill(fill_type="solid", fgColor="FF" + style["color_hex"].lstrip("#"))
+        code_cell.font = Font(color="FF" + style["color_text"].lstrip("#"))
     for column, width in {"A": 26, "B": 36, "C": 10, "D": 80, "E": 65}.items():
         sheet.column_dimensions[column].width = width
     for row in sheet.iter_rows(min_row=2):
@@ -737,7 +816,7 @@ def page(analysis_id: UUID, document_id: UUID, page_number: int):
             target_excerpt_id = target.id
     return render_template("platform/qualitative_reader.html", analysis=analysis, project=project,
                            manifest=manifest, current=current, records=_records_payload(analysis),
-                           target_excerpt_id=target_excerpt_id)
+                           target_excerpt_id=target_excerpt_id, code_palette=code_palette_options())
 
 
 @qualitative_bp.get("/bases/<uuid:analysis_id>/documentos/<uuid:document_id>/ir")
@@ -824,6 +903,131 @@ def page_layout(analysis_id: UUID, document_id: UUID, page_number: int):
         abort(409)
 
 
+@qualitative_bp.post("/bases/<uuid:analysis_id>/documentos/<uuid:document_id>/codificar")
+@login_required
+def automatically_code(analysis_id: UUID, document_id: UUID):
+    """Busca explícita com escrita; GET /buscar permanece estritamente leitura."""
+    with ACCOUNT_LIFECYCLE_LOCK:
+        analysis = _editable_base(analysis_id)
+        get_qualitative_document(analysis, str(document_id))
+        if analysis.status != "concluida" or _upload_lock(analysis.id).exists():
+            return jsonify({"error": "Aguarde a preparação dos documentos."}), 409
+        if request.content_length is None or request.content_length > 131_072:
+            return jsonify({"error": "Consulta excede o limite permitido."}), 400
+        payload = request.get_json(silent=True)
+        if (not isinstance(payload, dict) or not isinstance(payload.get("q"), str)
+                or type(payload.get("mode")) is not str
+                or payload["mode"] not in {"literal", "lexical", "semantic"}
+                or not isinstance(payload.get("scope"), str)
+                or payload["scope"] not in {"document", "project"}
+                or type(payload.get("grep", False)) is not bool or type(payload.get("case_sensitive", False)) is not bool
+                or type(payload.get("contextual_rejection_enabled", False)) is not bool
+                or type(payload.get("multiple_terms", False)) is not bool):
+            return jsonify({"error": "Configuração de codificação automática inválida."}), 400
+        if payload.get("grep") and payload["mode"] != "literal":
+            return jsonify({"error": "Regex está disponível somente na autocodificação Literal."}), 400
+        if any(field in payload for field in ("code_id", "name", "description")):
+            return jsonify({"error": "Na autocodificação, o código é definido pelo termo pesquisado."}), 400
+        job_id = None
+        if "progress_id" in payload:
+            try:
+                if payload["mode"] != "semantic" or not isinstance(payload["progress_id"], str):
+                    raise ValueError
+                job_id = str(UUID(payload["progress_id"]))
+            except ValueError:
+                return jsonify({"error": "Identificador de progresso semântico inválido."}), 400
+        job_started = False
+        try:
+            if job_id:
+                _semantic_job_begin(job_id, analysis, current_user.id)
+                job_started = True
+                manifest = load_qualitative_manifest(analysis)
+                document_names = {item["document_id"]: item["original_name"]
+                                  for item in manifest["documents"]}
+                def report_progress(event):
+                    _semantic_job_update(job_id, stage=event["stage"], percent=event["percent"],
+                                         document_id=event.get("document_id"),
+                                         page_number=event.get("page_number"),
+                                         document_names=document_names)
+            else:
+                report_progress = None
+            lock_annotation_write(analysis)
+            result = automatic_coding(analysis, str(document_id) if payload["scope"] == "document" else None,
+                payload["q"], current_user.id, grep=payload.get("grep", False),
+                case_sensitive=payload.get("case_sensitive", False),
+                contextual_rejection_enabled=payload.get("contextual_rejection_enabled", False),
+                multiple_terms=payload.get("multiple_terms", False), mode=payload["mode"],
+                progress_callback=report_progress)
+            records = _records_payload(analysis)
+            db.session.commit()
+            if job_started:
+                _semantic_job_update(job_id, stage="complete", percent=100)
+        except QualitativePageNotFoundError:
+            db.session.rollback()
+            if job_started:
+                _semantic_job_update(job_id, stage="error", percent=0, error="Documento não encontrado.")
+            abort(404)
+        except (CorpusUnavailableError, SelectionConflict) as error:
+            db.session.rollback()
+            if job_started:
+                _semantic_job_update(job_id, stage="error", percent=0, error=str(error))
+            return jsonify({"error": str(error)}), 409
+        except SemanticModelUnavailable as error:
+            db.session.rollback()
+            if job_started:
+                _semantic_job_update(job_id, stage="error", percent=0, error=str(error))
+            return jsonify({"error": str(error)}), 503
+        except (ValueError, QualitativeSearchError) as error:
+            db.session.rollback()
+            if job_started:
+                _semantic_job_update(job_id, stage="error", percent=0, error=str(error))
+            return jsonify({"error": str(error)}), 400
+        except IntegrityError:
+            db.session.rollback()
+            if job_started:
+                _semantic_job_update(job_id, stage="error", percent=0,
+                                     error="Outra operação alterou os códigos.")
+            return jsonify({"error": "Outra operação alterou os códigos. Tente novamente."}), 409
+        except Exception:
+            db.session.rollback()
+            if job_started:
+                _semantic_job_update(job_id, stage="error", percent=0,
+                                     error="Não foi possível concluir a busca semântica.")
+            raise
+        return jsonify({**result, "records": records}), 201
+
+
+@qualitative_bp.delete("/bases/<uuid:analysis_id>/codificacoes/<uuid:coding_id>")
+@login_required
+def delete_coding(analysis_id: UUID, coding_id: UUID):
+    with ACCOUNT_LIFECYCLE_LOCK:
+        analysis = _editable_base(analysis_id)
+        if _upload_lock(analysis.id).exists():
+            return jsonify({"error": "Aguarde a preparação dos documentos."}), 409
+        lock_annotation_write(analysis)
+        coding = db.session.get(QualitativeCoding, str(coding_id))
+        if coding is None or coding.analysis_id != analysis.id:
+            abort(404)
+        try:
+            excerpt = remove_coding(analysis, coding, current_user.id)
+            # Valida a resposta antes do commit: corpus inconsistente não produz sucesso parcial.
+            db.session.flush()
+            page = page_excerpts(analysis, excerpt.document_id, excerpt.page_number)
+            records = _records_payload(analysis)
+            db.session.commit()
+        except (CorpusUnavailableError, SelectionConflict):
+            db.session.rollback()
+            abort(409)
+        except QualitativePageNotFoundError:
+            db.session.rollback()
+            abort(404)
+        except IntegrityError:
+            db.session.rollback()
+            return jsonify({"error": "Outra operação alterou esta codificação. Atualize a página."}), 409
+        return jsonify({"page": page, "records": records, "page_number": excerpt.page_number,
+                        "document_id": excerpt.document_id})
+
+
 @qualitative_bp.get("/bases/<uuid:analysis_id>/documentos/<uuid:document_id>/paginas/<int:page_number>/trechos")
 @login_required
 def excerpts_on_page(analysis_id: UUID, document_id: UUID, page_number: int):
@@ -841,6 +1045,7 @@ def excerpts_on_page(analysis_id: UUID, document_id: UUID, page_number: int):
 @login_required
 def edit_excerpt(analysis_id: UUID, excerpt_id: UUID):
     analysis = _editable_base(analysis_id)
+    lock_annotation_write(analysis)
     excerpt = get_qualitative_excerpt(analysis, str(excerpt_id))
     get_qualitative_document(analysis, excerpt.document_id)
     if analysis.status != "concluida":
@@ -876,6 +1081,7 @@ def edit_excerpt(analysis_id: UUID, excerpt_id: UUID):
 def annotate_selection(analysis_id: UUID, document_id: UUID, page_number: int):
     """Uma transação por gesto: texto canônico → trecho → código(s)/memo."""
     analysis = _editable_base(analysis_id)
+    lock_annotation_write(analysis)
     get_qualitative_document(analysis, str(document_id))
     if analysis.status != "concluida":
         abort(409)

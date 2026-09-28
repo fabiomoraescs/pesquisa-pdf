@@ -37,6 +37,11 @@ RUN mkdir -p /app/uploads /app/outputs /app/.cache/huggingface /app/.cache/sente
 
 USER appuser
 
+# Disponibiliza o mesmo modelo multilíngue da V3 sem download durante a requisição.
+RUN python -c "from analyzer.v3 import carregar_modelo_semantico; carregar_modelo_semantico()"
+ENV HF_HUB_OFFLINE=1 \
+    TRANSFORMERS_OFFLINE=1
+
 EXPOSE 5000
 
 # O banco e os snapshots ficam em /app/outputs; monte um volume persistente.

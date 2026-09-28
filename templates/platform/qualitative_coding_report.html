@@ -11,7 +11,7 @@
 <div class="platform-qualitative-report">
   {% for code in codes %}
   <section class="platform-panel platform-qualitative-report-group" aria-labelledby="report-code-{{ code.id }}">
-    <h2 class="h5" id="report-code-{{ code.id }}">{{ code.name }} <span class="platform-muted">({{ grouped[code.id] | length }} {{ 'trecho' if grouped[code.id] | length == 1 else 'trechos' }})</span></h2>
+    <h2 class="h5" id="report-code-{{ code.id }}"><span class="platform-qualitative-report-code" style="--qualitative-code-color: {{ code_styles[code.id].color_hex }}; --qualitative-code-text: {{ code_styles[code.id].color_text }}">{{ code.name }}</span> <span class="platform-muted">({{ grouped[code.id] | length }} {{ 'trecho' if grouped[code.id] | length == 1 else 'trechos' }})</span></h2>
     {% if code.description %}<p class="platform-muted">{{ code.description }}</p>{% endif %}
     {% for item in grouped[code.id] %}
     <article class="platform-qualitative-report-excerpt">

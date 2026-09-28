@@ -44,6 +44,7 @@ def processar_documentos(
     metodo_analise: str = "lexical",
     limiar_semantico: float | None = None,
     incluir_morfologia: bool = False,
+    incluir_familia_lexical: bool = False,
 ) -> dict[str, Any]:
     """Um PDF = um documento; resultados são candidatos lexicais à revisão.
 
@@ -59,7 +60,8 @@ def processar_documentos(
         limiar_semantico = DEFAULT
     if vocabulario is None:
         configuracao_entidades = carregar_entidades()
-        buscador = BuscadorLexical(listar_entidades(), incluir_morfologia=incluir_morfologia)
+        buscador = BuscadorLexical(listar_entidades(), incluir_morfologia=incluir_morfologia,
+                                  incluir_familia_lexical=incluir_familia_lexical)
         grupos = configuracao_entidades["grupos"]
         vocabulario_version = None
         vocabulario_hash = None
@@ -68,7 +70,8 @@ def processar_documentos(
     else:
         conteudo = vocabulario["vocabulario"]
         entidades_ativas = entidades_pesquisaveis(conteudo)
-        buscador = BuscadorLexical(entidades_ativas, incluir_morfologia=incluir_morfologia)
+        buscador = BuscadorLexical(entidades_ativas, incluir_morfologia=incluir_morfologia,
+                                  incluir_familia_lexical=incluir_familia_lexical)
         grupos = {codigo: grupo["nome"] for codigo, grupo in conteudo["grupos"].items()}
         vocabulario_version = vocabulario["version"]
         vocabulario_hash = vocabulario["hash"]

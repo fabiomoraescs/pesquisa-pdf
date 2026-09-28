@@ -103,6 +103,8 @@ def register_version(project: Project, record: dict) -> None:
 
 
 def create_project_vocabulary(project: Project, libraries: list[VocabularyLibrary]) -> dict:
+    if any(library.owner_user_id not in (None, project.owner_user_id) for library in libraries):
+        raise VocabularioError("Biblioteca indisponível para este projeto.")
     merged = merge_libraries(libraries)
     store = project_store(project.id, initial_vocabulary=merged)
     record = store.capturar_ativa()

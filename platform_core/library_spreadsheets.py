@@ -240,25 +240,25 @@ def parse_library_xlsx(data: bytes) -> ImportedLibrary:
 
 
 class ImportPreviews:
-    """Prévia efêmera por admin; nenhum registro parcial é inserido no banco."""
+    """Prévia efêmera por usuário/contexto; nenhum registro parcial é salvo."""
 
     def __init__(self, ttl_seconds: int = 900):
         self._ttl = ttl_seconds
-        self._items: dict[str, tuple[float, str, ImportedLibrary]] = {}
+        self._items: dict[str, tuple[float, str, ImportedLibrary, str]] = {}
         self._lock = RLock()
 
-    def put(self, user_id: str, imported: ImportedLibrary) -> str:
+    def put(self, user_id: str, imported: ImportedLibrary, context: str = "admin") -> str:
         token = secrets.token_urlsafe(24)
         with self._lock:
             now = time.monotonic()
             self._items = {key: item for key, item in self._items.items() if now - item[0] <= self._ttl}
-            self._items[token] = (now, user_id, imported)
+            self._items[token] = (now, user_id, imported, context)
         return token
 
-    def get(self, token: str, user_id: str) -> ImportedLibrary | None:
+    def get(self, token: str, user_id: str, context: str = "admin") -> ImportedLibrary | None:
         with self._lock:
             item = self._items.get(token)
-            if item is None or item[1] != user_id:
+            if item is None or item[1] != user_id or item[3] != context:
                 return None
             if time.monotonic() - item[0] > self._ttl:
                 self._items.pop(token, None)

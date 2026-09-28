@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import re
 import unicodedata
+from uuid import uuid4
 
 from sqlalchemy import select
 
@@ -27,17 +28,18 @@ def slug(text: str, limit: int = 60) -> str:
     return result
 
 
-def create_draft(name: str, description: str) -> VocabularyLibrary:
+def create_draft(name: str, description: str, *, owner_user_id: str | None = None) -> VocabularyLibrary:
     name, description = name.strip(), description.strip()
     if not name or len(name) > 160 or len(description) > 4000:
         raise LibraryError("Informe um nome válido e uma descrição de até 4.000 caracteres.")
-    key = slug(name)
+    key = slug(name) if owner_user_id is None else f"private_{uuid4().hex}"
     if db.session.get(VocabularyLibrary, key) is not None or db.session.scalar(
-        select(VocabularyLibrary.id).where(db.func.lower(VocabularyLibrary.name) == name.lower())
+        select(VocabularyLibrary.id).where(db.func.lower(VocabularyLibrary.name) == name.lower(),
+                                          VocabularyLibrary.owner_user_id == owner_user_id)
     ):
         raise LibraryError("Já existe uma biblioteca com esse nome ou identificador.")
     snapshot = {"grupos": {}, "entidades": []}
-    library = VocabularyLibrary(id=key, name=name, description=description,
+    library = VocabularyLibrary(id=key, name=name, description=description, owner_user_id=owner_user_id,
                                 status="draft", version="v1", active=False,
                                 snapshot_json=snapshot, counts_json=_contagens(snapshot),
                                 content_hash=hash_vocabulario(snapshot))
@@ -45,9 +47,9 @@ def create_draft(name: str, description: str) -> VocabularyLibrary:
     return library
 
 
-def create_imported_draft(name: str, description: str, snapshot: dict) -> VocabularyLibrary:
+def create_imported_draft(name: str, description: str, snapshot: dict, *, owner_user_id: str | None = None) -> VocabularyLibrary:
     """Cria a biblioteca inteira em uma única transação controlada pela rota."""
-    library = create_draft(name, description)
+    library = create_draft(name, description, owner_user_id=owner_user_id)
     _save(library, snapshot)
     return library
 

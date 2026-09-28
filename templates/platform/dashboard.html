@@ -41,7 +41,10 @@
     {% if latest %}
       {% set base = latest[0] %}
       <a class="platform-dashboard-base-link" href="{{ url_for('qualitative.base', analysis_id=base.id) }}">{{ latest[1] }}</a>
-      <p class="platform-muted mb-0">{{ base.created_at.strftime('%d/%m/%Y') }}</p>
+      <p class="platform-muted mb-2">{{ base.created_at.strftime('%d/%m/%Y') }}</p>
+      {% if chart_data['qualitative'].labels %}
+      <div class="chart-card"><h3 class="h6">Trechos por código</h3><div id="dashboard-chart-qualitative" class="chart" role="img" aria-label="Trechos por código do projeto {{ latest[1] }}"></div></div>
+      {% else %}<p class="platform-muted mb-0">Ainda não há dados para exibir neste gráfico.</p>{% endif %}
     {% else %}<p class="platform-muted mb-0">Nenhuma análise quali-dados ainda.</p>{% endif %}
   </section>
 </div>

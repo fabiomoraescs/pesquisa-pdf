@@ -31,19 +31,22 @@ from sqlalchemy import extract, false, func, or_, select
 from werkzeug.exceptions import NotFound
 
 from platform_core.extensions import csrf, db, login_manager, migrate
-from platform_core.models import Analysis, Project, Tool, User
+from platform_core.models import Analysis, Project, QualitativeCode, Tool, User
 from platform_core.analyses import create_analysis, document_paths, get_analysis, history_access_filter, load_result, preserve_documents, save_error, save_success, systematic_chart_data
 from platform_core.auth import auth_bp
 from platform_core.projects import projects_bp
 from platform_core.admin import admin_bp
+from platform_core.library_access import user_libraries_bp
 from platform_core.profile import profile_bp
 from platform_core.analysis_routes import analyses_bp
 from platform_core.qualitative_routes import qualitative_bp
+from platform_core.qualitative import code_excerpt_counts
 from platform_core.presentation import register_presentation
 from platform_core.cli import register_cli
-from platform_core.services import ACCOUNT_LIFECYCLE_LOCK, access_is_active, account_accepts_new_work, can_use_tool, get_project_for_user
+from platform_core.services import ACCOUNT_LIFECYCLE_LOCK, access_is_active, account_accepts_new_work, can_use_tool, get_project_for_user, tool_catalog
 from platform_core.scraping_types import FREE, QUALITATIVE, QUALITATIVE_TOOL, SYSTEMATIC, TOOL_BY_TYPE, tool_for_project
 from platform_core.semantic_threshold import normalize as normalize_semantic_threshold, template_settings
+from platform_core.term_input import has_invalid_term_separator
 
 from analyzer.common import (
     ANALISADORES,
@@ -104,6 +107,7 @@ def _semantic_threshold_template_context():
 app.register_blueprint(auth_bp)
 app.register_blueprint(projects_bp)
 app.register_blueprint(admin_bp)
+app.register_blueprint(user_libraries_bp)
 app.register_blueprint(profile_bp)
 app.register_blueprint(historico_racial_bp)
 app.register_blueprint(analyses_bp)
@@ -649,7 +653,7 @@ def _configuracoes_v3() -> dict[str, object]:
 
 def _termos_digitados_tem_separador_invalido(texto: str) -> bool:
     """Impede que o campo manual use separadores diferentes de ponto e vírgula."""
-    return "," in texto or "." in texto
+    return has_invalid_term_separator(texto)
 
 
 @app.errorhandler(413)
@@ -669,7 +673,7 @@ def home():
         .group_by(Project.scrape_type)).all())
     projects_by_type = {kind: project_counts.get(kind, 0) for kind in TOOL_BY_TYPE}
     projects_total = sum(projects_by_type.values())
-    # Bases públicas e gráficos continuam exclusivos das buscas existentes.
+    # Resumos de Bases públicas continuam exclusivos das buscas existentes.
     available_types = [kind for kind in (FREE, SYSTEMATIC) if kind in available_project_types]
     base_filter = (or_(*(history_access_filter(current_user.id, kind)
                          for kind in available_types)) if available_types else false(),)
@@ -687,6 +691,16 @@ def home():
         history_access_filter(current_user.id, QUALITATIVE), Project.status == "active"
     ).order_by(Analysis.created_at.desc(), Analysis.id.desc()).limit(1)).first()
         if QUALITATIVE in available_project_types else None)
+    if latest_bases[QUALITATIVE] is not None:
+        qualitative_analysis = latest_bases[QUALITATIVE][0]
+        counts = code_excerpt_counts(qualitative_analysis)
+        codes = db.session.scalars(select(QualitativeCode).where(
+            QualitativeCode.analysis_id == qualitative_analysis.id)).all()
+        pairs = sorted(((code.name, counts.get(code.id, 0)) for code in codes),
+                       key=lambda pair: (-pair[1], pair[0]))
+        chart_data[QUALITATIVE] = {"title": "Trechos por código", "unit": "trecho(s)",
+                                  "labels": [name for name, _ in pairs],
+                                  "values": [count for _, count in pairs]}
     for kind in (FREE, SYSTEMATIC):
         if kind not in available_types:
             latest_bases[kind] = None
@@ -733,15 +747,16 @@ def home():
             select(year_expression, month_expression, func.count())
             .where(User.created_at >= datetime(first_year, first_month, 1, tzinfo=timezone.utc))
             .group_by(year_expression, month_expression)).all()}
+        catalog = tool_catalog()
         usage_counts = dict(db.session.execute(select(Analysis.tool_id, func.count())
-            .where(Analysis.status == "concluida", Analysis.tool_id.in_(TOOL_BY_TYPE.values()))
+            .where(Analysis.status == "concluida")
             .group_by(Analysis.tool_id)).all())
         admin_charts = {
             "registrations": {"labels": months,
                               "values": [registration_counts.get(month, 0) for month in months]},
-            "usage": {"labels": ["Busca por termos", "Busca estruturada"],
-                      "values": [usage_counts.get(TOOL_BY_TYPE[kind], 0)
-                                 for kind in (FREE, SYSTEMATIC)]},
+            "usage": {"labels": [tool["name"] for tool in catalog],
+                      "values": [usage_counts.get(tool["id"], 0) if tool["implemented"] else 0
+                                 for tool in catalog]},
         }
     return render_template("platform/dashboard.html", projects_total=projects_total,
                            projects_by_type=projects_by_type, bases_total=bases_total,
@@ -780,7 +795,7 @@ def inicio():
         ).order_by(Project.name)).all()
         duplicate_terms = "; ".join(item["termo"] for item in duplicate.parameters_json.get("termos", [])) if duplicate else ""
         return render_template("index.html", job_inicial=request.args.get("job", ""), duplicate=duplicate,
-                               duplicate_terms=duplicate_terms, free_projects=free_projects,
+                               duplicate_terms=duplicate_terms, free_projects=free_projects, selected_project=selected_project,
                                selected_project_id=selected_project_id,
                                legacy_project=selected_project if selected_project and selected_project.scrape_type != FREE else None)
 
@@ -795,6 +810,10 @@ def inicio():
                 abort(403)
 
     selected_project_id = request.form.get("project_id", "").strip()
+    if request.args.get("project_id"):
+        if selected_project_id and selected_project_id != request.args["project_id"]:
+            abort(400)
+        selected_project_id = request.args["project_id"]
     if selected_project_id:
         try:
             target_project = get_project_for_user(str(UUID(selected_project_id)), current_user)
@@ -988,6 +1007,7 @@ def create_app(test_config: dict | None = None) -> Flask:
     isolated.register_blueprint(auth_bp)
     isolated.register_blueprint(projects_bp)
     isolated.register_blueprint(admin_bp)
+    isolated.register_blueprint(user_libraries_bp)
     isolated.register_blueprint(profile_bp)
     isolated.register_blueprint(historico_racial_bp)
     isolated.register_blueprint(analyses_bp)

@@ -9,12 +9,12 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 from flask import abort
-from sqlalchemy import delete
+from sqlalchemy import delete, distinct, func, select
 
 from .extensions import db
 from .models import (
     Analysis, AnalysisDocument, Project, QualitativeCode, QualitativeCoding,
-    QualitativeExcerpt, QualitativeMemo, User,
+    QualitativeExcerpt, QualitativeMemo, QualitativeRejection, User,
 )
 from .scraping_types import QUALITATIVE, QUALITATIVE_TOOL
 from .services import can_use_tool, get_project_for_user
@@ -70,6 +70,18 @@ def get_qualitative_code(analysis: Analysis, code_id: str) -> QualitativeCode:
     return code
 
 
+def code_excerpt_counts(analysis: Analysis) -> dict[str, int]:
+    """A mesma contagem por código no Explorador e no Dashboard autorizado.
+
+    Um trecho com vários códigos conta uma vez em cada código associado.
+    O chamador deve conferir o acesso à análise antes de consultar seus dados.
+    """
+    return dict(db.session.execute(select(
+        QualitativeCoding.code_id,
+        func.count(distinct(QualitativeCoding.excerpt_id)),
+    ).where(QualitativeCoding.analysis_id == analysis.id).group_by(QualitativeCoding.code_id)).all())
+
+
 def get_qualitative_excerpt(analysis: Analysis, excerpt_id: str) -> QualitativeExcerpt:
     excerpt = db.session.get(QualitativeExcerpt, excerpt_id)
     if excerpt is None or excerpt.analysis_id != analysis.id:
@@ -92,6 +104,7 @@ def delete_qualitative_dependents(analysis_ids: Iterable[str]) -> None:
     identifiers = tuple(dict.fromkeys(analysis_ids))
     if not identifiers:
         return
+    db.session.execute(delete(QualitativeRejection).where(QualitativeRejection.analysis_id.in_(identifiers)))
     db.session.execute(delete(QualitativeCoding).where(QualitativeCoding.analysis_id.in_(identifiers)))
     db.session.execute(delete(QualitativeMemo).where(QualitativeMemo.analysis_id.in_(identifiers)))
     db.session.execute(delete(QualitativeExcerpt).where(QualitativeExcerpt.analysis_id.in_(identifiers)))

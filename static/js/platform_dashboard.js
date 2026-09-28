@@ -6,12 +6,12 @@
   const admin = adminSource ? JSON.parse(adminSource.textContent) : null;
   const theme = window.PesquisaPdfPlotTheme;
 
-  function draw(id, series, { horizontal = true, colorIndex = 0, label = 'Ocorrências' } = {}) {
+  function draw(id, series, { horizontal = true, colorIndex = 0, label = 'Ocorrências', showZeros = false } = {}) {
     const target = document.getElementById(id);
     if (!target || !series) return;
     const labels = series.labels || [];
     const values = series.values || [];
-    if (!labels.length || !values.some(value => Number(value) > 0)) {
+    if (!labels.length || (!showZeros && !values.some(value => Number(value) > 0))) {
       if (target.classList.contains('js-plotly-plot')) Plotly.purge(target);
       target.textContent = 'Ainda não há dados para exibir neste gráfico.';
       target.classList.add('empty-chart');
@@ -43,6 +43,8 @@
       { label: personal.free?.unit || 'ocorrência(s)' });
     draw('dashboard-chart-systematic', personal.systematic,
       { colorIndex: 1, label: 'ocorrência(s)' });
+    draw('dashboard-chart-qualitative', personal.qualitative,
+      { colorIndex: 2, label: 'trecho(s)' });
     if (admin) {
       const registrations = {
         labels: admin.registrations.labels.map(month => `${month.slice(5, 7)}/${month.slice(0, 4)}`),
@@ -51,9 +53,36 @@
       draw('dashboard-chart-users', registrations,
         { horizontal: false, colorIndex: 2, label: 'cadastro(s)' });
       draw('dashboard-chart-usage', admin.usage,
-        { colorIndex: 3, label: 'Base(s) concluída(s)' });
+        { colorIndex: 3, label: 'Base(s) concluída(s)', showZeros: true });
     }
   }
   render();
   document.addEventListener('tema-alterado', render);
+  // Mesmo padrão do dashboard de resultados: observa o card e agrupa o resize
+  // em um frame. Também cobre mudanças de largura sem resize da janela.
+  let resizeFrame;
+  const resizeCharts = () => {
+    cancelAnimationFrame(resizeFrame);
+    resizeFrame = requestAnimationFrame(() => {
+      document.querySelectorAll('.platform-dashboard-latest .js-plotly-plot')
+        .forEach(chart => Plotly.Plots.resize(chart));
+    });
+  };
+  document.addEventListener('dashboard-redimensionar', resizeCharts);
+  if ('ResizeObserver' in window) {
+    const widths = new WeakMap();
+    const observer = new ResizeObserver(entries => {
+      let changed = false;
+      for (const entry of entries) {
+        const width = entry.contentRect.width;
+        if (widths.get(entry.target) !== width) {
+          widths.set(entry.target, width);
+          changed = true;
+        }
+      }
+      if (changed) resizeCharts();
+    });
+    document.querySelectorAll('.platform-dashboard-latest .chart-card')
+      .forEach(card => observer.observe(card));
+  }
 })();

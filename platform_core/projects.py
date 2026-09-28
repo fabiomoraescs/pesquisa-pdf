@@ -11,6 +11,7 @@ from sqlalchemy import select
 from historico_racial.vocabulary import VocabularioError
 
 from .extensions import db
+from .library_access import available_libraries
 from .models import Project, ProjectLibrary, ProjectVocabularyVersion, VocabularyLibrary
 from .project_lifecycle import ProjectActionError, archive, delete_archived, restore
 from .services import ACCOUNT_LIFECYCLE_LOCK, account_accepts_new_work, can_use_tool, get_project_for_user
@@ -132,7 +133,7 @@ def _project_list_endpoint(scrape_type: str, *, archived: bool = False) -> str:
 def _new_project(scrape_type: str):
     _require_tool(scrape_type)
     libraries = db.session.scalars(
-        select(VocabularyLibrary).where(VocabularyLibrary.active.is_(True), VocabularyLibrary.status == "published")
+        select(VocabularyLibrary).where(*available_libraries(current_user))
         .order_by(VocabularyLibrary.name)
     ).all() if scrape_type == SYSTEMATIC else []
     if request.method == "POST":
