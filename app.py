@@ -18,6 +18,7 @@ from flask import (
     abort,
     current_app,
     flash,
+    g,
     jsonify,
     redirect,
     render_template,
@@ -100,6 +101,8 @@ register_presentation(app)
 
 @app.context_processor
 def _semantic_threshold_template_context():
+    if getattr(g, "platform_error_page", False):
+        return {}
     return {"semantic_threshold": template_settings(),
             "free_access": bool(current_user.is_authenticated and can_use_tool(current_user, "pdf_scraper")),
             "systematic_access": bool(current_user.is_authenticated and can_use_tool(current_user, "document_analysis")),
@@ -125,7 +128,9 @@ def _load_user(user_id: str):
 
 @app.before_request
 def _enforce_platform_access():
-    if request.endpoint in {"static", "auth.login", "auth.register", "auth.forgot_password", "auth.reset_password"}:
+    # Não redireciona uma rota que o Flask ainda não encontrou: assim o
+    # manipulador 404 mantém seu status e sua página pública, inclusive sem login.
+    if request.endpoint is None or request.endpoint in {"static", "auth.login", "auth.register", "auth.forgot_password", "auth.reset_password"}:
         return None
     if not current_user.is_authenticated or not current_user.is_active:
         if current_user.is_authenticated:
@@ -169,6 +174,57 @@ def _csrf_error(_error):
     if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
         return jsonify({"erro": "Sessão expirada ou token de segurança inválido. Recarregue a página."}), 400
     return "Sessão expirada ou token de segurança inválido. Recarregue a página.", 400
+
+
+_ERROR_PAGE_COPY = {
+    403: ("Esta área não está disponível para você.",
+          "Seu usuário não possui permissão para acessar este conteúdo."),
+    404: ("Parece que esta página se perdeu.",
+          "Não encontramos o endereço que você tentou acessar. Ele pode ter sido alterado, removido ou digitado incorretamente."),
+    500: ("Ops! Algo não saiu como esperado.",
+          "O Análysis encontrou um problema ao processar esta solicitação. Você pode voltar e tentar novamente."),
+}
+
+
+def _platform_error_page(status: int):
+    """Página segura e independente do layout normal para falhas HTTP."""
+    g.platform_error_page = True
+    title, message = _ERROR_PAGE_COPY[status]
+    authenticated = bool(current_user.is_authenticated)
+    try:
+        return render_template(
+            "platform/error.html", error_code=status, title=title, message=message,
+            secondary_message=("Se o problema persistir, retorne ao Análysis e tente novamente mais tarde."
+                               if status == 500 else None),
+            action_url=url_for("home") if authenticated else url_for("auth.login"),
+            action_label="Voltar ao Análysis" if authenticated else "Ir para o login",
+        ), status
+    finally:
+        # Em produção o contexto termina com a requisição; removemos também nos
+        # app contexts longos usados pelos testes, para não ocultar contextos normais.
+        g.pop("platform_error_page", None)
+
+
+@app.errorhandler(403)
+def forbidden(_error):
+    return _platform_error_page(403)
+
+
+@app.errorhandler(404)
+def not_found(_error):
+    return _platform_error_page(404)
+
+
+@app.errorhandler(500)
+def internal_server_error(error):
+    original = getattr(error, "original_exception", None)
+    if original is not None:
+        current_app.logger.error("Unhandled application error", exc_info=(
+            type(original), original, original.__traceback__,
+        ))
+    else:
+        current_app.logger.error("Internal server error without an attached exception")
+    return _platform_error_page(500)
 
 # Cache de compatibilidade dos resultados recentes. O histórico fica no banco/volume.
 ANALISES: dict[str, dict] = {}
@@ -1020,6 +1076,9 @@ def create_app(test_config: dict | None = None) -> Flask:
     isolated.before_request(_enforce_platform_access)
     isolated.register_error_handler(CSRFError, _csrf_error)
     isolated.register_error_handler(413, arquivo_grande)
+    isolated.register_error_handler(403, forbidden)
+    isolated.register_error_handler(404, not_found)
+    isolated.register_error_handler(500, internal_server_error)
     for rule in app.url_map.iter_rules():
         if rule.endpoint in {"static"} or "." in rule.endpoint:
             continue

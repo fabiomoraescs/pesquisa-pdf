@@ -8,7 +8,7 @@ import app as legacy
 from historico_racial import routes as documentary
 from platform_helpers import create_project, create_user, csrf_from, isolated_platform, login
 from platform_core.extensions import db
-from platform_core.models import AccessGrant, AuditLog, Plan, Project, User, utcnow
+from platform_core.models import AccessGrant, AuditLog, Plan, Project, ProjectLibrary, ProjectVocabularyVersion, User, utcnow
 from platform_core.semantic_threshold import DEFAULT, MAXIMUM, MINIMUM, STEP, normalize
 from platform_core.services import current_grant, replace_grant
 
@@ -358,6 +358,9 @@ class RemainingRefinementsTests(unittest.TestCase):
     def test_archived_project_delete_is_physical_audited_and_blocks_active_job(self):
         project_id = create_project(self.client)
         project = db.session.get(Project, project_id)
+        self.assertEqual(project.scrape_type, "systematic")
+        self.assertGreater(db.session.query(ProjectLibrary).filter_by(project_id=project_id).count(), 0)
+        self.assertGreater(db.session.query(ProjectVocabularyVersion).filter_by(project_id=project_id).count(), 0)
         delete_url = f"/projetos/{project_id}/excluir"
         self.assertEqual(self.client.get(delete_url).status_code, 400)
         self.client.post(f"/projetos/{project_id}/arquivar", data={
@@ -378,10 +381,14 @@ class RemainingRefinementsTests(unittest.TestCase):
         finally:
             with documentary.JOBS_LOCK:
                 documentary.PROGRESSOS_HR.pop(job_id, None)
-        self.assertEqual(self.client.post(delete_url, data={
+        deleted = self.client.post(delete_url, data={
             "csrf_token": csrf_from(self.client.get(delete_url)), "confirmation": "deletar",
-        }).status_code, 302)
+        })
+        self.assertNotEqual(deleted.status_code, 500)
+        self.assertEqual(deleted.status_code, 302)
         self.assertIsNone(db.session.get(Project, project_id))
+        self.assertEqual(db.session.query(ProjectLibrary).filter_by(project_id=project_id).count(), 0)
+        self.assertEqual(db.session.query(ProjectVocabularyVersion).filter_by(project_id=project_id).count(), 0)
         self.assertNotIn(project_id, self.client.get("/projetos/arquivados").get_data(as_text=True))
         self.assertIsNotNone(db.session.query(AuditLog).filter_by(
             action="project_permanently_deleted", target_id=project_id).first())

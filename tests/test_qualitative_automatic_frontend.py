@@ -134,6 +134,42 @@ assert.equal(resultCount.textContent,'2 de 2');assert.equal(resultSnippet.textCo
 prev.disabled=true;arrangeResultNavigation(false);arrangeResultNavigation(true);assert.equal(prev.disabled,true);
 """)
 
+    def test_entering_focus_resets_the_floating_panel_to_minimized_upper_left(self):
+        handler = SOURCE[SOURCE.index("  focusToggle.addEventListener('click'",):SOURCE.index("  focusHandle.addEventListener('pointerdown'")]
+        self.assertIn('if (focused) updateFocusPanel(true);', handler)
+        self.assertIn('movePanelTo(8, 8);', handler)
+        self.run_js(r"""
+const classes=new Set();
+const document={body:{classList:{
+  contains:name=>classes.has(name),
+  toggle:(name,value)=>value?classes.add(name):classes.delete(name),
+  remove:name=>classes.delete(name),
+}}};
+let handler;
+const focusToggle={addEventListener:(_,fn)=>handler=fn,setAttribute(key,value){this[key]=value;}};
+const focusLabel={},scroll={clientWidth:900};
+const focusActive=()=>document.body.classList.contains('platform-qualitative-focus');
+const window={matchMedia:()=>({matches:false})};
+const closeExplorerPopovers=()=>{},closeContextMenu=()=>{};
+const arrangeResultNavigation=()=>{},arrangeAutomaticControls=()=>{};
+const initialStates=[],positions=[];
+const updateFocusPanel=value=>initialStates.push(value);
+const movePanelTo=(left,top)=>positions.push([left,top]);
+const requestAnimationFrame=callback=>callback();
+let contextRequest=0,documentPdf=null;
+const rerenderVisiblePages=()=>{};
+""" + handler + r"""
+handler();
+assert.equal(focusToggle['aria-pressed'],'true');
+assert.equal(focusLabel.textContent,'Sair do modo foco');
+assert.deepEqual(initialStates,[true]);
+assert.deepEqual(positions,[[8,8]]);
+handler();
+handler();
+assert.deepEqual(initialStates,[true,true]);
+assert.deepEqual(positions,[[8,8],[8,8]]);
+""")
+
     def test_help_buttons_use_decorative_info_circle_without_changing_popover_contract(self):
         from html.parser import HTMLParser
         from jinja2 import Environment, FileSystemLoader
@@ -493,6 +529,8 @@ const exactItems=() => [{bbox:[0,2,3,4]}], syncMarginScroll=() => {};
 """ + source + r"""
 renderMargin();
 const card=marginTrack.children[0]; assert.equal(card.tag,'div'); assert.equal(card.attrs.role,'group');
+assert.equal(card.children[0].dataset.codingId,'coding-a');
+assert.equal(card.children[1].dataset.codingId,'coding-b');
 assert.equal(card.children[0].children[1].dataset.removeCoding,'coding-a');
 assert.equal(card.children[1].children[1].dataset.removeCoding,'coding-b');
 assert.ok(card.children[1].title.includes('Literal'));
@@ -528,4 +566,45 @@ const activateExcerpt=() => moved++;
   assert.equal(events[0].type,'qualitative:records-updated'); assert.equal(remove.disabled,false);
   remaining.length=0; await handler(event); assert.equal(activeExcerptId,null);
 })().catch(error => {console.error(error);process.exitCode=1;});
+""")
+
+    def test_connector_layer_uses_coding_identity_color_and_visible_geometry(self):
+        template = (ROOT / "templates/platform/qualitative_reader.html").read_text(encoding="utf-8")
+        css = (ROOT / "static/css/platform.css").read_text(encoding="utf-8")
+        source = SOURCE[SOURCE.index("  const drawConnectorLines ="):
+                        SOURCE.index("  const scheduleConnectorLines =")]
+        self.assertIn('data-connector-layer aria-hidden="true"', template)
+        self.assertIn('pointer-events: none', css.split(".platform-qualitative-connector-layer", 1)[1].split("}", 1)[0])
+        self.assertIn("box.dataset.codingId = code.coding_id", SOURCE)
+        self.assertIn("tag.dataset.codingId = code.coding_id", SOURCE)
+        self.assertIn("scroll.addEventListener('scroll'", SOURCE)
+        self.assertIn("scheduleConnectorLines();", SOURCE)
+        self.assertIn("ResizeObserver", SOURCE)
+        self.run_js(r"""
+let tags=[
+  {dataset:{codingId:'coding-a'},color:'#93C5FD',getBoundingClientRect:()=>({left:440,top:80,width:70,height:20,bottom:100})},
+  {dataset:{codingId:'coding-b'},color:'#86D8A8',getBoundingClientRect:()=>({left:440,top:140,width:70,height:20,bottom:160})},
+];
+let highlights=[
+  {dataset:{codingId:'coding-a',excerptId:'excerpt-a'},getBoundingClientRect:()=>({left:50,top:82,right:230,width:180,height:12,bottom:94})},
+  {dataset:{codingId:'coding-b',excerptId:'excerpt-b'},getBoundingClientRect:()=>({left:50,top:142,right:260,width:210,height:12,bottom:154})},
+];
+const connectorLayer={children:[],attrs:{},replaceChildren(){this.children=[];},append(item){this.children.push(item);},
+  setAttribute(name,value){this.attrs[name]=value;},getBoundingClientRect:()=>({left:0,top:0,width:540,height:320})};
+const marginTrack={querySelectorAll:()=>tags};
+const scroll={querySelectorAll:()=>highlights,getBoundingClientRect:()=>({top:40,bottom:280})};
+const margin={getBoundingClientRect:()=>({top:40,bottom:280})};
+const window={matchMedia:()=>({matches:false})};
+const document={createElementNS:()=>({dataset:{},attrs:{},setAttribute(name,value){this.attrs[name]=value;}})};
+const getComputedStyle=tag=>({getPropertyValue:()=>tag.color});
+""" + source + r"""
+drawConnectorLines();
+assert.equal(connectorLayer.children.length,2);
+assert.deepEqual(connectorLayer.children.map(line=>line.dataset.codingId),['coding-a','coding-b']);
+assert.deepEqual(connectorLayer.children.map(line=>line.dataset.excerptId),['excerpt-a','excerpt-b']);
+assert.deepEqual(connectorLayer.children.map(line=>line.attrs.stroke),['#93C5FD','#86D8A8']);
+assert.ok(connectorLayer.children.every(line=>line.attrs['stroke-width']==='1.5'));
+tags.splice(1,1);drawConnectorLines();assert.equal(connectorLayer.children.length,1);
+tags[0].color='#FDE68A';drawConnectorLines();assert.equal(connectorLayer.children[0].attrs.stroke,'#FDE68A');
+highlights=[];drawConnectorLines();assert.equal(connectorLayer.children.length,0);
 """)

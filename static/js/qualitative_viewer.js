@@ -34,6 +34,7 @@ if (root) {
   const margin = root.querySelector('.platform-qualitative-margin');
   const marginViewport = root.querySelector('[data-margin-viewport]');
   const marginTrack = root.querySelector('[data-margin-track]');
+  const connectorLayer = root.querySelector('[data-connector-layer]');
   const prev = root.querySelector('[data-result-prev]');
   const next = root.querySelector('[data-result-next]');
   const searchResults = root.querySelector('.platform-qualitative-search-results');
@@ -73,6 +74,7 @@ if (root) {
   let excerptDrag;
   let excerptSaving = false;
   let marginScheduled = false;
+  let connectorScheduled = false;
   let records = JSON.parse(recordsRoot.querySelector('[data-records-initial]').textContent);
   document.addEventListener('qualitative:records-updated', (event) => {
     records = event.detail;
@@ -174,10 +176,63 @@ if (root) {
     if (!marginTrack || window.matchMedia('(max-width: 950px)').matches) return;
     marginTrack.style.transform = `translateY(${-scroll.scrollTop}px)`;
   };
+  const drawConnectorLines = () => {
+    if (!connectorLayer) return;
+    connectorLayer.replaceChildren();
+    if (window.matchMedia('(max-width: 950px)').matches) return;
+    const layerRect = connectorLayer.getBoundingClientRect();
+    if (layerRect.width <= 0 || layerRect.height <= 0) return;
+    connectorLayer.setAttribute('viewBox', `0 0 ${layerRect.width} ${layerRect.height}`);
+    const pdfRect = scroll.getBoundingClientRect();
+    const marginRect = margin.getBoundingClientRect();
+    const highlights = [...scroll.querySelectorAll('.platform-qualitative-excerpt-box[data-coding-id]')];
+    for (const tag of marginTrack.querySelectorAll('.platform-qualitative-coding-tag[data-coding-id]')) {
+      const tagRect = tag.getBoundingClientRect();
+      if (tagRect.width <= 0 || tagRect.height <= 0
+          || tagRect.bottom <= marginRect.top || tagRect.top >= marginRect.bottom) continue;
+      const matching = highlights.filter((box) => box.dataset.codingId === tag.dataset.codingId)
+        .map((box) => ({ box, rect: box.getBoundingClientRect() }))
+        .filter(({ rect }) => rect.width > 0 && rect.height > 0
+          && rect.bottom > pdfRect.top && rect.top < pdfRect.bottom);
+      if (!matching.length) continue;
+      const target = matching.reduce((closest, candidate) => {
+        const tagCenter = tagRect.top + tagRect.height / 2;
+        const candidateDistance = Math.abs(candidate.rect.top + candidate.rect.height / 2 - tagCenter);
+        const closestDistance = Math.abs(closest.rect.top + closest.rect.height / 2 - tagCenter);
+        return candidateDistance < closestDistance
+          || (candidateDistance === closestDistance && candidate.rect.right > closest.rect.right)
+          ? candidate : closest;
+      });
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.dataset.codingId = tag.dataset.codingId;
+      line.dataset.excerptId = target.box.dataset.excerptId;
+      line.setAttribute('x1', String(tagRect.left - layerRect.left + 1));
+      line.setAttribute('y1', String(tagRect.top - layerRect.top + tagRect.height / 2));
+      line.setAttribute('x2', String(target.rect.right - layerRect.left - 1));
+      line.setAttribute('y2', String(target.rect.top - layerRect.top + target.rect.height / 2));
+      line.setAttribute('stroke', getComputedStyle(tag).getPropertyValue('--qualitative-code-color').trim() || '#93C5FD');
+      line.setAttribute('stroke-width', '1.5');
+      line.setAttribute('stroke-linecap', 'round');
+      line.setAttribute('stroke-opacity', '.78');
+      connectorLayer.append(line);
+    }
+  };
+  const scheduleConnectorLines = () => {
+    if (!connectorLayer || connectorScheduled) return;
+    connectorScheduled = true;
+    requestAnimationFrame(() => {
+      connectorScheduled = false;
+      drawConnectorLines();
+    });
+  };
   const scheduleMargin = () => {
     if (!marginTrack || marginScheduled) return;
     marginScheduled = true;
-    requestAnimationFrame(() => { marginScheduled = false; renderMargin(); });
+    requestAnimationFrame(() => {
+      marginScheduled = false;
+      renderMargin();
+      scheduleConnectorLines();
+    });
   };
 
   const releaseDistant = () => {
@@ -270,6 +325,7 @@ if (root) {
   };
   scroll.addEventListener('scroll', () => {
     syncMarginScroll();
+    scheduleConnectorLines();
     if (scrollScheduled) return;
     scrollScheduled = true;
     requestAnimationFrame(() => { scrollScheduled = false; updateCurrentPage(); });
@@ -398,6 +454,7 @@ if (root) {
           box.classList.toggle('is-memo-only', !code);
           if (code) {
             box.dataset.codeId = code.id;
+            box.dataset.codingId = code.coding_id;
             box.style.setProperty('--qualitative-code-color', code.color_hex || '#93C5FD');
             if (layers.length > 1) {
               box.style.clipPath = `inset(${index * 100 / layers.length}% 0 ${
@@ -491,6 +548,7 @@ if (root) {
         const tag = document.createElement('span');
         tag.className = 'platform-qualitative-coding-tag';
         tag.dataset.codeId = code.id;
+        tag.dataset.codingId = code.coding_id;
         tag.style.setProperty('--qualitative-code-color', code.color_hex || '#93C5FD');
         tag.style.setProperty('--qualitative-code-text', code.color_text || '#000000');
         const name = document.createElement('button');
@@ -1239,6 +1297,7 @@ if (root) {
     focusPanel.style.left = `${Math.min(limitX, Math.max(8, left))}px`;
     focusPanel.style.top = `${Math.min(limitY, Math.max(8, top))}px`;
     repositionExplorerPopovers();
+    scheduleConnectorLines();
   };
   const updateFocusPanel = (minimized) => {
     if (minimized) closeExplorerPopovers();
@@ -1288,14 +1347,10 @@ if (root) {
     focusToggle.setAttribute('aria-label', action);
     focusToggle.title = action;
     focusLabel.textContent = action;
-    if (focused) updateFocusPanel(window.matchMedia('(max-width: 700px)').matches);
+    if (focused) updateFocusPanel(true);
     requestAnimationFrame(() => {
       if (focused && !window.matchMedia('(max-width: 700px)').matches) {
-        if (focusPanel.style.left) movePanelTo(focusPanel.offsetLeft, focusPanel.offsetTop);
-        else {
-          const rect = root.querySelector('.platform-qualitative-document').getBoundingClientRect();
-          movePanelTo(rect.left + 16, rect.top + 55);
-        }
+        movePanelTo(8, 8);
       }
       if (documentPdf && Math.abs(scroll.clientWidth - oldWidth) > 2) rerenderVisiblePages();
     });
@@ -1336,6 +1391,13 @@ if (root) {
       else scheduleMargin();
     });
   });
+  window.addEventListener('scroll', scheduleConnectorLines, { capture: true, passive: true });
+  if (connectorLayer && 'ResizeObserver' in window) {
+    const connectorResizeObserver = new ResizeObserver(scheduleConnectorLines);
+    connectorResizeObserver.observe(root.querySelector('.platform-qualitative-bottom'));
+    connectorResizeObserver.observe(scroll);
+    connectorResizeObserver.observe(margin);
+  }
   const explorer = root.querySelector('#qualitative-explorer');
   const explorerToggle = root.querySelector('[data-explorer-toggle]');
   explorerToggle.addEventListener('click', () => {

@@ -75,6 +75,21 @@ class AnalysisBaseTests(unittest.TestCase):
             self.assertIn('btn btn-outline-primary btn-sm', html)
             self.assertNotIn('Criar projeto', html)
 
+    def test_shared_compact_typography_for_internal_headings_and_scraping_sections(self):
+        root = Path(__file__).resolve().parents[1]
+        platform_css = (root / "static/css/platform.css").read_text(encoding="utf-8")
+        free_template = (root / "templates/index.html").read_text(encoding="utf-8")
+        structured_template = (root / "templates/historico_racial/index.html").read_text(encoding="utf-8")
+
+        self.assertIn('font-size: clamp(1.55rem, 2.35vw, 1.85rem); line-height: 1.2;', platform_css)
+        self.assertIn('.platform-auth-intro h1 { font-size: clamp(1.7rem, 3vw, 2.25rem);', platform_css)
+        self.assertIn('.platform-form-section-title { display: block; width: auto;', platform_css)
+        self.assertIn('font-size: .85rem; font-weight: 650; line-height: 1.5;', platform_css)
+        self.assertIn('legend.platform-form-section-title { float: none; }', platform_css)
+        for template in (free_template, structured_template):
+            self.assertIn('form-label file-upload-label platform-form-section-title">Arquivos PDF</label>', template)
+            self.assertIn('form-label platform-form-section-title">Método de raspagem</legend>', template)
+
     def test_new_projects_open_scraper_directly_and_forms_have_no_large_heading(self):
         for path in ("/projetos/livres/novo", "/projetos/novo"):
             page = self.client.get(path)

@@ -138,7 +138,22 @@ assert.equal(focused,avatar);
         self.assertIn(".platform-assistant-body { flex: 1 1 auto;", css)
         self.assertIn(".platform-qualitative-focus .platform-assistant", css)
         self.assertIn(".platform-assistant-avatar:focus-visible", css)
+        avatar = css.split(".platform-assistant-avatar {", 1)[1].split("}", 1)[0]
+        self.assertIn("width: 4.375rem", avatar)
+        self.assertIn("height: 4.375rem", avatar)
+        self.assertIn("background: transparent", avatar)
+        self.assertIn("border: 0", avatar)
+        self.assertIn("border-radius: 0", avatar)
+        self.assertIn("box-shadow: none", avatar)
+        avatar_image = css.split(".platform-assistant-avatar img {", 1)[1].split("}", 1)[0]
+        self.assertIn("width: 110%", avatar_image)
+        self.assertIn("height: auto", avatar_image)
+        self.assertIn("max-width: none", avatar_image)
+        self.assertIn("max-height: none", avatar_image)
+        self.assertNotIn("robot_assistente.png", css)
         self.assertIn(".platform-assistant { left: .75rem; right: .75rem; bottom: .75rem; }", css)
+        mobile_avatar = css.split(".platform-assistant-avatar { width: 3.875rem; height: 3.875rem; }", 1)[1]
+        self.assertTrue(mobile_avatar)
         self.assertIn(".platform-assistant-panel { width: 100%;", css)
         self.assertIn(".platform-qualitative-focus .platform-assistant { top: auto; right: .75rem; bottom: 6.5rem; }", css)
 

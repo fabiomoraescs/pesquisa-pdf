@@ -2,6 +2,11 @@
 {% from 'platform/_icons.html' import icon %}
 {% from 'platform/_qualitative_search_help.html' import help_button, help_popovers %}
 {% block title %}{{ project.name }} — Análysis{% endblock %}
+{% block page_class %} platform-qualitative-reader-page{% endblock %}
+{% block platform_header %}
+{% set hide_platform_header = true %}
+{% include 'platform/_header.html' %}
+{% endblock %}
 {% block page_intro %}{% include 'platform/_qualitative_page_intro.html' %}{% endblock %}
 {% block body %}
 {% set selected_document = manifest.documents | selectattr('document_id', 'equalto', current.document_id) | first %}
@@ -75,11 +80,12 @@
     </div>
   </div>
   <div class="platform-qualitative-bottom">
+    <svg class="platform-qualitative-connector-layer" data-connector-layer aria-hidden="true" focusable="false"></svg>
     <section class="platform-panel platform-qualitative-document" aria-label="Documento PDF">
       <div class="platform-qualitative-document-toolbar">
         <h2 class="h6 mb-0">{{ selected_document.original_name }}</h2>
         <span class="platform-muted" aria-live="polite">Página <output data-current-page>{{ current.page_number }}</output> de {{ current.page_count }}</span>
-        <label class="d-inline-flex align-items-center gap-2" for="qualitative-zoom">Zoom <select class="form-select form-select-sm" id="qualitative-zoom" data-zoom><option value="0.75">75%</option><option value="1" selected>Ajustar</option><option value="1.25">125%</option><option value="1.5">150%</option><option value="2">200%</option></select></label>
+        <label class="d-inline-flex align-items-center platform-qualitative-zoom-control" for="qualitative-zoom">Zoom <select class="form-select form-select-sm" id="qualitative-zoom" data-zoom><option value="0.75">75%</option><option value="1" selected>Ajustar</option><option value="1.25">125%</option><option value="1.5">150%</option><option value="2">200%</option></select></label>
         <button class="btn btn-outline-primary btn-sm platform-qualitative-focus-toggle" type="button" data-focus-toggle aria-pressed="false" aria-label="Modo foco" title="Modo foco">{{ icon('abrir') }}<span data-focus-label>Modo foco</span></button>
         <span class="platform-qualitative-context-notice" data-context-notice role="status" aria-live="polite"></span>
       </div>

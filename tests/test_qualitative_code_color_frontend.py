@@ -34,6 +34,19 @@ class QualitativeCodeColorFrontendTests(unittest.TestCase):
         self.assertIn(".platform-qualitative-context-menu button:hover", css)
         self.assertIn(".platform-qualitative-context-menu button:focus-visible", css)
 
+    def test_margin_card_is_structural_while_the_colored_tag_remains_the_visual_anchor(self):
+        css = (ROOT / "static/css/platform.css").read_text(encoding="utf-8")
+        card = css.split(".platform-qualitative-margin-card {", 1)[1].split("}", 1)[0]
+        active = css.split(".platform-qualitative-margin-card.is-active {", 1)[1].split("}", 1)[0]
+        tag = css.split(".platform-qualitative-coding-tag {", 1)[1].split("}", 1)[0]
+        self.assertIn("background: transparent", card)
+        self.assertIn("border-left: 0", card)
+        self.assertIn("box-shadow: none", card)
+        self.assertIn("background: transparent", active)
+        self.assertIn("box-shadow: none", active)
+        self.assertIn("background: var(--qualitative-code-color", tag)
+        self.assertIn("align-self: flex-start", tag)
+
     def test_tag_click_navigates_excerpt_for_editor_and_read_only_viewer(self):
         source = VIEWER_SOURCE[VIEWER_SOURCE.index("  marginTrack?.addEventListener('click'"):
                                VIEWER_SOURCE.index("  if (codeMenu && marginTrack) {")]

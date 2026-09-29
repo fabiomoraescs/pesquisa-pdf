@@ -35,7 +35,7 @@
         {% if legacy_project %}<p class="form-text">Esta base anterior continua vinculada ao projeto {{ legacy_project.name }}.</p>{% else %}
         {% if selected_project %}<input type="hidden" name="project_id" value="{{ selected_project.id }}">{% else %}<p class="form-text"><a href="{{ url_for('projects.list_free_projects') }}">Abra um projeto para adicionar uma base.</a></p>{% endif %}{% endif %}
         <div class="mb-4">
-          <label for="pdfs" class="form-label file-upload-label">Arquivos PDF</label>
+          <label for="pdfs" class="form-label file-upload-label platform-form-section-title">Arquivos PDF</label>
           <input class="form-control file-upload-input" id="pdfs" name="pdfs" type="file" accept="application/pdf,.pdf" multiple {% if not duplicate %}required{% endif %}>
           <div class="form-text">Você pode selecionar um ou vários PDFs.</div>
         </div>
@@ -57,7 +57,7 @@
         </div>
 
         <fieldset class="mb-4" aria-describedby="ajuda-metodo">
-          <legend class="form-label">Método de raspagem</legend>
+          <legend class="form-label platform-form-section-title">Método de raspagem</legend>
           <div class="d-flex flex-wrap gap-3">
             <label class="d-inline-flex align-items-center gap-2"><input type="radio" name="versao" value="v1" required {% if duplicate and duplicate.tool_version in ('v1', 'v2') %}checked{% endif %}> Lexical</label>
             <label class="d-inline-flex align-items-center gap-2"><input type="radio" name="versao" value="v3" {% if duplicate and duplicate.tool_version == 'v3' %}checked{% endif %}> Híbrido</label>

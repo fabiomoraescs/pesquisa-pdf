@@ -1050,6 +1050,57 @@ class QualitativeCorpusTests(unittest.TestCase):
         self.assertIn('rendering < 2', viewer_js)
         self.assertIn('releaseDistant', viewer_js)
 
+    def test_reader_layout_keeps_sidebar_without_global_header_and_preserves_local_order(self):
+        analysis, manifest = self.prepared_base(pages=2)
+        document = manifest["documents"][0]
+        url = (f"/analise-qualitativa/bases/{analysis.id}/documentos/"
+               f"{document['document_id']}/paginas/1")
+        html = self.client.get(url).get_data(as_text=True)
+
+        self.assertIn('class="platform-page platform-qualitative-reader-page"', html)
+        self.assertEqual(html.count('<header class="platform-header'), 0)
+        self.assertEqual(html.count('<aside class="platform-sidebar"'), 1)
+        self.assertEqual(self.client.get('/projetos/qualitativos').get_data(as_text=True)
+                         .count('<header class="platform-header'), 1)
+        self.assertEqual(html.count('class="platform-panel platform-qualitative-top"'), 1)
+        self.assertEqual(html.count('data-search-form'), 1)
+        self.assertEqual(html.count('id="qualitative-explorer"'), 1)
+
+        local_header = html.index('class="platform-qualitative-page-intro"')
+        top = html.index('class="platform-panel platform-qualitative-top"')
+        bottom = html.index('class="platform-qualitative-bottom"')
+        self.assertLess(local_header, top)
+        self.assertLess(top, bottom)
+        self.assertIn('<h1 class="h4">Entrevistas</h1>', html)
+        self.assertIn('Adicionar documentos', html)
+        self.assertIn('data-qualitative-info-open', html)
+        self.assertIn('data-pdf-scroll', html)
+        self.assertIn('platform-qualitative-margin', html)
+        self.assertEqual(html.count('data-connector-layer'), 1)
+        self.assertEqual(html.count('class="platform-assistant"'), 1)
+        css = (Path(__file__).resolve().parents[1] / "static/css/platform.css").read_text(encoding="utf-8")
+        self.assertIn('.platform-qualitative-reader-page { grid-template-rows: minmax(0, 1fr) auto', css)
+        self.assertIn('.platform-qualitative-reader-page .platform-main { grid-row: 1', css)
+
+    def test_reader_document_toolbar_uses_compact_controls_without_removing_features(self):
+        template = (Path(__file__).resolve().parents[1] /
+                    "templates/platform/qualitative_reader.html").read_text(encoding="utf-8")
+        css = (Path(__file__).resolve().parents[1] / "static/css/platform.css").read_text(encoding="utf-8")
+
+        toolbar = template.split('class="platform-qualitative-document-toolbar"', 1)[1].split('</div>', 1)[0]
+        self.assertIn('data-current-page', toolbar)
+        self.assertIn('data-zoom', toolbar)
+        self.assertIn('data-focus-toggle', toolbar)
+        self.assertIn('data-focus-label', toolbar)
+        self.assertIn('platform-qualitative-zoom-control', toolbar)
+        self.assertIn('.platform-qualitative-document-toolbar { display: flex;', css)
+        self.assertIn('gap: .4rem; margin-bottom: .45rem; font-size: .82rem; line-height: 1.2;', css)
+        self.assertIn('font-size: .85rem; line-height: 1.2;', css)
+        self.assertIn('.platform-qualitative-zoom-control { gap: .35rem;', css)
+        self.assertIn('select { width: auto; min-height: 1.9375rem;', css)
+        self.assertIn('.platform-qualitative-document-toolbar .btn { min-height: 1.9375rem;', css)
+        self.assertNotIn('.platform-qualitative-focus .platform-qualitative-document-toolbar', css)
+
     def test_focus_mode_reuses_reader_controls_without_internal_explorer_scroll(self):
         analysis, manifest = self.prepared_base(pages=2)
         document = manifest["documents"][0]

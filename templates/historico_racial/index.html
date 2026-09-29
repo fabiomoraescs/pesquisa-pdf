@@ -41,7 +41,7 @@
         <form id="hr-form" action="{{ url_for('historico_racial.analisar', project_id=project.id) }}" method="post" enctype="multipart/form-data">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           {% if duplicate %}<input type="hidden" name="duplicate_id" value="{{ duplicate.id }}"><p class="alert alert-info">Nova execução baseada em {{ duplicate.name }}. Os PDFs preservados serão reutilizados se você não selecionar outros.</p>{% endif %}
-          <fieldset class="mb-3"><legend class="form-label">Método de raspagem</legend>
+          <fieldset class="mb-3"><legend class="form-label platform-form-section-title">Método de raspagem</legend>
             <div class="d-flex flex-wrap gap-3">
               <label class="d-inline-flex align-items-center gap-2"><input type="radio" name="metodo_analise" value="lexical" {% if not duplicate or duplicate.tool_version == 'lexical' %}checked{% endif %}> Lexical</label>
               <label class="d-inline-flex align-items-center gap-2"><input type="radio" name="metodo_analise" value="hibrido" {% if duplicate and duplicate.tool_version == 'hibrido' %}checked{% endif %}> Híbrido</label>
@@ -55,7 +55,7 @@
             <p class="form-text">O modo Híbrido combina as ocorrências textuais com trechos recuperados por similaridade semântica.</p>
           </div>
           <div class="mb-4">
-            <label for="pdfs-historico-racial" class="form-label file-upload-label">Arquivos PDF</label>
+            <label for="pdfs-historico-racial" class="form-label file-upload-label platform-form-section-title">Arquivos PDF</label>
             <input class="form-control file-upload-input" id="pdfs-historico-racial" name="pdfs" type="file" accept="application/pdf,.pdf" multiple {% if not duplicate %}required{% endif %}>
             <div class="form-text">Selecione um ou vários PDFs para localizar as entidades cadastradas.</div>
           </div>
