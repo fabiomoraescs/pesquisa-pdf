@@ -301,7 +301,9 @@
 .platform-assistant-panel[hidden] { display: none; }
 .platform-assistant-header { display: flex; align-items: center; gap: .55rem; flex: none; padding: .65rem .8rem; border-bottom: 1px solid var(--border); background: var(--surface-muted); }
 .platform-assistant-header img { width: 2.25rem; height: 2.25rem; object-fit: contain; }
-.platform-assistant-header h2 { flex: 1; min-width: 0; margin: 0; font-size: .98rem; font-weight: 700; }
+.platform-assistant-header-copy { flex: 1; min-width: 0; }
+.platform-assistant-header h2 { margin: 0; font-size: .98rem; font-weight: 700; }
+.platform-assistant-context-indicator { display: block; overflow: hidden; margin-top: .08rem; color: var(--muted); font-size: .7rem; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
 .platform-assistant-close { display: grid; place-items: center; flex: none; width: 2rem; height: 2rem; padding: 0; border: 1px solid transparent; border-radius: .45rem; background: transparent; color: var(--ink); font-size: 1.35rem; line-height: 1; cursor: pointer; }
 .platform-assistant-close:hover { border-color: var(--border); background: var(--surface); }
 .platform-assistant-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: .8rem; scrollbar-color: var(--border) transparent; }

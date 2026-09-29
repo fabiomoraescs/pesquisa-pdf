@@ -1,8 +1,14 @@
-"""Ajuda contextual curada do Assistente Análysis (sem provider de IA)."""
+"""Contextos funcionais e a composição do painel do Assistente Análysis."""
 
 from __future__ import annotations
 
 from typing import Any
+
+from .assistant_project_context import (
+    TOOL_TO_CONTEXT,
+    context_has_observed_records,
+    resolve_project_context,
+)
 
 
 ASSISTANT_CONTEXTS: dict[str, dict[str, Any]] = {
@@ -261,3 +267,159 @@ def assistant_context_for_endpoint(endpoint: str | None, view_args: dict | None 
                  "qualitative": "qualitative_analysis", "coding_report": "qualitative_analysis"}.get(key),
         "reference": {name: str(args[name]) for name in ("project_id", "analysis_id") if args.get(name)},
     }
+
+
+def _summary_phrase(project_context: dict[str, Any]) -> str:
+    corpus = project_context["corpus"]
+    operations = project_context["operations"]
+    selected = project_context["analysis"].get("selected")
+    records = corpus["analysis_document_records_total"]
+    selected_documents = corpus.get("selected_analysis_document_count")
+    if project_context["tool"]["id"] == "qualitative_analysis":
+        if not selected:
+            return f"{records} registro(s) de documento distribuído(s) entre as análises registradas; nenhuma Base está selecionada nesta página."
+        codes = operations.get("codes", {}).get("total", 0)
+        codings = operations.get("codings", {}).get("total", 0)
+        memos = operations.get("memos", {}).get("total", 0)
+        return f"{selected_documents} documento(s) na Base selecionada, {codes} código(s), {codings} codificação(ões) e {memos} memo(s)."
+    analyses = project_context["analysis"]["project_analyses"]["total"]
+    return f"{records} registro(s) de documento em {analyses} base(s) de análise do projeto (registros podem se repetir entre Bases)."
+
+
+def _origins_phrase(project_context: dict[str, Any]) -> str:
+    if not project_context["analysis"].get("selected"):
+        return "Nenhuma Base está selecionada nesta página; não atribuo origens de codificação a uma Base atual por fallback."
+    origins = project_context["operations"].get("codings", {}).get("origins", {})
+    if not origins:
+        return "Não há codificações registradas nesta Base."
+    listed = "; ".join(f"{origin}: {count}" for origin, count in sorted(origins.items()))
+    semantic = " Há registro de automatic_semantic." if "automatic_semantic" in origins else (
+        " Não há registro de automatic_semantic nesta Base."
+    )
+    return f"Dado observado — origens de codificação: {listed}.{semantic}"
+
+
+def _methodology_draft(project_context: dict[str, Any]) -> str:
+    project = project_context["project"]
+    summary = _summary_phrase(project_context)
+    if project_context["tool"]["id"] == "qualitative_analysis":
+        if not project_context["analysis"].get("selected"):
+            return (
+                f"Dado observado — {summary} Recomendação — abra uma Base específica para que a redação "
+                "metodológica use os códigos, memos e origens daquela análise, sem supor que a Base mais recente é a atual."
+            )
+        origins = project_context["operations"].get("codings", {}).get("origins", {})
+        origin_text = ", ".join(sorted(origins)) or "nenhuma origem de codificação"
+        recorded_strategy = project_context["operations"].get("recorded_strategy")
+        strategy = f" A estratégia registrada foi {recorded_strategy}." if recorded_strategy else ""
+        return (
+            f"Proposta baseada somente nos registros: “No projeto {project['name']}, a análise quali-dados reuniu {summary.lower()} "
+            f"As codificações registradas tiveram as origens {origin_text}.{strategy}” "
+            "Complete com critérios de seleção, decisões interpretativas e justificativas que a plataforma não registra."
+        )
+    return (
+        f"Proposta baseada somente nos registros: “No projeto {project['name']}, foram registradas {summary.lower()}” "
+        "Complete a redação com critérios de composição do corpus e justificativas metodológicas não registradas pela plataforma."
+    )
+
+
+def _contextual_suggestions(key: str, project_context: dict[str, Any]) -> list[dict[str, str]]:
+    """Cinco sugestões locais, atualizadas a cada renderização do projeto."""
+    summary = _summary_phrase(project_context)
+    tool_id = project_context["tool"]["id"]
+    if tool_id == "qualitative_analysis":
+        codes = project_context["operations"].get("codes", {})
+        listed_codes = codes.get("items", [])
+        distribution = "; ".join(
+            f"{item['name']}: {item['coding_count']}" for item in listed_codes[:5]
+        ) or ("Nenhuma Base está selecionada nesta página."
+              if not project_context["analysis"].get("selected")
+              else "Ainda não há códigos para distribuir.")
+        return [
+            {"question": "O que já foi realizado neste projeto?", "answer": f"Dado observado — {summary}"},
+            {"question": "Como posso descrever metodologicamente esta análise?", "answer": _methodology_draft(project_context)},
+            {"question": "Que tipos de codificação aparecem neste projeto?", "answer": _origins_phrase(project_context)},
+            {"question": "Como os códigos estão distribuídos?", "answer": (
+                f"Dado observado — contagens por código (frequência, não importância analítica): {distribution}"
+            )},
+            {"question": "O que ainda preciso explicitar na metodologia?", "answer": (
+                "Recomendação — complemente os registros técnicos com critérios de seleção do corpus, "
+                "decisões interpretativas e a justificativa das escolhas; esses elementos não são inferidos pela plataforma."
+            )},
+        ]
+    if tool_id == "pdf_scraper":
+        searches = project_context["operations"].get("term_searches", {}).get("items", [])
+        methods = ", ".join(sorted({item.get("method_used") for item in searches if item.get("method_used")}))
+        return [
+            {"question": "O que já foi realizado neste projeto?", "answer": f"Dado observado — {summary}"},
+            {"question": "Quais termos e métodos aparecem nas bases?", "answer": (
+                f"Dado observado — métodos registrados: {methods or 'nenhum método registrado'}. "
+                "As listas de termos ficam resumidas por Base no contexto do projeto."
+            )},
+            {"question": "Como posso descrever metodologicamente as buscas?", "answer": _methodology_draft(project_context)},
+            {"question": "O que os resultados permitem afirmar?", "answer": (
+                "Recomendação — trate ocorrências persistidas como resultados de localização e revise-as no PDF de origem antes de interpretá-las."
+            )},
+            {"question": "O que ainda preciso explicitar na metodologia?", "answer": (
+                "Recomendação — registre critérios de composição do corpus, seleção de termos e revisão dos resultados; essas justificativas não são comprovadas apenas pelos metadados."
+            )},
+        ]
+    if tool_id == "document_analysis":
+        libraries = project_context["operations"].get("associated_libraries", {})
+        library_names = ", ".join(item["name"] for item in libraries.get("items", [])) or "nenhuma biblioteca listada"
+        return [
+            {"question": "O que já foi realizado neste projeto?", "answer": f"Dado observado — {summary}"},
+            {"question": "Quais bibliotecas orientaram as buscas?", "answer": f"Dado observado — bibliotecas associadas: {library_names}."},
+            {"question": "Quais métodos foram registrados?", "answer": (
+                "Dado observado — cada Base preserva o método e as opções disponíveis em seus metadados; "
+                "a presença de uma opção na interface não prova que ela foi usada."
+            )},
+            {"question": "Como posso descrever metodologicamente as buscas?", "answer": _methodology_draft(project_context)},
+            {"question": "O que ainda preciso explicitar na metodologia?", "answer": (
+                "Recomendação — complemente os registros com critérios de seleção do corpus, escolha da biblioteca e revisão das ocorrências."
+            )},
+        ]
+    return ASSISTANT_CONTEXTS[key]["suggestions"]
+
+
+def assistant_context_for_request(
+    endpoint: str | None,
+    view_args: dict | None,
+    user: object,
+    *,
+    query_project_id: object = None,
+) -> dict[str, Any]:
+    """Acrescenta fatos autorizados ao contexto estático sem fragilizar a página.
+
+    Esta função é usada na renderização. A rota de pergunta reconstrói o
+    contexto no servidor, portanto um payload antigo do navegador nunca autoriza
+    nem reaproveita o contexto de outro projeto.
+    """
+    base = assistant_context_for_endpoint(endpoint, view_args)
+    reference = dict(base["reference"])
+    if "project_id" not in reference and query_project_id:
+        reference["project_id"] = str(query_project_id)
+    project_context = resolve_project_context(user, reference)
+    if project_context is None:
+        return base
+    actual_tool = project_context["tool"]["id"]
+    if base["tool"] and base["tool"] != actual_tool:
+        return base
+    key = base["key"]
+    if key in {"projects", "fallback"}:
+        key = TOOL_TO_CONTEXT.get(actual_tool, key)
+        base["key"] = key
+        base["tool"] = actual_tool
+    base["reference"] = {
+        "project_id": project_context["project"]["id"],
+        **({"analysis_id": project_context["analysis"]["selected"]["id"]}
+           if project_context["analysis"]["selected"] else {}),
+    }
+    base["project_context"] = project_context
+    base["context_indicator"] = (
+        f"Contexto: {project_context['project']['name']} · {project_context['tool']['label']}"
+    )
+    if context_has_observed_records(project_context):
+        base["intro"] = "Uso dados registrados neste projeto para orientar a leitura; não executo alterações."
+        base["suggestions"] = _contextual_suggestions(key, project_context)
+    return base

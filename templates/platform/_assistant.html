@@ -1,9 +1,10 @@
-{% set assistant_project = project if project is defined else selected_project if selected_project is defined else legacy_project if legacy_project is defined else none %}
+{% set assistant_project_context = assistant_context.get('project_context') %}
+{% set assistant_project = assistant_project_context.project if assistant_project_context else none %}
 <div class="platform-assistant" data-assistant data-assistant-context="{{ assistant_context.key }}"{% if assistant_project %} data-project-id="{{ assistant_project.id }}" data-project-name="{{ assistant_project.name }}"{% endif %}>
   <section class="platform-assistant-panel" id="platform-assistant-panel" data-assistant-panel role="dialog" aria-modal="false" aria-labelledby="platform-assistant-title" hidden>
     <header class="platform-assistant-header">
       <img src="{{ url_for('static', filename='img/assistant/robot_assistente.png') }}" alt="" width="36" height="36">
-      <h2 id="platform-assistant-title">Assistente Análysis</h2>
+      <div class="platform-assistant-header-copy"><h2 id="platform-assistant-title">Assistente Análysis</h2>{% if assistant_context.context_indicator is defined %}<span class="platform-assistant-context-indicator" data-assistant-context-indicator>{{ assistant_context.context_indicator }}</span>{% endif %}</div>
       <button class="platform-assistant-close" type="button" data-assistant-close aria-label="Fechar Assistente Análysis" title="Fechar">×</button>
     </header>
     <div class="platform-assistant-body" data-assistant-body>

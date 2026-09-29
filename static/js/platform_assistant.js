@@ -22,6 +22,24 @@
   catch (_) { return; }
   if (!Array.isArray(context.suggestions) || context.suggestions.length !== 5) return;
 
+  const currentPageContext = () => {
+    // Este estado é meramente visual. O servidor valida novamente documento,
+    // análise e projeto antes de o aproveitar no resumo da resposta.
+    const viewer = document.querySelector('[data-qualitative-viewer]');
+    if (!viewer || !viewer.dataset || !viewer.dataset.analysisId || !viewer.dataset.documentId) return {};
+    const page = viewer.querySelector?.('[data-current-page]');
+    const currentPage = Number(page?.value || page?.textContent);
+    const automaticMode = viewer.querySelector?.('[name="automatic_mode"]:checked')?.value;
+    const pageContext = {
+      document_id: viewer.dataset.documentId,
+      ...(Number.isInteger(currentPage) && currentPage > 0 ? {current_page: currentPage} : {}),
+      ...(automaticMode ? {selected_search_mode: automaticMode} : {}),
+      ...(typeof document.body?.classList?.contains === 'function'
+        ? {focus_mode: document.body.classList.contains('platform-qualitative-focus')} : {}),
+    };
+    return pageContext;
+  };
+
   const setOpen = (open) => {
     panel.hidden = !open;
     avatar.setAttribute('aria-expanded', String(open));
@@ -74,6 +92,10 @@
     input.value = '';
     setBusy(true);
     try {
+      const pageContext = currentPageContext();
+      const requestPayload = {question, context: context.key, page: context.page,
+        reference: context.reference};
+      if (Object.keys(pageContext).length) requestPayload.page_context = pageContext;
       const response = await fetch(form.action, {
         method: 'POST',
         credentials: 'same-origin',
@@ -82,8 +104,7 @@
           'Accept': 'application/json',
           'X-CSRFToken': csrf.value,
         },
-        body: JSON.stringify({question, context: context.key, page: context.page,
-          reference: context.reference}),
+        body: JSON.stringify(requestPayload),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || result.erro || 'Não foi possível enviar a pergunta.');

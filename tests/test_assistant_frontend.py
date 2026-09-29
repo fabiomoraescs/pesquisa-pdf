@@ -119,6 +119,9 @@ assert.equal(focused,avatar);
 
     def test_free_question_form_and_responsive_rules_exist(self):
         self.assertIn("fetch(form.action", SOURCE)
+        self.assertIn("currentPageContext", SOURCE)
+        self.assertIn("page_context", SOURCE)
+        self.assertIn("selected_search_mode", SOURCE)
         self.assertNotIn("sessionStorage", SOURCE)
         self.assertNotIn("localStorage", SOURCE)
         self.assertNotIn("location.reload", SOURCE)
@@ -132,12 +135,14 @@ assert.equal(focused,avatar);
         self.assertIn('data-assistant-error role="alert"', template)
         self.assertIn('role="dialog"', template)
         self.assertIn('role="log"', template)
+        self.assertIn('data-assistant-context-indicator', template)
         css = (ROOT / "static/css/platform.css").read_text(encoding="utf-8")
         self.assertIn(".platform-assistant-panel[hidden]", css)
         self.assertIn(".platform-assistant-form { flex: none;", css)
         self.assertIn(".platform-assistant-body { flex: 1 1 auto;", css)
         self.assertIn(".platform-qualitative-focus .platform-assistant", css)
         self.assertIn(".platform-assistant-avatar:focus-visible", css)
+        self.assertIn(".platform-assistant-context-indicator", css)
         avatar = css.split(".platform-assistant-avatar {", 1)[1].split("}", 1)[0]
         self.assertIn("width: 4.375rem", avatar)
         self.assertIn("height: 4.375rem", avatar)
@@ -156,6 +161,32 @@ assert.equal(focused,avatar);
         self.assertTrue(mobile_avatar)
         self.assertIn(".platform-assistant-panel { width: 100%;", css)
         self.assertIn(".platform-qualitative-focus .platform-assistant { top: auto; right: .75rem; bottom: 6.5rem; }", css)
+
+    def test_qualitative_transient_state_is_minimal_and_read_from_current_dom(self):
+        self.run_node(r"""
+const assert=require('node:assert/strict');
+const vm=require('node:vm');
+class Element {
+  constructor(){this.listeners={};this.matches={};this.dataset={};this.attrs={};this.classList={toggle(){}};this.children=[];}
+  addEventListener(type, listener){this.listeners[type]=listener;}
+  fire(type,event={}){return this.listeners[type](event);}
+  querySelector(selector){return this.matches[selector];}
+  setAttribute(name,value){this.attrs[name]=value;}
+  append(item){this.children.push(item);}
+  contains(){return false;}
+  focus(){}
+}
+const assistant=new Element(),avatar=new Element(),panel=new Element(),closeButton=new Element();panel.hidden=true;
+const messages=new Element(),body=new Element(),payload=new Element(),form=new Element(),input=new Element(),send=new Element(),error=new Element(),csrf=new Element();
+form.action='/assistant/ask';csrf.value='csrf';error.hidden=true;payload.textContent=JSON.stringify({key:'qualitative',page:'qualitative.page',reference:{project_id:'project-id',analysis_id:'analysis-id'},suggestions:Array.from({length:5},(_,i)=>({question:String(i),answer:String(i)}))});
+assistant.matches={'[data-assistant-toggle]':avatar,'[data-assistant-panel]':panel,'[data-assistant-close]':closeButton,'[data-assistant-messages]':messages,'[data-assistant-body]':body,'[data-assistant-payload]':payload,'[data-assistant-form]':form,'[data-assistant-input]':input,'[data-assistant-send]':send,'[data-assistant-error]':error,'[data-assistant-csrf]':csrf};
+const viewer=new Element();viewer.dataset={analysisId:'analysis-id',documentId:'document-id'};
+const page=new Element();page.textContent='7';const mode=new Element();mode.value='lexical';viewer.matches={'[data-current-page]':page,'[name="automatic_mode"]:checked':mode};
+const document={body:{classList:{contains:name=>name==='platform-qualitative-focus'}},querySelector(selector){return selector==='[data-assistant]'?assistant:selector==='[data-qualitative-viewer]'?viewer:null;},createElement(){return new Element();},addEventListener(){}};
+let sent;const fetch=(_url,options)=>{sent=JSON.parse(options.body);return Promise.resolve({ok:true,json:async()=>({answer:'ok'})});};
+vm.runInNewContext(SOURCE,{document,fetch});
+(async()=>{input.value='Pergunta';await form.fire('submit',{preventDefault(){}});assert.deepEqual(sent,{question:'Pergunta',context:'qualitative',page:'qualitative.page',reference:{project_id:'project-id',analysis_id:'analysis-id'},page_context:{document_id:'document-id',current_page:7,selected_search_mode:'lexical',focus_mode:true}});})().catch(error=>{console.error(error);process.exitCode=1;});
+""".replace("SOURCE", repr(SOURCE)))
 
 
 if __name__ == "__main__":

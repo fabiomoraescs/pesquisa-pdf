@@ -48,7 +48,7 @@ from platform_core.services import ACCOUNT_LIFECYCLE_LOCK, access_is_active, acc
 from platform_core.scraping_types import FREE, QUALITATIVE, QUALITATIVE_TOOL, SYSTEMATIC, TOOL_BY_TYPE, tool_for_project
 from platform_core.semantic_threshold import normalize as normalize_semantic_threshold, template_settings
 from platform_core.term_input import has_invalid_term_separator
-from platform_core.assistant_context import assistant_context_for_endpoint
+from platform_core.assistant_context import assistant_context_for_endpoint, assistant_context_for_request
 from platform_core.assistant_routes import assistant_bp
 
 from analyzer.common import (
@@ -103,11 +103,23 @@ register_presentation(app)
 def _semantic_threshold_template_context():
     if getattr(g, "platform_error_page", False):
         return {}
+    try:
+        assistant_context = assistant_context_for_request(
+            request.endpoint,
+            request.view_args,
+            current_user,
+            query_project_id=request.args.get("project_id"),
+        )
+    except Exception:
+        # Não registra pergunta, nomes de projeto nem payload privado. A página
+        # continua com a ajuda funcional já disponível na Fase 2.
+        current_app.logger.exception("Falha ao montar contexto factual do Assistente")
+        assistant_context = assistant_context_for_endpoint(request.endpoint, request.view_args)
     return {"semantic_threshold": template_settings(),
             "free_access": bool(current_user.is_authenticated and can_use_tool(current_user, "pdf_scraper")),
             "systematic_access": bool(current_user.is_authenticated and can_use_tool(current_user, "document_analysis")),
             "qualitative_access": bool(current_user.is_authenticated and can_use_tool(current_user, QUALITATIVE_TOOL)),
-            "assistant_context": assistant_context_for_endpoint(request.endpoint, request.view_args)}
+            "assistant_context": assistant_context}
 
 
 app.register_blueprint(auth_bp)
