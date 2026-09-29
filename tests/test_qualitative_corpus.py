@@ -119,15 +119,15 @@ class QualitativeCorpusTests(unittest.TestCase):
             self.assertIn(marker, html)
         self.assertNotIn("Base de análise", html)
 
-    def prepared_two_documents(self):
+    def prepared_two_documents(self, *, first_pages=2, second_pages=2):
         self.allow()
         project = self.project()
         token = csrf_from(self.client.get(f"/analise-qualitativa/projetos/{project.id}/bases/nova"))
         with patch("app.EXECUTOR_ANALISES.submit"):
             response = self.client.post(f"/analise-qualitativa/projetos/{project.id}/bases/nova",
                 data={"csrf_token": token, "name": "Acervo antigo", "qualitative_strategy": "inductive",
-                      "documents": [(io.BytesIO(pdf_bytes()), "primeiro.pdf"),
-                                    (io.BytesIO(pdf_bytes()), "segundo.pdf")]},
+                      "documents": [(io.BytesIO(pdf_bytes(first_pages)), "primeiro.pdf"),
+                                    (io.BytesIO(pdf_bytes(second_pages)), "segundo.pdf")]},
                 content_type="multipart/form-data")
         self.assertEqual(response.status_code, 302)
         analysis = db.session.scalar(select(Analysis).where(Analysis.project_id == project.id))
@@ -135,6 +135,72 @@ class QualitativeCorpusTests(unittest.TestCase):
         db.session.expire_all()
         analysis = db.session.get(Analysis, analysis.id)
         return analysis, load_qualitative_manifest(analysis)
+
+    def test_coding_report_deep_links_keep_document_and_one_based_page(self):
+        """O relatório abre o PDF e a página gravados no trecho, não o estado prévio."""
+        analysis, manifest = self.prepared_two_documents(first_pages=7, second_pages=3)
+        first, second = manifest["documents"]
+        code = QualitativeCode(analysis_id=analysis.id, name="Tema", created_by_user_id=self.user_id)
+        db.session.add(code)
+        db.session.flush()
+
+        excerpts = {}
+        for document, page_number in ((first, 1), (first, 2), (first, 7), (second, 3)):
+            page = read_qualitative_page(analysis, document["document_id"], page_number)
+            start = page["text"].index("Documento")
+            excerpt = QualitativeExcerpt(
+                analysis_id=analysis.id, document_id=document["document_id"], page_number=page_number,
+                start_offset=start, end_offset=start + len("Documento"), quoted_text="Documento",
+                page_text_hash=page["sha256"], created_by_user_id=self.user_id,
+            )
+            db.session.add(excerpt)
+            db.session.flush()
+            db.session.add(QualitativeCoding(analysis_id=analysis.id, excerpt_id=excerpt.id, code_id=code.id,
+                created_by_user_id=self.user_id, origin="manual"))
+            excerpts[(document["document_id"], page_number)] = excerpt
+        db.session.commit()
+
+        report_url = f"/analise-qualitativa/bases/{analysis.id}/relatorio-codificacao"
+        report_html = self.client.get(report_url).get_data(as_text=True)
+        for (document_id, page_number), excerpt in excerpts.items():
+            reader_url = (f"/analise-qualitativa/bases/{analysis.id}/documentos/{document_id}/"
+                          f"paginas/{page_number}?excerpt={excerpt.id}")
+            self.assertIn(f'href="{reader_url}"', report_html)
+            reader = self.client.get(reader_url)
+            reader_html = reader.get_data(as_text=True)
+            self.assertEqual(reader.status_code, 200)
+            self.assertIn(f'data-document-id="{document_id}"', reader_html)
+            self.assertIn(f'/documentos/{document_id}/pdf', reader_html)
+            self.assertIn(f'data-initial-page="{page_number}"', reader_html)
+            self.assertIn(f'data-target-excerpt-id="{excerpt.id}"', reader_html)
+
+        first_document_id = first["document_id"]
+        self.assertEqual(self.client.get(
+            f"/analise-qualitativa/bases/{analysis.id}/documentos/{first_document_id}/paginas/0"
+        ).status_code, 404)
+        self.assertEqual(self.client.get(
+            f"/analise-qualitativa/bases/{analysis.id}/documentos/{first_document_id}/paginas/-1"
+        ).status_code, 404)
+        self.assertEqual(self.client.get(
+            f"/analise-qualitativa/bases/{analysis.id}/documentos/{first_document_id}/paginas/8"
+        ).status_code, 404)
+        self.assertEqual(self.client.get(
+            f"/analise-qualitativa/bases/{analysis.id}/documentos/"
+            "00000000-0000-0000-0000-000000000000/paginas/1"
+        ).status_code, 404)
+        incompatible = excerpts[(second["document_id"], 3)]
+        self.assertEqual(self.client.get(
+            f"/analise-qualitativa/bases/{analysis.id}/documentos/{first_document_id}/"
+            f"paginas/7?excerpt={incompatible.id}"
+        ).status_code, 404)
+
+        project = db.session.get(Project, analysis.project_id)
+        foreign_analysis = self.historical_workspace(project)
+        foreign_document = db.session.scalar(select(AnalysisDocument).where(
+            AnalysisDocument.analysis_id == foreign_analysis.id))
+        self.assertEqual(self.client.get(
+            f"/analise-qualitativa/bases/{analysis.id}/documentos/{foreign_document.id}/paginas/1"
+        ).status_code, 404)
 
     def delete_document_request(self, analysis, document_id):
         token = csrf_from(self.client.get("/"))

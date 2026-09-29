@@ -69,6 +69,38 @@ assert.equal(selectionBoundary({nodeType:1,matches:() => false}, 0, true), null)
                                 capture_output=True, text=True, encoding="utf-8")
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_initial_deep_link_realigns_after_lazy_page_measurements(self):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("Node não disponível")
+        code = SOURCE[SOURCE.index("  const createInitialPageSettler ="):
+                      SOURCE.index("  const noticeContext =")]
+        checks = r"""
+const scheduled = [];
+const requestAnimationFrame = callback => scheduled.push(callback);
+const navigation = [];
+const settle = createInitialPageSettler(7, (pageNumber, smooth) => navigation.push([pageNumber, smooth]));
+settle(7);
+assert.deepEqual(navigation, []);
+settle(6);
+assert.equal(scheduled.length, 1);
+scheduled.shift()();
+assert.deepEqual(navigation, [[7, false]]);
+settle(6);
+assert.deepEqual(navigation, [[7, false]]);
+
+const firstPageNavigation = [];
+const firstPageSettle = createInitialPageSettler(1, (pageNumber, smooth) => {
+  firstPageNavigation.push([pageNumber, smooth]);
+});
+firstPageSettle(1);
+scheduled.shift()();
+assert.deepEqual(firstPageNavigation, [[1, false]]);
+"""
+        result = subprocess.run([node, "-e", "const assert = require('node:assert/strict');" + code + checks],
+                                cwd=ROOT, capture_output=True, text=True, encoding="utf-8")
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_narrow_wide_and_rotated_glyphs_survive_rerender_and_zoom(self):
         self.run_js(r"""
 assert.equal(renderTextLayer(node, layout), 3);

@@ -45,6 +45,7 @@ if (root) {
   const focusPanelToggle = root.querySelector('[data-focus-panel-toggle]');
   const focusHandle = root.querySelector('[data-focus-handle]');
   const pageCount = Number(root.dataset.pageCount);
+  // Corpus, rotas do leitor e PDF.js getPage() usam a mesma convenção: página 1-based.
   const firstPage = Number(root.dataset.initialPage);
   const nodes = new Map();
   const pending = new Set();
@@ -75,6 +76,7 @@ if (root) {
   let excerptSaving = false;
   let marginScheduled = false;
   let connectorScheduled = false;
+  let settleInitialPage;
   let records = JSON.parse(recordsRoot.querySelector('[data-records-initial]').textContent);
   document.addEventListener('qualitative:records-updated', (event) => {
     records = event.detail;
@@ -118,6 +120,15 @@ if (root) {
   });
 
   const pageUrl = (template, number) => template.replace('/paginas/0/', `/paginas/${number}/`);
+  const createInitialPageSettler = (targetPage, navigate) => {
+    // A página anterior pode ganhar altura ao ser renderizada depois do primeiro scroll.
+    const pendingMeasurements = new Set([targetPage]);
+    if (targetPage > 1) pendingMeasurements.add(targetPage - 1);
+    return (pageNumber) => {
+      if (!pendingMeasurements.delete(pageNumber) || pendingMeasurements.size) return;
+      requestAnimationFrame(() => navigate(targetPage, false));
+    };
+  };
   const noticeContext = (message) => { contextNotice.textContent = message; };
   const closeContextMenu = () => { if (contextMenu) contextMenu.hidden = true; };
 
@@ -267,6 +278,7 @@ if (root) {
     node.surface.style.height = `${viewport.height}px`;
     node.shell.style.minHeight = `${viewport.height + 35}px`;
     node.surface.replaceChildren(canvas);
+    if (expectedGeneration === generation) settleInitialPage?.(number);
     const task = page.render({ canvasContext: canvas.getContext('2d'), viewport,
       transform: ratio === 1 ? null : [ratio, 0, 0, ratio, 0, 0] });
     tasks.set(number, task);
@@ -336,7 +348,7 @@ if (root) {
     if (!node) return;
     // scrollIntoView desloca também a página externa e esconde o cabeçalho.
     // A navegação do PDF deve mover somente a área de leitura.
-    scroll.scrollTo({ top: node.shell.offsetTop, behavior: smooth ? 'smooth' : 'instant' });
+    scroll.scrollTo({ top: node.shell.offsetTop, behavior: smooth ? 'smooth' : 'auto' });
     enqueue(number);
     enqueue(number + 1);
     enqueue(number - 1);
@@ -1423,7 +1435,8 @@ if (root) {
       }
     }, { root: scroll, rootMargin: '500px 0px', threshold: 0 });
     for (const node of nodes.values()) observer.observe(node.shell);
-    goToPage(firstPage);
+    settleInitialPage = createInitialPageSettler(firstPage, goToPage);
+    goToPage(firstPage, false);
   } catch (error) {
     console.error('Não foi possível abrir o PDF do projeto.', error);
     status.textContent = 'Não foi possível abrir o PDF original. Confira o documento do projeto.';
