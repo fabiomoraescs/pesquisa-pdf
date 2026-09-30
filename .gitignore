@@ -9,6 +9,7 @@ outputs/*
 !outputs/.gitkeep
 
 .env
+.env.local
 *.pdf
 *.xlsx
 !resources/modelo_biblioteca.xlsx

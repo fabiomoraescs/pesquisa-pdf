@@ -15,10 +15,11 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from .extensions import db
 from .library_access import library_editor, library_url, private_library_flow, user_libraries_bp
 from .models import (
-    AccessGrant, Analysis, AuditLog, PasswordRecoveryToken, Plan, PlanTool, Project, ProjectLibrary, ProjectVocabularyVersion,
+    AccessGrant, Analysis, AssistantAISettings, AuditLog, PasswordRecoveryToken, Plan, PlanTool, Project, ProjectLibrary, ProjectVocabularyVersion,
     QualitativeCode, QualitativeCoding, QualitativeExcerpt, QualitativeMemo, QualitativeRejection, Tool, User,
     UserProfile, UserToolOverride, VocabularyLibrary, utcnow,
 )
+from .assistant_ai_manager import AIProviderManager, AISettingsValidationError
 from .password_policy import TEMPORARY_PASSWORD
 from .project_lifecycle import ProjectActionError, archive, delete_archived, restore
 from .profile import remove_profile_photo
@@ -414,6 +415,84 @@ def set_plan_state(plan_id: str):
     db.session.commit()
     flash("Plano ativado." if plan.active else "Plano desativado. Concessões existentes foram preservadas.", "success")
     return redirect(url_for("admin.plans"))
+
+
+def _ai_settings_snapshot(settings: AssistantAISettings) -> dict[str, object]:
+    """Payload auditável sem qualquer dado de credencial."""
+    return {
+        "strategy": settings.strategy,
+        "primary_provider": settings.primary_provider,
+        "enabled_providers": list(settings.enabled_providers or []),
+        "fallback_order": list(settings.fallback_order or []),
+        "gemini_model": settings.gemini_model,
+        "openai_model": settings.openai_model,
+        "anthropic_model": settings.anthropic_model,
+    }
+
+
+@admin_bp.get("/inteligencia-artificial")
+@admin_only
+def assistant_ai_settings():
+    manager = AIProviderManager()
+    settings = manager.get_settings()
+    return render_template(
+        "platform/admin.html",
+        section="assistant_ai_settings",
+        ai_settings=settings,
+        provider_statuses=manager.provider_statuses(settings),
+    )
+
+
+@admin_bp.post("/inteligencia-artificial")
+@admin_only
+def save_assistant_ai_settings():
+    manager = AIProviderManager()
+    current = manager.get_settings()
+    before = _ai_settings_snapshot(current)
+    raw = {
+        "strategy": request.form.get("strategy"),
+        "primary_provider": request.form.get("primary_provider"),
+        "enabled_providers": request.form.getlist("enabled_providers"),
+        "fallback_order": request.form.getlist("fallback_order"),
+        "gemini_model": request.form.get("gemini_model"),
+        "openai_model": request.form.get("openai_model"),
+        "anthropic_model": request.form.get("anthropic_model"),
+    }
+    try:
+        settings = manager.save_configuration(raw)
+        after = _ai_settings_snapshot(settings)
+        record_audit(current_user, "assistant_ai_settings_changed", "assistant_ai_settings", "1", before, after)
+        db.session.commit()
+    except AISettingsValidationError as error:
+        db.session.rollback()
+        flash(str(error), "danger")
+    except SQLAlchemyError:
+        db.session.rollback()
+        flash("Não foi possível salvar a configuração de IA com segurança.", "danger")
+    else:
+        flash("Configuração do Assistente Análysis atualizada.", "success")
+    return redirect(url_for("admin.assistant_ai_settings"))
+
+
+@admin_bp.post("/inteligencia-artificial/<provider_id>/testar-conexao")
+@admin_only
+def test_assistant_ai_connection(provider_id: str):
+    try:
+        AIProviderManager().test_provider_connection(provider_id)
+    except AISettingsValidationError as error:
+        flash(str(error), "danger")
+    except Exception as error:
+        # O provider normaliza as mensagens técnicas; nenhuma resposta externa,
+        # credencial, prompt ou payload de teste é retornado ao navegador.
+        from .assistant_ai_provider import AIProviderError
+        if isinstance(error, AIProviderError):
+            flash(error.public_message, "danger")
+        else:
+            current_app.logger.warning("Teste de conexão de IA falhou: %s", type(error).__name__)
+            flash("Não foi possível testar a conexão neste momento.", "danger")
+    else:
+        flash("Conexão disponível.", "success")
+    return redirect(url_for("admin.assistant_ai_settings"))
 
 
 @admin_bp.get("/projetos")

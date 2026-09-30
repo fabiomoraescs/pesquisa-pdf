@@ -1,6 +1,5 @@
-{% set assistant_project_context = assistant_context.get('project_context') %}
-{% set assistant_project = assistant_project_context.project if assistant_project_context else none %}
-<div class="platform-assistant" data-assistant data-assistant-context="{{ assistant_context.key }}"{% if assistant_project %} data-project-id="{{ assistant_project.id }}" data-project-name="{{ assistant_project.name }}"{% endif %}>
+{% set assistant_project = assistant_context.get('project') %}
+<div class="platform-assistant" data-assistant data-assistant-context="{{ assistant_context.key }}" data-assistant-suggestions-url="{{ url_for('assistant.suggestions') }}"{% if assistant_project %} data-project-id="{{ assistant_project.id }}" data-project-name="{{ assistant_project.name }}"{% endif %}>
   <section class="platform-assistant-panel" id="platform-assistant-panel" data-assistant-panel role="dialog" aria-modal="false" aria-labelledby="platform-assistant-title" hidden>
     <header class="platform-assistant-header">
       <img src="{{ url_for('static', filename='img/assistant/robot_assistente.png') }}" alt="" width="36" height="36">
@@ -9,10 +8,17 @@
     </header>
     <div class="platform-assistant-body" data-assistant-body>
       <p class="platform-assistant-message is-assistant">{{ assistant_context.intro }}</p>
-      <div class="platform-assistant-suggestions" aria-label="Perguntas sugeridas">
-        {% for suggestion in assistant_context.suggestions %}<button type="button" data-assistant-question="{{ loop.index0 }}">{{ suggestion.question }}</button>{% endfor %}
-      </div>
+      <section class="platform-assistant-suggestions" data-assistant-suggestions aria-label="Perguntas sugeridas"{% if assistant_context.dynamic_suggestions %} hidden{% endif %}>
+        {% if not assistant_context.dynamic_suggestions %}
+        {% for prompt in assistant_context.onboarding_prompts %}
+        <button class="platform-assistant-suggestion" type="button" data-assistant-suggestion>{{ prompt }}</button>
+        {% endfor %}
+        {% endif %}
+      </section>
+      <p class="platform-assistant-suggestions-loading" data-assistant-suggestions-loading role="status" aria-live="polite" hidden><span class="platform-assistant-suggestions-spinner" aria-hidden="true"></span><span data-assistant-suggestions-loading-text></span></p>
+      <p class="platform-assistant-suggestions-status" data-assistant-suggestions-status aria-live="polite" hidden></p>
       <div class="platform-assistant-messages" data-assistant-messages role="log" aria-live="polite" aria-relevant="additions"></div>
+      <p class="platform-assistant-status" data-assistant-status aria-live="polite" hidden></p>
     </div>
     <form class="platform-assistant-form" data-assistant-form action="{{ url_for('assistant.ask') }}" method="post">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" data-assistant-csrf>

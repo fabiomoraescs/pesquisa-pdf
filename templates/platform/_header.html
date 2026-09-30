@@ -14,7 +14,7 @@
   'admin.tools': 'Ferramentas', 'admin.plans': 'Planos', 'admin.define_access': 'Definir acessos', 'admin.libraries': 'Bibliotecas',
   'admin.new_library': 'Bibliotecas', 'admin.library_detail': 'Bibliotecas', 'admin.delete_library': 'Bibliotecas',
   'admin.library_template': 'Bibliotecas', 'admin.library_import': 'Bibliotecas',
-  'admin.audit': 'Auditoria'
+  'admin.audit': 'Auditoria', 'admin.assistant_ai_settings': 'Configuração de IA'
 } %}
 {% if endpoint == 'home' %}{% set section_title = 'Dashboard' %}
 {% elif endpoint == 'profile.my_profile' or endpoint in ('profile.photo', 'profile.upload_photo', 'profile.remove_photo') %}{% set section_title = 'Perfil' %}
@@ -50,6 +50,7 @@
         ('Ferramentas', 'admin.tools', ['admin.tools']),
         ('Planos', 'admin.plans', ['admin.plans']),
         ('Definir acessos', 'admin.define_access', ['admin.define_access']),
+        ('Configuração de IA', 'admin.assistant_ai_settings', ['admin.assistant_ai_settings']),
         ('Bibliotecas', 'admin.libraries', ['admin.libraries', 'admin.new_library', 'admin.library_detail', 'admin.delete_library', 'admin.library_import', 'admin.library_template']),
         ('Auditoria', 'admin.audit', ['admin.audit'])
       ] %}<a class="{{ 'is-current' if endpoint in endpoints else '' }}" {% if endpoint in endpoints %}aria-current="page"{% endif %} href="{{ url_for(target) }}">{{ label }}</a>{% endfor %}

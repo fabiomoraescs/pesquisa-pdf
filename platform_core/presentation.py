@@ -48,6 +48,7 @@ LABELS = {
     "hash": "Hash", "action": "Ação",
     "group_added": "Grupo adicionado", "entity_added": "Entidade adicionada", "variant_added": "Variante adicionada",
     "item_state_changed": "Estado do item alterado",
+    "assistant_ai_settings_changed": "Configuração de IA do Assistente alterada",
     "user": "Usuário", "tool": "Ferramenta", "project": "Projeto", "library": "Biblioteca",
     "role": "Papel", "status": "Estado", "plan": "Plano", "mode": "Forma de acesso",
     "decision": "Permissão", "expires_at": "Validade", "deleted": "Excluído",

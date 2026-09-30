@@ -296,7 +296,7 @@
 .platform-assistant-avatar { display: grid; place-items: center; width: 4.375rem; height: 4.375rem; padding: .1rem; border: 0; border-radius: 0; background: transparent; box-shadow: none; cursor: pointer; transition: transform .15s ease; }
 .platform-assistant-avatar img { display: block; width: 110%; height: auto; max-width: none; max-height: none; object-fit: contain; }
 .platform-assistant-avatar:hover, .platform-assistant-avatar.is-active { transform: translateY(-2px); }
-.platform-assistant-avatar:focus-visible, .platform-assistant-close:focus-visible, .platform-assistant-suggestions button:focus-visible, .platform-assistant-composer input:focus-visible, .platform-assistant-composer button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.platform-assistant-avatar:focus-visible, .platform-assistant-close:focus-visible, .platform-assistant-composer input:focus-visible, .platform-assistant-composer button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 .platform-assistant-panel { display: flex; flex-direction: column; width: min(25rem, calc(100vw - 2rem)); max-height: min(70dvh, 38rem); min-height: 0; overflow: hidden; border: 1px solid var(--border); border-radius: .85rem; background: var(--surface); color: var(--ink); box-shadow: 0 .65rem 2rem var(--shadow); }
 .platform-assistant-panel[hidden] { display: none; }
 .platform-assistant-header { display: flex; align-items: center; gap: .55rem; flex: none; padding: .65rem .8rem; border-bottom: 1px solid var(--border); background: var(--surface-muted); }
@@ -310,10 +310,28 @@
 .platform-assistant-message { width: fit-content; max-width: 90%; margin: 0 0 .55rem; padding: .55rem .7rem; border-radius: .7rem; font-size: .84rem; line-height: 1.4; overflow-wrap: break-word; }
 .platform-assistant-message.is-assistant { background: var(--surface-muted); color: var(--ink); }
 .platform-assistant-message.is-user { margin-left: auto; background: var(--soft-blue); color: var(--ink); }
-.platform-assistant-suggestions { display: grid; gap: .35rem; margin: .75rem 0; }
-.platform-assistant-suggestions button { width: 100%; padding: .48rem .6rem; border: 1px solid var(--border); border-radius: .5rem; background: var(--surface); color: var(--ink); font-size: .79rem; line-height: 1.3; text-align: left; cursor: pointer; }
-.platform-assistant-suggestions button:hover { border-color: var(--blue); background: var(--soft-blue); }
+.platform-assistant-suggestions { display: grid; gap: .35rem; margin: 0 0 .65rem; }
+.platform-assistant-suggestions[hidden] { display: none; }
+.platform-assistant-suggestion { width: 100%; padding: .42rem .55rem; border: 1px solid var(--border); border-radius: .45rem; background: var(--surface); color: var(--ink); font: inherit; font-size: .78rem; line-height: 1.3; text-align: left; cursor: pointer; }
+.platform-assistant-suggestion:hover { border-color: var(--blue); background: var(--soft-blue); }
+.platform-assistant-suggestion:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.platform-assistant-suggestion:disabled { opacity: .65; cursor: wait; }
+.platform-assistant-suggestions-loading { display: flex; align-items: center; gap: .45rem; margin: 0 0 .65rem; color: var(--muted); font-size: .78rem; line-height: 1.35; }
+.platform-assistant-suggestions-loading[hidden] { display: none; }
+.platform-assistant-suggestions-spinner { width: .8rem; height: .8rem; flex: none; border: 2px solid var(--border); border-top-color: var(--blue); border-radius: 50%; animation: platform-assistant-spin .8s linear infinite; }
+@keyframes platform-assistant-spin { to { transform: rotate(1turn); } }
+@media (prefers-reduced-motion: reduce) { .platform-assistant-suggestions-spinner { animation: none; } }
+.platform-assistant-suggestions-status { margin: -.15rem 0 .55rem; color: var(--muted); font-size: .74rem; line-height: 1.3; }
+.platform-assistant-suggestions-status[hidden] { display: none; }
 .platform-assistant-messages:empty { display: none; }
+.platform-assistant-status { margin: .1rem 0 0; color: var(--muted); font-size: .76rem; line-height: 1.3; }
+.platform-assistant-status[hidden] { display: none; }
+.platform-assistant-evidence { margin: .1rem 0 .65rem; padding: .55rem .6rem; border-left: 2px solid var(--blue); background: var(--surface-muted); border-radius: 0 .45rem .45rem 0; }
+.platform-assistant-evidence h3 { margin: 0 0 .35rem; font-size: .76rem; }
+.platform-assistant-evidence-item + .platform-assistant-evidence-item { margin-top: .45rem; padding-top: .45rem; border-top: 1px solid var(--border); }
+.platform-assistant-evidence-item { font-size: .76rem; line-height: 1.35; overflow-wrap: break-word; }
+.platform-assistant-evidence-item p { margin: .18rem 0; }
+.platform-assistant-evidence-item a { color: var(--blue); font-weight: 600; }
 .platform-assistant-form { flex: none; padding: .65rem .8rem; border-top: 1px solid var(--border); background: var(--surface); }
 .platform-assistant-composer { display: flex; align-items: center; gap: .45rem; }
 .platform-assistant-composer input { flex: 1; min-width: 0; padding: .5rem .6rem; border: 1px solid var(--border); border-radius: .45rem; background: var(--surface); color: var(--ink); font: inherit; font-size: .84rem; }
@@ -423,6 +441,22 @@ legend.platform-form-section-title { float: none; }
 .platform-empty-state p { color: var(--muted); }
 .platform-admin-nav { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: 1.5rem; }
 .platform-admin-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 1rem; }
+.platform-ai-settings { display: grid; gap: 1.25rem; }
+.platform-ai-settings-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
+.platform-ai-current { display: grid; grid-template-columns: auto auto; gap: .15rem .65rem; font-size: .9rem; white-space: nowrap; }
+.platform-ai-current dt { color: var(--muted); font-weight: 600; }
+.platform-ai-current dd { margin: 0; font-weight: 700; }
+.platform-ai-privacy { margin: 0; padding: .8rem 1rem; border-left: .25rem solid var(--blue); background: var(--surface-muted); color: var(--ink); }
+.platform-ai-settings-form { display: grid; gap: 1.25rem; }
+.platform-ai-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.platform-ai-form-grid .form-label, .platform-ai-provider-card .form-label { display: grid; gap: .35rem; font-weight: 650; }
+.platform-ai-provider-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr)); gap: 1rem; }
+.platform-ai-provider-card { min-width: 0; display: grid; align-content: start; gap: .85rem; padding: 1rem; border: 1px solid var(--border); border-radius: .8rem; background: var(--surface); }
+.platform-ai-provider-card-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: .65rem; }
+.platform-ai-provider-card-heading h3 { margin: 0; }
+.platform-ai-fallback { min-width: 0; padding: 1rem; border: 1px solid var(--border); border-radius: .8rem; }
+.platform-ai-fallback[hidden] { display: none; }
+.platform-ai-fallback-options { display: flex; flex-wrap: wrap; gap: .75rem 1.25rem; }
 .platform-table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: .8rem; }
 .platform-table-wrap .table { margin: 0; --bs-table-bg: transparent; --bs-table-color: var(--ink); --bs-table-border-color: var(--border); }
 .platform-table-wrap th, .platform-table-wrap td { padding: .8rem 1rem; vertical-align: middle; }
@@ -474,12 +508,14 @@ legend.platform-form-section-title { float: none; }
   .platform-header-user { max-width: 35vw; }
   .platform-main { flex: 1 0 auto; }
   .platform-admin-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .platform-ai-settings-heading { align-items: stretch; flex-direction: column; }
   .platform-dashboard-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 640px) {
   .platform-header { gap: .75rem; }
   .platform-header-public .platform-brand { flex: 1 1 calc(100% - 3.5rem); }
   .platform-form-grid, .platform-project-grid, .platform-admin-grid { grid-template-columns: 1fr; }
+  .platform-ai-form-grid { grid-template-columns: 1fr; }
   .platform-profile-panel form, .platform-library-editor-grid { grid-template-columns: 1fr; }
   .platform-main-auth { padding: 1.5rem 1rem 0; }
   .platform-auth-card { width: 100%; }

@@ -13,6 +13,11 @@ from pathlib import Path
 from threading import RLock
 from uuid import UUID, uuid4
 
+try:
+    from dotenv import load_dotenv
+except ImportError:  # A chave também pode ser fornecida diretamente pelo ambiente.
+    load_dotenv = None
+
 from flask import (
     Flask,
     abort,
@@ -62,6 +67,10 @@ from historico_racial.routes import historico_racial_bp
 
 
 BASE_DIR = Path(__file__).resolve().parent
+if load_dotenv is not None:
+    # Arquivo local opcional, ignorado pelo Git. Valores já presentes no processo
+    # nunca são sobrescritos e nenhum segredo é renderizado ou registrado.
+    load_dotenv(BASE_DIR / ".env.local")
 UPLOAD_DIR = BASE_DIR / "uploads"
 OUTPUT_DIR = BASE_DIR / "outputs"
 UPLOAD_DIR.mkdir(exist_ok=True)
@@ -90,6 +99,14 @@ app.config.update(
     MAIL_FROM=os.environ.get("MAIL_FROM", ""),
     MAIL_USE_TLS=os.environ.get("MAIL_USE_TLS", "1") == "1",
     MAIL_USE_SSL=os.environ.get("MAIL_USE_SSL", "0") == "1",
+    OPENAI_API_KEY=os.environ.get("OPENAI_API_KEY", ""),
+    OPENAI_ASSISTANT_MODEL=os.environ.get("OPENAI_ASSISTANT_MODEL", ""),
+    GEMINI_API_KEY=os.environ.get("GEMINI_API_KEY", ""),
+    GEMINI_ASSISTANT_MODEL=os.environ.get("GEMINI_ASSISTANT_MODEL", ""),
+    ANTHROPIC_API_KEY=os.environ.get("ANTHROPIC_API_KEY", ""),
+    # Compatibilidade somente para o primeiro bootstrap sem configuração
+    # persistida. Depois disso, o Gerencial é a fonte operacional.
+    AI_PROVIDER=os.environ.get("AI_PROVIDER", ""),
 )
 db.init_app(app)
 login_manager.init_app(app)
@@ -1064,6 +1081,12 @@ def create_app(test_config: dict | None = None) -> Flask:
     isolated = Flask(__name__, template_folder="templates", static_folder="static")
     isolated.config.update(app.config)
     isolated.config.update(test_config)
+    if isolated.config.get("TESTING") and "OPENAI_API_KEY" not in test_config:
+        # Testes precisam sempre injetar explicitamente um provider falso; nunca
+        # consomem uma chave local configurada para desenvolvimento.
+        isolated.config["OPENAI_API_KEY"] = ""
+    if isolated.config.get("TESTING") and "GEMINI_API_KEY" not in test_config:
+        isolated.config["GEMINI_API_KEY"] = ""
     if "SQLALCHEMY_ENGINE_OPTIONS" not in test_config:
         isolated.config["SQLALCHEMY_ENGINE_OPTIONS"] = (
             {"connect_args": {"timeout": 30}}

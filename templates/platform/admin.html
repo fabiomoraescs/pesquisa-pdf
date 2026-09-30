@@ -42,6 +42,54 @@
 <section class="platform-panel mb-3"><h2 class="h5">Permissões por ferramenta</h2>{% for tool in tools %}<form method="post" action="{{ url_for('admin.set_override', user_id=user.id, tool_id=tool.id) }}" class="d-flex flex-wrap gap-2 align-items-end mb-3"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label class="form-label mb-0" for="override-{{ tool.id }}">{{ presentation_labels.get(tool.id, tool.name) }}</label><select class="form-select" id="override-{{ tool.id }}" name="decision" style="max-width: 240px">{% for choice in ['inherit','allow','deny'] %}<option value="{{ choice }}" {% if overrides.get(tool.id, 'inherit') == choice %}selected{% endif %}>{{ choice | rotulo }}</option>{% endfor %}</select><button class="btn btn-outline-primary" title="Salvar permissão" aria-label="Salvar permissão">Salvar</button></form>{% endfor %}</section>
 <section class="platform-panel mb-3"><h2 class="h5">Projetos do usuário</h2><ul class="mb-0">{% for project in projects %}<li><a href="{{ url_for('admin.project_detail', project_id=project.id) }}">{{ project.name }}</a> · {{ project.status | rotulo }}</li>{% else %}<li>Nenhum projeto.</li>{% endfor %}</ul></section>
 <div class="d-flex flex-wrap gap-2 align-items-center">{{ action_link(url_for('admin.reset_user_password', user_id=user.id), 'Redefinir senha', 'chave') }}{% if user.id != current_user.id %}{{ action_link(url_for('admin.delete_user', user_id=user.id), 'Excluir usuário', 'usuario_remover', true) }}{% endif %}</div>
+{% elif section == 'assistant_ai_settings' %}
+<section class="platform-panel platform-ai-settings" aria-labelledby="ai-settings-title">
+  <div class="platform-ai-settings-heading">
+    <div><h2 class="h4" id="ai-settings-title">Assistente Análysis</h2><p class="platform-muted mb-0">Configuração operacional de Inteligência Artificial.</p></div>
+    <dl class="platform-ai-current mb-0"><dt>Provider atual</dt><dd>{{ ai_settings.primary_provider | capitalize }}</dd><dt>Estratégia</dt><dd>{{ 'Fallback' if ai_settings.strategy == 'fallback' else 'Provider único' }}</dd></dl>
+  </div>
+  <p class="platform-ai-privacy" role="note">As credenciais são configuradas somente no ambiente do servidor e nunca são exibidas aqui. Em estratégia de fallback, uma solicitação pode ser enviada ao próximo provider configurado caso o principal esteja indisponível ou sem quota.</p>
+  <form method="post" action="{{ url_for('admin.save_assistant_ai_settings') }}" class="platform-ai-settings-form" data-ai-settings-form>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="platform-ai-form-grid">
+      <label class="form-label" for="ai-strategy">Estratégia
+        <select class="form-select" id="ai-strategy" name="strategy" data-ai-strategy>
+          <option value="single" {% if ai_settings.strategy == 'single' %}selected{% endif %}>Provider único</option>
+          <option value="fallback" {% if ai_settings.strategy == 'fallback' %}selected{% endif %}>Fallback técnico</option>
+        </select>
+      </label>
+      <label class="form-label" for="ai-primary-provider">Provider principal
+        <select class="form-select" id="ai-primary-provider" name="primary_provider" data-ai-primary>
+          {% for status in provider_statuses %}<option value="{{ status.id }}" {% if status.id == ai_settings.primary_provider %}selected{% endif %} {% if not status.enabled %}disabled{% endif %}>{{ status.display_name }}{% if not status.implemented %} (futuro){% endif %}</option>{% endfor %}
+        </select>
+      </label>
+    </div>
+    <div class="platform-ai-provider-grid" aria-label="Providers disponíveis">
+      {% for status in provider_statuses %}
+      <article class="platform-ai-provider-card" data-ai-provider-card="{{ status.id }}">
+        <div class="platform-ai-provider-card-heading"><h3 class="h5">{{ status.display_name }}</h3><span class="platform-badge">{% if not status.implemented %}Integração futura{% elif status.credential_configured %}Credencial configurada{% else %}Credencial não configurada{% endif %}</span></div>
+        <label class="form-check form-switch"><input class="form-check-input" type="checkbox" name="enabled_providers" value="{{ status.id }}" {% if status.enabled %}checked{% endif %} {% if not status.implemented %}disabled aria-disabled="true"{% endif %} data-ai-enabled="{{ status.id }}"><span class="form-check-label">Ativar provider</span></label>
+        <label class="form-label" for="ai-model-{{ status.id }}">Modelo
+          <input class="form-control" id="ai-model-{{ status.id }}" name="{{ status.id }}_model" value="{{ status.selected_model }}" maxlength="160" {% if not status.implemented %}disabled aria-disabled="true"{% endif %}>
+        </label>
+        <p class="platform-muted mb-0">Status de conexão: <span>{{ status.connection_status }}</span></p>
+        {% if status.implemented %}<button class="btn btn-outline-primary btn-sm" type="submit" formmethod="post" formaction="{{ url_for('admin.test_assistant_ai_connection', provider_id=status.id) }}">Testar conexão</button>{% else %}<span class="platform-muted" aria-disabled="true">Provider preparado para fase futura.</span>{% endif %}
+      </article>
+      {% endfor %}
+    </div>
+    <fieldset class="platform-ai-fallback" data-ai-fallback {% if ai_settings.strategy != 'fallback' %}hidden{% endif %}>
+      <legend>Ordem de fallback</legend>
+      <p class="platform-muted">Apenas falhas técnicas antes de qualquer tool documental podem avançar para o próximo provider.</p>
+      <div class="platform-ai-fallback-options">
+        {% for status in provider_statuses if status.implemented %}
+        <label class="form-check"><input class="form-check-input" type="checkbox" name="fallback_order" value="{{ status.id }}" {% if status.id in ai_settings.fallback_order %}checked{% endif %} {% if status.id == ai_settings.primary_provider or not status.enabled %}disabled{% endif %} data-ai-fallback-provider="{{ status.id }}"><span class="form-check-label">{{ status.display_name }}</span></label>
+        {% endfor %}
+      </div>
+    </fieldset>
+    <div class="d-flex flex-wrap gap-2"><button class="btn btn-primary" type="submit">Salvar configuração</button></div>
+  </form>
+</section>
+<script src="{{ url_for('static', filename='js/admin_ai_settings.js') }}"></script>
 {% elif section == 'tools' %}
 <div class="platform-toolbar"><p>Disponibilidade global das ferramentas</p>{{ toggle('admin-tools-list') }}</div>
 <div class="platform-view-list" id="admin-tools-list" data-view-container>{% for tool in tools %}<article class="platform-list-item" data-tool-id="{{ tool.id }}"><div class="platform-list-title">{% if tool.icon %}{{ icon(tool.icon) }} {% endif %}{{ tool.name }}</div><div class="platform-list-meta"><span class="platform-badge">{{ ('Ativa' if tool.active else 'Inativa') if tool.implemented else 'Indisponível' }}</span></div><div class="platform-list-actions">{% if tool.implemented %}<form method="post" action="{{ url_for('admin.set_tool_state', tool_id=tool.id) }}" onsubmit="return confirm('Confirma a mudança global desta ferramenta?')"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="confirm" value="yes"><button class="btn btn-outline-primary btn-sm platform-action-button" type="submit" title="{{ 'Desativar' if tool.active else 'Ativar' }} ferramenta" aria-label="{{ 'Desativar' if tool.active else 'Ativar' }} ferramenta">{{ icon('desativar' if tool.active else 'ativar') }}</button></form>{% else %}<span class="platform-muted" aria-disabled="true">Em desenvolvimento</span>{% endif %}</div></article>{% endfor %}</div>

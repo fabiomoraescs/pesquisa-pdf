@@ -598,12 +598,3 @@ def methodology_instruction() -> str:
         "como procedimento realizado; não solicite nem invente texto de PDF ou trechos ausentes. "
         "O Assistente é somente de leitura e não executa ações no projeto."
     )
-
-
-def provider_payload(question: str, project_context: Mapping[str, Any] | None) -> dict[str, Any]:
-    """Forma compacta e provider-independente para uma integração futura de IA."""
-    return {
-        "instruction": methodology_instruction(),
-        "question": question,
-        "project_context": dict(project_context) if project_context else None,
-    }

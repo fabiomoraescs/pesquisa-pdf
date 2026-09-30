@@ -12,7 +12,7 @@ from historico_racial.vocabulary import _contagens, _seed, hash_vocabulario
 
 from .extensions import db
 from .models import (
-    AccessGrant, AuditLog, Plan, PlanTool, Project, Tool, User,
+    AccessGrant, AssistantAISettings, AuditLog, Plan, PlanTool, Project, Tool, User,
     UserToolOverride, VocabularyLibrary, utcnow,
 )
 
@@ -68,6 +68,10 @@ def seed_platform() -> None:
     for code, name, route in FERRAMENTAS:
         if db.session.get(Tool, code) is None:
             db.session.add(Tool(id=code, name=name, route=route, active=True))
+    # Configuração global, idempotente e sem segredos. As credenciais continuam
+    # exclusivamente no ambiente do processo.
+    if db.session.get(AssistantAISettings, 1) is None:
+        db.session.add(AssistantAISettings())
     db.session.flush()
     # Ambas as ferramentas iniciais ficam no plano gratuito; nenhum limite
     # arbitrário de PDFs ou projetos é introduzido nesta etapa.

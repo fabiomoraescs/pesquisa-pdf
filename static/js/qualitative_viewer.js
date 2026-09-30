@@ -330,7 +330,13 @@ if (root) {
       if (node.shell.offsetTop <= threshold) current = number;
       else break;
     }
-    if (current !== activePage) { closeContextMenu(); contextRequest += 1; }
+    if (current !== activePage) {
+      closeContextMenu();
+      contextRequest += 1;
+      document.dispatchEvent(new CustomEvent('qualitative:page-changed', {
+        detail: { documentId: root.dataset.documentId, pageNumber: current },
+      }));
+    }
     activePage = current;
     pageOutput.value = String(current);
     releaseDistant();

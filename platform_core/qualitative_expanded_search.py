@@ -67,13 +67,16 @@ def _key(match):
             match["end_offset"], match["page_text_hash"])
 
 
-def _match(document_id, number, page, start, end, kind):
+def _match(document_id, number, page, start, end, kind, *, semantic_score=None):
     text = page["text"]
-    return {"document_id": document_id, "page_number": number, "start_offset": start,
+    item = {"document_id": document_id, "page_number": number, "start_offset": start,
             "end_offset": end, "page_text_hash": page["sha256"],
             "match_text": text[start:end],
             "snippet": text[max(0, start - 55):min(len(text), end + 55)],
             "match_type": kind}
+    if semantic_score is not None:
+        item["semantic_score"] = float(semantic_score)
+    return item
 
 
 def search_lexical(analysis, document_id, query, *, case_sensitive=False, progress_callback=None):
@@ -326,7 +329,7 @@ def search_semantic(analysis, document_id, query, *, case_sensitive=False, progr
             if score < threshold or any(start < earlier_end and end > earlier_start
                                         for earlier_start, earlier_end in prior.get((doc, number), ())):
                 continue  # contexto já representado por um match literal/lexical do mesmo código
-            results.append(_match(doc, number, page, start, end, "semantic"))
+            results.append(_match(doc, number, page, start, end, "semantic", semantic_score=score))
         completed_pages += 1
         if progress_callback:
             progress_callback({"stage": "semantic", "completed": completed_pages,

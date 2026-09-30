@@ -11,7 +11,9 @@ config = context.config
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
-fileConfig(config.config_file_name)
+# A execução de upgrade em testes não pode desabilitar o logger do Flask que
+# atende a aplicação já em memória; a migração continua usando sua configuração.
+fileConfig(config.config_file_name, disable_existing_loggers=False)
 logger = logging.getLogger('alembic.env')
 
 

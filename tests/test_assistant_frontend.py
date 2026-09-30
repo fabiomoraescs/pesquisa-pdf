@@ -1,4 +1,4 @@
-"""Perguntas sugeridas locais e pergunta livre via endpoint do Assistente."""
+"""Contrato do chat do Assistente Análysis no navegador."""
 
 from pathlib import Path
 import shutil
@@ -19,174 +19,108 @@ class AssistantFrontendTests(unittest.TestCase):
                                 capture_output=True, text=True, encoding="utf-8")
         self.assertEqual(result.returncode, 0, result.stderr)
 
-    def test_suggestions_remain_local_and_free_question_uses_json_post(self):
+    def test_free_question_uses_json_post_and_displays_backend_sources(self):
         self.run_node(r"""
-const assert=require('node:assert/strict');
-const vm=require('node:vm');
-let focused=null;
-class Element {
-  constructor() { this.listeners={}; this.children=[]; this.attrs={}; this.dataset={};
-    this.classList={values:new Set(),toggle:(name,on)=>on?this.classList.values.add(name):this.classList.values.delete(name)}; }
-  addEventListener(type,listener) { this.listeners[type]=listener; }
-  fire(type,event={}) { return this.listeners[type](event); }
-  querySelector(selector) { return this.matches[selector]; }
-  setAttribute(name,value) { this.attrs[name]=value; }
-  focus() { focused=this; }
-  append(child) { this.children.push(child); }
-  contains(target) { return target===question0 || target===question1; }
-}
-const avatar=new Element(),panel=new Element(),closeButton=new Element(); panel.hidden=true;
-const messages=new Element(),body=new Element(),payload=new Element(),assistant=new Element();
-const form=new Element(),input=new Element(),sendButton=new Element(),error=new Element(),csrf=new Element();
-form.action='/assistant/ask';csrf.value='csrf-token';error.hidden=true;
-body.scrollHeight=500;
-const question0=new Element(),question1=new Element();
-question0.dataset.assistantQuestion='0';question1.dataset.assistantQuestion='1';
-question0.closest=question1.closest=selector=>selector==='[data-assistant-question]'?question0:null;
-question1.closest=selector=>selector==='[data-assistant-question]'?question1:null;
-const suggestions=Array.from({length:5},(_,i)=>({question:'Pergunta '+i,answer:'Resposta '+i}));
-payload.textContent=JSON.stringify({key:'qualitative',page:'qualitative.page',
-  reference:{project_id:'safe-id'},suggestions});
-assistant.matches={'[data-assistant-toggle]':avatar,'[data-assistant-panel]':panel,
-  '[data-assistant-close]':closeButton,'[data-assistant-messages]':messages,
-  '[data-assistant-body]':body,'[data-assistant-payload]':payload,
-  '[data-assistant-form]':form,'[data-assistant-input]':input,
-  '[data-assistant-send]':sendButton,'[data-assistant-error]':error,
-  '[data-assistant-csrf]':csrf};
-const document={listeners:{},querySelector:()=>assistant,createElement:()=>new Element(),
-  addEventListener(type,listener){this.listeners[type]=listener;}};
-let requests=[];
-let nextResponse={ok:true,json:async()=>({answer:'Resposta provisória'})};
-const fetch=(url,options)=>{requests.push({url,options});return Promise.resolve(nextResponse);};
-vm.runInNewContext(SOURCE,{document,fetch});
-assert.equal(panel.hidden,true);avatar.fire('click');assert.equal(panel.hidden,false);
-assert.equal(avatar.attrs['aria-expanded'],'true');assert.equal(focused,closeButton);
-assistant.fire('click',{target:question0});
-assert.deepEqual(messages.children.map(item=>item.textContent),['Pergunta 0','Resposta 0']);
-assert.equal(messages.children[0].className,'platform-assistant-message is-user');
-assert.equal(messages.children[1].className,'platform-assistant-message is-assistant');
-assistant.fire('click',{target:question1});
-assert.deepEqual(messages.children.map(item=>item.textContent),
-  ['Pergunta 0','Resposta 0','Pergunta 1','Resposta 1']);
-assert.equal(requests.length,0);
-assert.equal(body.scrollTop,500);
-let prevented=false;document.listeners.keydown({key:'Escape',preventDefault(){prevented=true;}});
-assert.equal(prevented,true);assert.equal(panel.hidden,true);
-assert.equal(avatar.attrs['aria-expanded'],'false');assert.equal(focused,avatar);
-avatar.fire('click');closeButton.fire('click');assert.equal(panel.hidden,true);
-assert.equal(focused,avatar);
-(async()=>{
-  avatar.fire('click');
-  input.value='  Como funciona?  ';
-  let prevented=false;
-  const sending=form.fire('submit',{preventDefault(){prevented=true;}});
-  assert.equal(prevented,true);
-  assert.equal(messages.children.at(-1).textContent,'Como funciona?');
-  assert.equal(input.value,'');
-  assert.equal(input.disabled,true);assert.equal(sendButton.disabled,true);
-  assert.equal(sendButton.textContent,'Enviando...');
-  await form.fire('submit',{preventDefault(){}});
-  assert.equal(requests.length,1);
-  await sending;
-  assert.equal(requests.length,1);assert.equal(requests[0].url,'/assistant/ask');
-  assert.equal(requests[0].options.method,'POST');
-  assert.equal(requests[0].options.credentials,'same-origin');
-  assert.equal(requests[0].options.headers['Content-Type'],'application/json');
-  assert.equal(requests[0].options.headers.Accept,'application/json');
-  assert.equal(requests[0].options.headers['X-CSRFToken'],'csrf-token');
-  const sent=JSON.parse(requests[0].options.body);
-  assert.deepEqual(sent,{question:'Como funciona?',context:'qualitative',
-    page:'qualitative.page',reference:{project_id:'safe-id'}});
-  assert.equal(messages.children.at(-1).textContent,'Resposta provisória');
-  assert.equal(input.disabled,false);assert.equal(sendButton.disabled,false);
-  assert.equal(sendButton.textContent,'Enviar');assert.equal(focused,input);
-  assert.equal(body.scrollTop,500);
-
-  input.value='  ';await form.fire('submit',{preventDefault(){}});
-  assert.equal(requests.length,1);assert.equal(error.hidden,false);
-  input.value='a'.repeat(1001);await form.fire('submit',{preventDefault(){}});
-  assert.equal(requests.length,1);
-  nextResponse={ok:false,json:async()=>({error:'Erro controlado'})};
-  input.value='Teste de erro';await form.fire('submit',{preventDefault(){}});
-  assert.equal(error.textContent,'Erro controlado');
-  assert.equal(input.disabled,false);assert.equal(sendButton.disabled,false);
-  nextResponse={ok:true,json:async()=>({})};
-  input.value='Resposta inválida';await form.fire('submit',{preventDefault(){}});
-  assert.equal(error.textContent,'Resposta inválida do Assistente.');
-  assert.equal(input.disabled,false);
-})().catch(error=>{console.error(error);process.exitCode=1;});
+const assert=require('node:assert/strict'); const vm=require('node:vm'); let focused=null;
+class Element { constructor(){this.listeners={};this.children=[];this.attrs={};this.dataset={};this.matches={};this.classList={toggle(){}};}
+ addEventListener(t,l){this.listeners[t]=l;} fire(t,e={}){return this.listeners[t](e);} querySelector(s){return this.matches[s];}
+ setAttribute(n,v){this.attrs[n]=v;} focus(){focused=this;} append(c){this.children.push(c);} }
+const assistant=new Element(),avatar=new Element(),panel=new Element(),close=new Element(),messages=new Element(),body=new Element(),payload=new Element();
+const form=new Element(),input=new Element(),send=new Element(),error=new Element(),csrf=new Element(),status=new Element();
+panel.hidden=true; form.action='/assistant/ask'; csrf.value='csrf-token'; error.hidden=true; body.scrollHeight=90;
+payload.textContent=JSON.stringify({key:'qualitative',page:'qualitative.page',reference:{project_id:'safe-id'}});
+assistant.matches={'[data-assistant-toggle]':avatar,'[data-assistant-panel]':panel,'[data-assistant-close]':close,'[data-assistant-messages]':messages,'[data-assistant-body]':body,'[data-assistant-payload]':payload,'[data-assistant-form]':form,'[data-assistant-input]':input,'[data-assistant-send]':send,'[data-assistant-error]':error,'[data-assistant-csrf]':csrf,'[data-assistant-status]':status};
+const document={body:{classList:{contains(){return false;}}},querySelector(s){return s==='[data-assistant]'?assistant:null;},createElement(){return new Element();},addEventListener(){}};
+let sent; const fetch=(_url,options)=>{sent=JSON.parse(options.body);return Promise.resolve({ok:true,json:async()=>({answer:'Resposta da IA.',evidence:[{document_id:'doc',document_name:'Documento.pdf',page_number:2,preview:'Trecho.',url:'/pagina/2'}]})});};
+vm.runInNewContext(SOURCE,{document,fetch}); avatar.fire('click'); assert.equal(panel.hidden,false); assert.equal(focused,close);
+(async()=>{ input.value=' Pergunta livre '; await form.fire('submit',{preventDefault(){}}); assert.deepEqual(sent,{question:'Pergunta livre',context:'qualitative',page:'qualitative.page',reference:{project_id:'safe-id'}}); assert.equal(messages.children[0].textContent,'Pergunta livre'); assert.equal(messages.children[1].textContent,'Resposta da IA.'); const sources=messages.children[2]; assert.equal(sources.className,'platform-assistant-evidence'); assert.equal(sources.children[1].children[2].href,'/pagina/2'); assert.equal(send.textContent,'Enviar'); })().catch(e=>{console.error(e);process.exitCode=1;});
 """.replace("SOURCE", repr(SOURCE)))
 
-    def test_free_question_form_and_responsive_rules_exist(self):
-        self.assertIn("fetch(form.action", SOURCE)
-        self.assertIn("currentPageContext", SOURCE)
-        self.assertIn("page_context", SOURCE)
-        self.assertIn("selected_search_mode", SOURCE)
-        self.assertNotIn("sessionStorage", SOURCE)
-        self.assertNotIn("localStorage", SOURCE)
-        self.assertNotIn("location.reload", SOURCE)
+    def test_loading_is_generic_and_current_qualitative_state_is_sent(self):
+        self.run_node(r"""
+const assert=require('node:assert/strict');const vm=require('node:vm');
+class E{constructor(){this.listeners={};this.matches={};this.dataset={};this.attrs={};this.children=[];this.classList={toggle(){}};}addEventListener(t,l){this.listeners[t]=l;}fire(t,e={}){return this.listeners[t](e);}querySelector(s){return this.matches[s];}setAttribute(n,v){this.attrs[n]=v;}append(c){this.children.push(c);}focus(){}}
+const a=new E(),av=new E(),p=new E(),c=new E(),m=new E(),b=new E(),payload=new E(),f=new E(),i=new E(),s=new E(),e=new E(),csrf=new E(),status=new E();p.hidden=false;f.action='/assistant/ask';csrf.value='csrf';e.hidden=true;payload.textContent=JSON.stringify({key:'qualitative',page:'qualitative.page',reference:{project_id:'project',analysis_id:'analysis'}});a.matches={'[data-assistant-toggle]':av,'[data-assistant-panel]':p,'[data-assistant-close]':c,'[data-assistant-messages]':m,'[data-assistant-body]':b,'[data-assistant-payload]':payload,'[data-assistant-form]':f,'[data-assistant-input]':i,'[data-assistant-send]':s,'[data-assistant-error]':e,'[data-assistant-csrf]':csrf,'[data-assistant-status]':status};const viewer=new E();viewer.dataset={analysisId:'analysis',documentId:'document'};const page=new E();page.textContent='7';viewer.matches={'[data-current-page]':page};const document={body:{classList:{contains:n=>n==='platform-qualitative-focus'}},querySelector(sel){return sel==='[data-assistant]'?a:sel==='[data-qualitative-viewer]'?viewer:null;},createElement(){return new E();},addEventListener(){}};let resolveFetch, sent;const fetch=(_u,o)=>{sent=JSON.parse(o.body);return new Promise(r=>resolveFetch=r);};vm.runInNewContext(SOURCE,{document,fetch});(async()=>{i.value='Esta página';const sending=f.fire('submit',{preventDefault(){}});assert.equal(s.textContent,'Analisando…');assert.equal(status.textContent,'Analisando sua pergunta…');assert.deepEqual(sent.page_context,{document_id:'document',current_page:7,focus_mode:true});resolveFetch({ok:true,json:async()=>({answer:'ok'})});await sending;assert.equal(status.hidden,true);})().catch(err=>{console.error(err);process.exitCode=1;});
+""".replace("SOURCE", repr(SOURCE)))
+
+    def test_contextual_suggestion_uses_the_same_assistant_request_flow(self):
+        self.run_node(r"""
+const assert=require('node:assert/strict');const vm=require('node:vm');
+class E{constructor(){this.listeners={};this.matches={};this.attrs={};this.children=[];this.classList={toggle(){}};this.dataset={};this.hidden=false;this.textContent='';}addEventListener(t,l){this.listeners[t]=l;}fire(t,e={}){return this.listeners[t](e);}querySelector(s){return this.matches[s];}setAttribute(n,v){this.attrs[n]=v;}append(c){this.children.push(c);}focus(){}}
+const a=new E(),av=new E(),p=new E(),c=new E(),m=new E(),b=new E(),payload=new E(),f=new E(),i=new E(),s=new E(),e=new E(),csrf=new E(),status=new E(),suggestions=new E(),one=new E(),two=new E(),three=new E();
+one.textContent='O que é o Análysis?';two.textContent='Que ferramentas estão disponíveis no meu plano?';three.textContent='Explique as funcionalidades das ferramentas disponíveis.';p.hidden=false;f.action='/assistant/ask';csrf.value='csrf';e.hidden=true;payload.textContent=JSON.stringify({key:'home',page:'home',reference:{}});a.matches={'[data-assistant-toggle]':av,'[data-assistant-panel]':p,'[data-assistant-close]':c,'[data-assistant-messages]':m,'[data-assistant-body]':b,'[data-assistant-payload]':payload,'[data-assistant-form]':f,'[data-assistant-input]':i,'[data-assistant-send]':s,'[data-assistant-error]':e,'[data-assistant-csrf]':csrf,'[data-assistant-status]':status,'[data-assistant-suggestions]':suggestions};a.querySelectorAll=(selector)=>selector==='[data-assistant-suggestion]'?[one,two,three]:[];
+const document={body:{classList:{contains(){return false;}}},querySelector(sel){return sel==='[data-assistant]'?a:null;},createElement(){return new E();},addEventListener(){}};let sent;const fetch=(_url,options)=>{sent=JSON.parse(options.body);return Promise.resolve({ok:true,json:async()=>({answer:'Resposta produzida pelo provider.'})});};vm.runInNewContext(SOURCE,{document,fetch});
+(async()=>{await two.fire('click');assert.deepEqual(sent,{question:'Que ferramentas estão disponíveis no meu plano?',context:'home',page:'home',reference:{}});assert.equal(suggestions.hidden,true);assert.equal(m.children[0].textContent,'Que ferramentas estão disponíveis no meu plano?');assert.equal(m.children[1].textContent,'Resposta produzida pelo provider.');assert.equal(s.textContent,'Enviar');})().catch(err=>{console.error(err);process.exitCode=1;});
+""".replace("SOURCE", repr(SOURCE)))
+
+    def test_dynamic_documentary_suggestions_show_loading_then_replace_it_with_three_buttons(self):
+        self.run_node(r"""
+const assert=require('node:assert/strict');const vm=require('node:vm');
+class E{constructor(){this.listeners={};this.matches={};this.attrs={};this.children=[];this.classList={toggle(){}};this.dataset={};this.hidden=false;this.textContent='';}addEventListener(t,l){this.listeners[t]=l;}fire(t,e={}){return this.listeners[t](e);}querySelector(s){return this.matches[s];}setAttribute(n,v){this.attrs[n]=v;}append(c){this.children.push(c);}replaceChildren(...items){this.children=items;}focus(){}}
+const a=new E(),av=new E(),p=new E(),c=new E(),m=new E(),b=new E(),payload=new E(),f=new E(),i=new E(),s=new E(),e=new E(),csrf=new E(),status=new E(),suggestions=new E(),loading=new E(),loadingText=new E(),suggestionsStatus=new E();let markReplaced;const replaced=new Promise(resolve=>markReplaced=resolve);suggestions.replaceChildren=function(...items){this.children=items;if(items.length===3)markReplaced();};
+p.hidden=true;f.action='/assistant/ask';csrf.value='csrf';e.hidden=true;suggestions.hidden=true;loading.hidden=true;a.dataset={assistantSuggestionsUrl:'/assistant/suggestions'};payload.textContent=JSON.stringify({key:'qualitative_reader',page:'qualitative.page',reference:{project_id:'project',analysis_id:'analysis'},dynamic_suggestions:true,onboarding_prompts:['Fallback 1?','Fallback 2?','Fallback 3?']});a.matches={'[data-assistant-toggle]':av,'[data-assistant-panel]':p,'[data-assistant-close]':c,'[data-assistant-messages]':m,'[data-assistant-body]':b,'[data-assistant-payload]':payload,'[data-assistant-form]':f,'[data-assistant-input]':i,'[data-assistant-send]':s,'[data-assistant-error]':e,'[data-assistant-csrf]':csrf,'[data-assistant-status]':status,'[data-assistant-suggestions]':suggestions,'[data-assistant-suggestions-loading]':loading,'[data-assistant-suggestions-loading-text]':loadingText,'[data-assistant-suggestions-status]':suggestionsStatus};a.querySelectorAll=()=>[];
+const document={body:{classList:{contains(){return false;}}},querySelector(sel){return sel==='[data-assistant]'?a:null;},createElement(){return new E();},addEventListener(){}};const calls=[];let resolveSuggestions;const dynamic=[{id:'opaque-1',text:'Como raça aparece nesta página?'},{id:'opaque-2',text:'Que análise este código sugere nesta passagem?'},{id:'opaque-3',text:'Como raça se relaciona com os demais documentos?'}];const fetch=(url,options)=>{calls.push([url,JSON.parse(options.body)]);if(url==='/assistant/suggestions')return new Promise(resolve=>resolveSuggestions=resolve);return Promise.resolve({ok:true,json:async()=>({answer:'Resposta produzida pelo provider.'})});};vm.runInNewContext(SOURCE,{document,fetch,setTimeout,clearTimeout});
+(async()=>{av.fire('click');assert.equal(calls[0][0],'/assistant/suggestions');assert.equal(suggestions.hidden,true);assert.equal(suggestions.children.length,0);assert.equal(loading.hidden,false);assert.equal(loadingText.textContent,'Analisando esta página para sugerir perguntas…');assert.notEqual(i.disabled,true);assert.notEqual(s.disabled,true);resolveSuggestions({ok:true,json:async()=>({dynamic:true,suggestions:dynamic})});await replaced;assert.equal(loading.hidden,true);assert.equal(suggestions.hidden,false);assert.equal(suggestions.children.length,3);assert.deepEqual(suggestions.children.map(x=>x.textContent),dynamic.map(x=>x.text));await suggestions.children[1].fire('click');assert.equal(calls[1][0],'/assistant/ask');assert.equal(calls[1][1].question,dynamic[1].text);assert.equal(calls[1][1].suggestion_id,'opaque-2');assert.equal(calls[1][1].scope,undefined);assert.equal(calls[1][1].required_tool,undefined);assert.equal(m.children[1].textContent,'Resposta produzida pelo provider.');})().catch(err=>{console.error(err);process.exitCode=1;});
+""".replace("SOURCE", repr(SOURCE)))
+
+    def test_dynamic_suggestion_cache_renders_again_without_loading(self):
+        self.run_node(r"""
+const assert=require('node:assert/strict');const vm=require('node:vm');
+class E{constructor(){this.listeners={};this.matches={};this.attrs={};this.children=[];this.classList={toggle(){}};this.dataset={};this.hidden=false;this.textContent='';}addEventListener(t,l){this.listeners[t]=l;}fire(t,e={}){return this.listeners[t](e);}querySelector(s){return this.matches[s];}setAttribute(n,v){this.attrs[n]=v;}append(c){this.children.push(c);}replaceChildren(...items){this.children=items;}focus(){}}
+const a=new E(),av=new E(),p=new E(),c=new E(),m=new E(),b=new E(),payload=new E(),f=new E(),i=new E(),s=new E(),e=new E(),csrf=new E(),status=new E(),suggestions=new E(),loading=new E(),loadingText=new E(),suggestionsStatus=new E(),events={};let rendered;const renderedOnce=new Promise(resolve=>rendered=resolve);suggestions.replaceChildren=function(...items){this.children=items;if(items.length===3)rendered();};p.hidden=true;f.action='/assistant/ask';csrf.value='csrf';e.hidden=true;suggestions.hidden=true;loading.hidden=true;a.dataset={assistantSuggestionsUrl:'/assistant/suggestions'};payload.textContent=JSON.stringify({key:'qualitative_reader',page:'qualitative.page',reference:{project_id:'project',analysis_id:'analysis'},dynamic_suggestions:true,onboarding_prompts:['Fallback 1?','Fallback 2?','Fallback 3?']});a.matches={'[data-assistant-toggle]':av,'[data-assistant-panel]':p,'[data-assistant-close]':c,'[data-assistant-messages]':m,'[data-assistant-body]':b,'[data-assistant-payload]':payload,'[data-assistant-form]':f,'[data-assistant-input]':i,'[data-assistant-send]':s,'[data-assistant-error]':e,'[data-assistant-csrf]':csrf,'[data-assistant-status]':status,'[data-assistant-suggestions]':suggestions,'[data-assistant-suggestions-loading]':loading,'[data-assistant-suggestions-loading-text]':loadingText,'[data-assistant-suggestions-status]':suggestionsStatus};a.querySelectorAll=()=>[];
+const document={body:{classList:{contains(){return false;}}},querySelector(sel){return sel==='[data-assistant]'?a:null;},createElement(){return new E();},addEventListener(type,listener){events[type]=listener;}};const dynamic=[{id:'one',text:'Pergunta 1?'},{id:'two',text:'Pergunta 2?'},{id:'three',text:'Pergunta 3?'}];let requests=0;const fetch=()=>{requests+=1;return Promise.resolve({ok:true,json:async()=>({dynamic:true,suggestions:dynamic})});};vm.runInNewContext(SOURCE,{document,fetch,setTimeout,clearTimeout});
+(async()=>{av.fire('click');await renderedOnce;assert.equal(requests,1);assert.equal(loading.hidden,true);events['assistant:reset']();assert.equal(requests,1);assert.equal(loading.hidden,true);assert.equal(suggestions.hidden,false);assert.equal(suggestions.children.length,3);})().catch(err=>{console.error(err);process.exitCode=1;});
+""".replace("SOURCE", repr(SOURCE)))
+
+    def test_dashboard_uses_the_same_dynamic_loading_and_cache_cycle(self):
+        self.run_node(r"""
+const assert=require('node:assert/strict');const vm=require('node:vm');
+class E{constructor(){this.listeners={};this.matches={};this.attrs={};this.children=[];this.classList={toggle(){}};this.dataset={};this.hidden=false;this.textContent='';}addEventListener(t,l){this.listeners[t]=l;}fire(t,e={}){return this.listeners[t](e);}querySelector(s){return this.matches[s];}setAttribute(n,v){this.attrs[n]=v;}append(c){this.children.push(c);}replaceChildren(...items){this.children=items;}focus(){}}
+const a=new E(),av=new E(),p=new E(),c=new E(),m=new E(),b=new E(),payload=new E(),f=new E(),i=new E(),s=new E(),e=new E(),csrf=new E(),status=new E(),suggestions=new E(),loading=new E(),loadingText=new E(),suggestionsStatus=new E(),events={};let rendered;const done=new Promise(resolve=>rendered=resolve);suggestions.replaceChildren=function(...items){this.children=items;if(items.length===3)rendered();};p.hidden=true;f.action='/assistant/ask';csrf.value='csrf';e.hidden=true;suggestions.hidden=true;loading.hidden=true;a.dataset={assistantSuggestionsUrl:'/assistant/suggestions'};payload.textContent=JSON.stringify({key:'home',page:'home',reference:{},dynamic_suggestions:true,onboarding_prompts:['Fallback 1?','Fallback 2?','Fallback 3?']});a.matches={'[data-assistant-toggle]':av,'[data-assistant-panel]':p,'[data-assistant-close]':c,'[data-assistant-messages]':m,'[data-assistant-body]':b,'[data-assistant-payload]':payload,'[data-assistant-form]':f,'[data-assistant-input]':i,'[data-assistant-send]':s,'[data-assistant-error]':e,'[data-assistant-csrf]':csrf,'[data-assistant-status]':status,'[data-assistant-suggestions]':suggestions,'[data-assistant-suggestions-loading]':loading,'[data-assistant-suggestions-loading-text]':loadingText,'[data-assistant-suggestions-status]':suggestionsStatus};a.querySelectorAll=()=>[];
+const document={body:{classList:{contains(){return false;}}},querySelector(sel){return sel==='[data-assistant]'?a:null;},createElement(){return new E();},addEventListener(type,listener){events[type]=listener;}};const dynamic=[{id:'one',text:'Pergunta 1?'},{id:'two',text:'Pergunta 2?'},{id:'three',text:'Pergunta 3?'}];let requests=0;const fetch=(url)=>{requests+=1;assert.equal(url,'/assistant/suggestions');return Promise.resolve({ok:true,json:async()=>({dynamic:true,suggestions:dynamic})});};vm.runInNewContext(SOURCE,{document,fetch,setTimeout,clearTimeout});
+(async()=>{av.fire('click');assert.equal(loading.hidden,false);assert.equal(loadingText.textContent,'Analisando esta página para sugerir perguntas…');assert.equal(suggestions.children.length,0);await done;assert.equal(suggestions.children.length,3);assert.equal(loading.hidden,true);events['assistant:reset']();assert.equal(requests,1);assert.equal(suggestions.children.length,3);})().catch(err=>{console.error(err);process.exitCode=1;});
+""".replace("SOURCE", repr(SOURCE)))
+
+    def test_invalid_or_quota_suggestions_use_fallback_without_leaving_loading_visible(self):
+        self.run_node(r"""
+const assert=require('node:assert/strict');const vm=require('node:vm');
+class E{constructor(){this.listeners={};this.matches={};this.attrs={};this.children=[];this.classList={toggle(){}};this.dataset={};this.hidden=false;this.textContent='';}addEventListener(t,l){this.listeners[t]=l;}fire(t,e={}){return this.listeners[t](e);}querySelector(s){return this.matches[s];}setAttribute(n,v){this.attrs[n]=v;}append(c){this.children.push(c);}replaceChildren(...items){this.children=items;}focus(){}}
+const a=new E(),av=new E(),p=new E(),c=new E(),m=new E(),b=new E(),payload=new E(),f=new E(),i=new E(),s=new E(),e=new E(),csrf=new E(),status=new E(),suggestions=new E(),loading=new E(),loadingText=new E(),suggestionsStatus=new E(),events={};let fallbackRenders=0;let rendered;const fallbackReady=new Promise(resolve=>rendered=resolve);suggestions.replaceChildren=function(...items){this.children=items;if(items.length===3&&++fallbackRenders===2)rendered();};p.hidden=true;f.action='/assistant/ask';csrf.value='csrf';e.hidden=true;suggestions.hidden=true;loading.hidden=true;a.dataset={assistantSuggestionsUrl:'/assistant/suggestions'};payload.textContent=JSON.stringify({key:'qualitative_reader',page:'qualitative.page',reference:{project_id:'project',analysis_id:'analysis'},dynamic_suggestions:true,onboarding_prompts:['Fallback 1?','Fallback 2?','Fallback 3?']});a.matches={'[data-assistant-toggle]':av,'[data-assistant-panel]':p,'[data-assistant-close]':c,'[data-assistant-messages]':m,'[data-assistant-body]':b,'[data-assistant-payload]':payload,'[data-assistant-form]':f,'[data-assistant-input]':i,'[data-assistant-send]':s,'[data-assistant-error]':e,'[data-assistant-csrf]':csrf,'[data-assistant-status]':status,'[data-assistant-suggestions]':suggestions,'[data-assistant-suggestions-loading]':loading,'[data-assistant-suggestions-loading-text]':loadingText,'[data-assistant-suggestions-status]':suggestionsStatus};a.querySelectorAll=()=>[];
+const document={body:{classList:{contains(){return false;}}},querySelector(sel){return sel==='[data-assistant]'?a:null;},createElement(){return new E();},addEventListener(type,listener){events[type]=listener;}};let requests=0;const fetch=()=>Promise.resolve({ok:true,json:async()=>++requests===1?({dynamic:true,suggestions:[{id:'only',text:'Incompleta?'}]}):({dynamic:false,reason_class:'quota'})});vm.runInNewContext(SOURCE,{document,fetch,setTimeout,clearTimeout});
+(async()=>{av.fire('click');await new Promise(resolve=>setTimeout(resolve,0));assert.equal(fallbackRenders,1);assert.equal(loading.hidden,true);assert.deepEqual(suggestions.children.map(x=>x.textContent),['Fallback 1?','Fallback 2?','Fallback 3?']);events['assistant:reset']();await fallbackReady;assert.equal(requests,2);assert.equal(loading.hidden,true);assert.equal(fallbackRenders,2);})().catch(err=>{console.error(err);process.exitCode=1;});
+""".replace("SOURCE", repr(SOURCE)))
+
+    def test_page_change_and_manual_question_ignore_stale_dynamic_results(self):
+        self.run_node(r"""
+const assert=require('node:assert/strict');const vm=require('node:vm');
+class E{constructor(){this.listeners={};this.matches={};this.attrs={};this.children=[];this.classList={toggle(){}};this.dataset={};this.hidden=false;this.textContent='';}addEventListener(t,l){this.listeners[t]=l;}fire(t,e={}){return this.listeners[t](e);}querySelector(s){return this.matches[s];}setAttribute(n,v){this.attrs[n]=v;}append(c){this.children.push(c);}replaceChildren(...items){this.children=items;}focus(){}}
+const a=new E(),av=new E(),p=new E(),c=new E(),m=new E(),b=new E(),payload=new E(),f=new E(),i=new E(),s=new E(),e=new E(),csrf=new E(),status=new E(),suggestions=new E(),loading=new E(),loadingText=new E(),suggestionsStatus=new E(),viewer=new E(),page=new E(),events={};page.textContent='10';viewer.dataset={analysisId:'analysis',documentId:'document'};viewer.matches={'[data-current-page]':page};p.hidden=true;f.action='/assistant/ask';csrf.value='csrf';e.hidden=true;suggestions.hidden=true;loading.hidden=true;a.dataset={assistantSuggestionsUrl:'/assistant/suggestions'};payload.textContent=JSON.stringify({key:'qualitative_reader',page:'qualitative.page',reference:{project_id:'project',analysis_id:'analysis'},dynamic_suggestions:true,onboarding_prompts:['Fallback 1?','Fallback 2?','Fallback 3?']});a.matches={'[data-assistant-toggle]':av,'[data-assistant-panel]':p,'[data-assistant-close]':c,'[data-assistant-messages]':m,'[data-assistant-body]':b,'[data-assistant-payload]':payload,'[data-assistant-form]':f,'[data-assistant-input]':i,'[data-assistant-send]':s,'[data-assistant-error]':e,'[data-assistant-csrf]':csrf,'[data-assistant-status]':status,'[data-assistant-suggestions]':suggestions,'[data-assistant-suggestions-loading]':loading,'[data-assistant-suggestions-loading-text]':loadingText,'[data-assistant-suggestions-status]':suggestionsStatus};a.querySelectorAll=()=>[];
+const document={body:{classList:{contains(){return false;}}},querySelector(sel){return sel==='[data-assistant]'?a:sel==='[data-qualitative-viewer]'?viewer:null;},createElement(){return new E();},addEventListener(type,listener){events[type]=listener;}};let resolveA,resolveB;const first=[{id:'a1',text:'Página 10-1?'},{id:'a2',text:'Página 10-2?'},{id:'a3',text:'Página 10-3?'}],second=[{id:'b1',text:'Página 11-1?'},{id:'b2',text:'Página 11-2?'},{id:'b3',text:'Página 11-3?'}];let request=0;const fetch=(url)=>{if(url==='/assistant/ask')return Promise.resolve({ok:true,json:async()=>({answer:'Resposta livre.'})});request+=1;return new Promise(resolve=>{if(request===1)resolveA=resolve;else resolveB=resolve;});};vm.runInNewContext(SOURCE,{document,fetch,setTimeout,clearTimeout});
+(async()=>{av.fire('click');assert.equal(loading.hidden,false);page.textContent='11';events['qualitative:page-changed']();assert.equal(request,2);resolveB({ok:true,json:async()=>({dynamic:true,suggestions:second})});await new Promise(resolve=>setTimeout(resolve,0));assert.deepEqual(suggestions.children.map(x=>x.textContent),second.map(x=>x.text));resolveA({ok:true,json:async()=>({dynamic:true,suggestions:first})});await new Promise(resolve=>setTimeout(resolve,0));assert.deepEqual(suggestions.children.map(x=>x.textContent),second.map(x=>x.text));page.textContent='12';events['qualitative:page-changed']();i.value='Pergunta livre';await f.fire('submit',{preventDefault(){}});assert.equal(loading.hidden,true);resolveB({ok:true,json:async()=>({dynamic:true,suggestions:first})});await new Promise(resolve=>setTimeout(resolve,0));assert.equal(suggestions.hidden,true);assert.equal(m.children[1].textContent,'Resposta livre.');})().catch(err=>{console.error(err);process.exitCode=1;});
+""".replace("SOURCE", repr(SOURCE)))
+
+    def test_chat_markup_has_three_contextual_suggestions_and_preserves_accessibility(self):
         template = (ROOT / "templates/platform/_assistant.html").read_text(encoding="utf-8")
-        self.assertIn('data-assistant-form', template)
-        self.assertIn('action="{{ url_for(\'assistant.ask\') }}"', template)
-        self.assertIn('placeholder="Faça uma pergunta..."', template)
-        self.assertIn('maxlength="1000"', template)
-        self.assertIn('data-assistant-csrf', template)
-        self.assertIn('data-assistant-send>Enviar</button>', template)
-        self.assertIn('data-assistant-error role="alert"', template)
+        self.assertNotIn("data-assistant-question", template)
+        self.assertIn("data-assistant-suggestions", template)
+        self.assertIn("data-assistant-suggestion", template)
+        self.assertIn("data-assistant-suggestions-status", template)
+        self.assertIn("assistant.suggestions", template)
+        self.assertIn("assistant_context.onboarding_prompts", template)
         self.assertIn('role="dialog"', template)
         self.assertIn('role="log"', template)
-        self.assertIn('data-assistant-context-indicator', template)
-        css = (ROOT / "static/css/platform.css").read_text(encoding="utf-8")
-        self.assertIn(".platform-assistant-panel[hidden]", css)
-        self.assertIn(".platform-assistant-form { flex: none;", css)
-        self.assertIn(".platform-assistant-body { flex: 1 1 auto;", css)
-        self.assertIn(".platform-qualitative-focus .platform-assistant", css)
-        self.assertIn(".platform-assistant-avatar:focus-visible", css)
-        self.assertIn(".platform-assistant-context-indicator", css)
-        avatar = css.split(".platform-assistant-avatar {", 1)[1].split("}", 1)[0]
-        self.assertIn("width: 4.375rem", avatar)
-        self.assertIn("height: 4.375rem", avatar)
-        self.assertIn("background: transparent", avatar)
-        self.assertIn("border: 0", avatar)
-        self.assertIn("border-radius: 0", avatar)
-        self.assertIn("box-shadow: none", avatar)
-        avatar_image = css.split(".platform-assistant-avatar img {", 1)[1].split("}", 1)[0]
-        self.assertIn("width: 110%", avatar_image)
-        self.assertIn("height: auto", avatar_image)
-        self.assertIn("max-width: none", avatar_image)
-        self.assertIn("max-height: none", avatar_image)
-        self.assertNotIn("robot_assistente.png", css)
-        self.assertIn(".platform-assistant { left: .75rem; right: .75rem; bottom: .75rem; }", css)
-        mobile_avatar = css.split(".platform-assistant-avatar { width: 3.875rem; height: 3.875rem; }", 1)[1]
-        self.assertTrue(mobile_avatar)
-        self.assertIn(".platform-assistant-panel { width: 100%;", css)
-        self.assertIn(".platform-qualitative-focus .platform-assistant { top: auto; right: .75rem; bottom: 6.5rem; }", css)
-
-    def test_qualitative_transient_state_is_minimal_and_read_from_current_dom(self):
-        self.run_node(r"""
-const assert=require('node:assert/strict');
-const vm=require('node:vm');
-class Element {
-  constructor(){this.listeners={};this.matches={};this.dataset={};this.attrs={};this.classList={toggle(){}};this.children=[];}
-  addEventListener(type, listener){this.listeners[type]=listener;}
-  fire(type,event={}){return this.listeners[type](event);}
-  querySelector(selector){return this.matches[selector];}
-  setAttribute(name,value){this.attrs[name]=value;}
-  append(item){this.children.push(item);}
-  contains(){return false;}
-  focus(){}
-}
-const assistant=new Element(),avatar=new Element(),panel=new Element(),closeButton=new Element();panel.hidden=true;
-const messages=new Element(),body=new Element(),payload=new Element(),form=new Element(),input=new Element(),send=new Element(),error=new Element(),csrf=new Element();
-form.action='/assistant/ask';csrf.value='csrf';error.hidden=true;payload.textContent=JSON.stringify({key:'qualitative',page:'qualitative.page',reference:{project_id:'project-id',analysis_id:'analysis-id'},suggestions:Array.from({length:5},(_,i)=>({question:String(i),answer:String(i)}))});
-assistant.matches={'[data-assistant-toggle]':avatar,'[data-assistant-panel]':panel,'[data-assistant-close]':closeButton,'[data-assistant-messages]':messages,'[data-assistant-body]':body,'[data-assistant-payload]':payload,'[data-assistant-form]':form,'[data-assistant-input]':input,'[data-assistant-send]':send,'[data-assistant-error]':error,'[data-assistant-csrf]':csrf};
-const viewer=new Element();viewer.dataset={analysisId:'analysis-id',documentId:'document-id'};
-const page=new Element();page.textContent='7';const mode=new Element();mode.value='lexical';viewer.matches={'[data-current-page]':page,'[name="automatic_mode"]:checked':mode};
-const document={body:{classList:{contains:name=>name==='platform-qualitative-focus'}},querySelector(selector){return selector==='[data-assistant]'?assistant:selector==='[data-qualitative-viewer]'?viewer:null;},createElement(){return new Element();},addEventListener(){}};
-let sent;const fetch=(_url,options)=>{sent=JSON.parse(options.body);return Promise.resolve({ok:true,json:async()=>({answer:'ok'})});};
-vm.runInNewContext(SOURCE,{document,fetch});
-(async()=>{input.value='Pergunta';await form.fire('submit',{preventDefault(){}});assert.deepEqual(sent,{question:'Pergunta',context:'qualitative',page:'qualitative.page',reference:{project_id:'project-id',analysis_id:'analysis-id'},page_context:{document_id:'document-id',current_page:7,selected_search_mode:'lexical',focus_mode:true}});})().catch(error=>{console.error(error);process.exitCode=1;});
-""".replace("SOURCE", repr(SOURCE)))
+        self.assertIn('data-assistant-csrf', template)
+        self.assertIn("fetch(form.action", SOURCE)
+        self.assertNotIn("documentQuery", SOURCE)
+        self.assertNotIn("data-assistant-question", SOURCE)
+        self.assertNotIn("O que é o Análysis?", SOURCE)
+        self.assertNotIn("if (question ==", SOURCE)
+        self.assertIn("Analisando sua pergunta", SOURCE)
+        self.assertIn("const addEvidence", SOURCE)
+        self.assertIn("requestDynamicSuggestions", SOURCE)
+        self.assertIn("Analisando esta página para sugerir perguntas", SOURCE)
+        self.assertIn('data-assistant-suggestions-loading', template)
+        self.assertIn('aria-live="polite"', template)
 
 
 if __name__ == "__main__":

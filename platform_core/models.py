@@ -93,6 +93,31 @@ class Tool(db.Model):
     active: Mapped[bool] = mapped_column(db.Boolean, default=True, nullable=False)
 
 
+class AssistantAISettings(db.Model):
+    """Configuração operacional global dos providers; nunca contém credenciais."""
+
+    __tablename__ = "assistant_ai_settings"
+
+    # Uma chave fixa faz do registro um singleton também no banco, sem depender
+    # de um cache de processo ou de uma convenção apenas da aplicação.
+    id: Mapped[int] = mapped_column(db.Integer, primary_key=True, default=1)
+    strategy: Mapped[str] = mapped_column(db.String(24), nullable=False, default="single")
+    primary_provider: Mapped[str] = mapped_column(db.String(32), nullable=False, default="gemini")
+    enabled_providers: Mapped[list] = mapped_column(db.JSON, nullable=False, default=lambda: ["gemini"])
+    fallback_order: Mapped[list] = mapped_column(db.JSON, nullable=False, default=list)
+    gemini_model: Mapped[str] = mapped_column(db.String(160), nullable=False, default="gemini-3.8-flash")
+    openai_model: Mapped[str] = mapped_column(db.String(160), nullable=False, default="gpt-4.1")
+    anthropic_model: Mapped[str] = mapped_column(db.String(160), nullable=False, default="")
+    created_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        db.DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
+
+    __table_args__ = (
+        CheckConstraint("id = 1", name="ck_assistant_ai_settings_singleton"),
+    )
+
+
 class PlanTool(db.Model):
     __tablename__ = "plan_tools"
     plan_id: Mapped[str] = mapped_column(db.ForeignKey("plans.id"), primary_key=True)

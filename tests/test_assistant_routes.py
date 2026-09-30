@@ -5,10 +5,21 @@ import unittest
 from platform_helpers import create_user, csrf_from, isolated_platform, login
 
 
+class TextProvider:
+    model = "test-model"
+
+    def generate(self, **_kwargs):
+        return {"output_text": "Resposta de IA de teste."}
+
+    def continue_with_tool_outputs(self, **_kwargs):
+        raise AssertionError("Não esperado")
+
+
 class AssistantRoutesTests(unittest.TestCase):
     def setUp(self):
         self.platform = isolated_platform()
         self.app = self.platform.__enter__()
+        self.app.extensions["assistant_ai_provider"] = TextProvider()
         create_user()
         self.client = self.app.test_client()
         login(self.client)
@@ -29,7 +40,7 @@ class AssistantRoutesTests(unittest.TestCase):
         })
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json["context"], "qualitative")
-        self.assertIn("Como funciona?", response.json["answer"])
+        self.assertEqual(response.json["answer"], "Resposta de IA de teste.")
         self.assertNotIn("inexistente", response.json["answer"])
 
     def test_unknown_context_uses_fallback(self):
@@ -40,7 +51,7 @@ class AssistantRoutesTests(unittest.TestCase):
     def test_question_at_exact_limit_is_accepted(self):
         response = self.ask({"question": "a" * 1000, "context": "home"})
         self.assertEqual(response.status_code, 200)
-        self.assertIn("a" * 1000, response.json["answer"])
+        self.assertEqual(response.json["answer"], "Resposta de IA de teste.")
 
     def test_invalid_questions(self):
         for question in ("", "   ", "a" * 1001, None, 123):
