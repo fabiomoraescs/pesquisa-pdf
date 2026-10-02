@@ -1,0 +1,21 @@
+{% extends "platform/base.html" %}
+
+{% block title %}Importar dados — {{ project.name }}{% endblock %}
+{% block page_intro %}<div class="mb-3"><h1 class="h4 mb-1">Importar dados</h1><p class="platform-muted mb-0">{{ project.name }}</p></div>{% endblock %}
+{% block body %}
+<section class="platform-panel mb-3" aria-labelledby="instagram-model-title">
+  <h2 id="instagram-model-title" class="h5">Modelo para importação</h2>
+  <p class="platform-muted">Baixe o modelo oficial e preencha os dados seguindo o formato esperado pelo Análysis.</p>
+  <a class="btn btn-outline-primary btn-sm" href="{{ url_for('instagram.import_template', project_id=project.id) }}">Baixar modelo Excel</a>
+</section>
+<section class="platform-panel" aria-labelledby="instagram-import-title">
+  <h2 id="instagram-import-title" class="h5">Importar arquivo</h2>
+  <p class="platform-muted">O arquivo é validado integralmente e exibido em prévia antes de criar qualquer dado histórico.</p>
+  <form method="post" action="{{ url_for('instagram.preview_import', project_id=project.id) }}" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="platform-form-group"><label class="form-label file-upload-label" for="instagram-dataset">Arquivo CSV ou XLSX</label><input class="form-control file-upload-input" id="instagram-dataset" name="dataset" type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required aria-describedby="instagram-upload-help"><p class="form-text" id="instagram-upload-help">CSV UTF-8 ou XLSX com uma única aba, até 2 MB. Não são aceitos XLSM, fórmulas, links externos ou objetos incorporados.</p></div>
+    <details class="mb-3"><summary>Ver instruções de preenchimento</summary><p class="form-text mt-2">Datas: ISO 8601 com timezone, como <code>2026-09-20T18:30:00-03:00</code>. Métricas: vazio = indisponível (NULL); <code>0</code> = zero real; apenas inteiros não negativos, sem decimais.</p><div class="table-responsive"><table class="table table-sm"><thead><tr><th scope="col">Campo</th><th scope="col">Obrigatório</th><th scope="col">Formato</th><th scope="col">Descrição</th><th scope="col">Exemplo</th></tr></thead><tbody>{% for field in import_fields %}<tr><th scope="row"><code>{{ field.name }}</code></th><td>{{ 'Sim' if field.required else 'Não' }}</td><td>{{ field.format_label }}</td><td>{{ field.description }}</td><td>{{ field.example }}</td></tr>{% endfor %}</tbody></table></div></details>
+    <div class="d-flex flex-wrap gap-2"><button class="btn btn-primary" type="submit">Validar e visualizar prévia</button><a class="btn btn-outline-primary" href="{{ url_for('instagram.project_detail', project_id=project.id) }}">Cancelar</a></div>
+  </form>
+</section>
+{% endblock %}

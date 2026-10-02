@@ -1,0 +1,12 @@
+{% extends "platform/base.html" %}
+
+{% block title %}Importação concluída — {{ project.name }}{% endblock %}
+{% block page_intro %}<div class="mb-3"><h1 class="h4 mb-1">Importação concluída</h1><p class="platform-muted mb-0">{{ project.name }}</p></div>{% endblock %}
+{% block body %}
+<section class="platform-panel" aria-labelledby="instagram-import-complete-title">
+  <h2 id="instagram-import-complete-title" class="h5">Resumo da importação</h2>
+  <p>Uma nova execução histórica foi registrada para @{{ preview.dataset.account_username }}.</p>
+  <ul><li>Mídias processadas: {{ result.observations_created }}</li><li>Mídias novas: {{ result.media_created }}</li><li>Mídias reutilizadas: {{ result.media_reused }}</li><li>Observações criadas: {{ result.observations_created }}</li><li>Snapshot da conta: {{ 'criado' if result.snapshot_created else 'não informado' }}</li></ul>
+  <a class="btn btn-primary" href="{{ url_for('instagram.project_detail', project_id=project.id) }}">Voltar ao projeto</a>
+</section>
+{% endblock %}

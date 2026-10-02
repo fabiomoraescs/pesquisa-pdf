@@ -17,6 +17,16 @@ class SidebarHeaderTests(unittest.TestCase):
     def tearDown(self):
         self.scope.__exit__(None, None, None)
 
+    def test_main_sidebar_icons_are_distinct_including_analytics(self):
+        html = self.client.get("/").get_data(as_text=True)
+        nav = html.split('<nav class="platform-nav"', 1)[1].split("</nav>", 1)[0]
+        icons = re.findall(r'<svg class="platform-icon"[^>]*>(.*?)</svg>', nav, re.S)
+        self.assertGreaterEqual(len(icons), 6)
+        self.assertEqual(len(icons), len(set(icons)))
+        analytics = re.search(r'<summary>(<svg.*?</svg>)<span>Analytics</span></summary>', nav, re.S)
+        self.assertIsNotNone(analytics)
+        self.assertIn('M5 16l5-5 4 3 5-8', analytics.group(1))
+
     def test_sidebar_brand_is_fixed_and_main_header_tracks_section(self):
         pages = (
             ("/", "Dashboard"),
@@ -58,7 +68,8 @@ class SidebarHeaderTests(unittest.TestCase):
         nav = html.split('<nav class="platform-nav"', 1)[1].split("</nav>", 1)[0]
         positions = [nav.index(marker) for marker in (
             'href="/"', '<span>Raspagem de dados</span>',
-            '<span>Análise quali-dados</span>', '<span>Análise quantitativa</span>',
+            '<span>Análise quali-dados</span>', '<span>Analytics</span>',
+            '<span>Análise quantitativa</span>',
             'id="platform-admin-toggle"',
         )]
         self.assertEqual(positions, sorted(positions))

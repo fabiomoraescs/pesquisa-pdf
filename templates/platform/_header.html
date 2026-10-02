@@ -5,6 +5,7 @@
 {% set free_context = endpoint in ('inicio', 'resultado', 'download', 'progresso', 'projects.list_free_projects', 'projects.new_free_project', 'projects.archived_free_projects', 'projects.free_project', 'analyses.standard_history', 'analyses.free_history') or (analysis is defined and analysis.tool_id == 'pdf_scraper') or (project is defined and project.scrape_type == 'free') %}
 {% set systematic_context = endpoint in ('projects.list_projects', 'projects.new_project', 'projects.archived_projects', 'analyses.systematic_history') or (analysis is defined and analysis.tool_id == 'document_analysis') or (project is defined and project.scrape_type == 'systematic') or endpoint.startswith('historico_racial.') or endpoint.startswith('user_libraries.') %}
 {% set qualitative_context = endpoint.startswith('qualitative.') or endpoint in ('projects.list_qualitative_projects', 'projects.new_qualitative_project', 'projects.archived_qualitative_projects') or (project is defined and project.scrape_type == 'qualitative') %}
+{% set instagram_context = endpoint.startswith('instagram.') %}
 {% set admin_sections = {
   'admin.home': 'Visão geral', 'admin.users': 'Usuários', 'admin.user_detail': 'Usuários',
   'admin.deleted_users': 'Usuários excluídos', 'admin.delete_user': 'Usuários',
@@ -22,6 +23,8 @@
 {% elif endpoint.startswith('projects.') %}{% set section_title = 'Projetos de ' ~ ('Busca por termos' if free_context else 'Busca estruturada' if systematic_context else 'Análise quali-dados') %}
 {% elif endpoint in ('qualitative.base', 'qualitative.page', 'qualitative.upload_pending', 'qualitative.project_workspace') and project is defined %}{% set section_title = '' %}
 {% elif endpoint.startswith('qualitative.') %}{% set section_title = 'Análise quali-dados' %}
+{% elif endpoint == 'instagram.archived_projects' %}{% set section_title = 'Projetos arquivados' %}
+{% elif instagram_context %}{% set section_title = 'Análysis Instagram' %}
 {% elif endpoint == 'inicio' or endpoint in ('resultado', 'download', 'progresso') %}{% set section_title = 'Busca por termos' %}
 {% elif endpoint in ('analyses.standard_history', 'analyses.free_history', 'analyses.systematic_history', 'analyses.project_history') %}{% set section_title = 'Bases de análise' %}
 {% elif endpoint.startswith('analyses.') %}{% set section_title = 'Base de análise' %}
@@ -40,6 +43,10 @@
       {% if systematic_access %}<a class="platform-nav-tool-link{{ ' is-current' if systematic_context else '' }}" href="{{ url_for('projects.list_projects') }}" {% if systematic_context %}aria-current="location"{% endif %}>Busca estruturada</a>{% else %}<span class="platform-nav-tool-unavailable" aria-disabled="true">Busca estruturada</span>{% endif %}
     </details>
     {% if qualitative_access %}<a class="{{ 'is-current' if qualitative_context else '' }}" href="{{ url_for('projects.list_qualitative_projects') }}" {% if qualitative_context %}aria-current="location"{% endif %}>{{ icon('qualitativa') }}<span>Análise quali-dados</span></a>{% else %}<span class="platform-nav-unavailable" aria-disabled="true">{{ icon('qualitativa') }}<span>Análise quali-dados</span></span>{% endif %}
+    {% if instagram_access %}<details class="platform-nav-dropdown" {% if instagram_context %}open{% endif %}>
+      <summary>{{ icon('analytics') }}<span>Analytics</span></summary>
+      <a class="platform-nav-tool-link{{ ' is-current' if instagram_context else '' }}" href="{{ url_for('instagram.home') }}" {% if instagram_context %}aria-current="location"{% endif %}>Análysis Instagram</a>
+    </details>{% endif %}
     {% for tool in unavailable_tools %}<span class="platform-nav-unavailable" aria-disabled="true">{{ icon(tool.icon) }}<span>{{ tool.name }}</span></span>{% endfor %}
     {% if current_user.role == 'admin' %}
     <button class="platform-admin-toggle{{ ' is-current' if request.blueprint == 'admin' else '' }}" id="platform-admin-toggle" type="button" aria-expanded="{{ 'true' if request.blueprint == 'admin' else 'false' }}" aria-controls="platform-admin-submenu">{{ icon('gerenciar') }}<span>Gerenciar</span><span class="platform-admin-chevron" aria-hidden="true">▾</span></button>

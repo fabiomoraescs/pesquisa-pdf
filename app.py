@@ -47,13 +47,14 @@ from platform_core.analysis_routes import analyses_bp
 from platform_core.qualitative_routes import qualitative_bp
 from platform_core.presentation import register_presentation
 from platform_core.cli import register_cli
-from platform_core.services import ACCOUNT_LIFECYCLE_LOCK, access_is_active, account_accepts_new_work, can_use_tool, get_project_for_user, tool_catalog
+from platform_core.services import ANALYTICS_INSTAGRAM_TOOL, ACCOUNT_LIFECYCLE_LOCK, access_is_active, account_accepts_new_work, can_use_tool, get_project_for_user, tool_catalog
 from platform_core.scraping_types import FREE, LABEL_BY_TOOL, QUALITATIVE, QUALITATIVE_TOOL, SYSTEMATIC, TOOL_BY_TYPE, tool_for_project
 from platform_core.semantic_threshold import normalize as normalize_semantic_threshold, template_settings
 from platform_core.term_input import has_invalid_term_separator
 from platform_core.assistant_context import assistant_context_for_endpoint, assistant_context_for_request
 from platform_core.assistant_routes import assistant_bp
 from platform_core.platform_help import load_help_registry, tutorial_for
+from platform_core.instagram_routes import instagram_bp
 
 from analyzer.common import (
     ANALISADORES,
@@ -87,6 +88,7 @@ app.config.update(
     SQLALCHEMY_ENGINE_OPTIONS={"connect_args": {"timeout": 30}} if DATABASE_URI.startswith("sqlite:") else {},
     SQLALCHEMY_TRACK_MODIFICATIONS=False,
     PLATFORM_DATA_DIR=str(PLATFORM_DATA_DIR),
+    PRESENTATION_TIMEZONE=os.environ.get("PESQUISAPDF_PRESENTATION_TIMEZONE", "America/Maceio"),
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax",
     SESSION_COOKIE_SECURE=os.environ.get("PESQUISAPDF_HTTPS") == "1",
@@ -137,6 +139,7 @@ def _semantic_threshold_template_context():
             "free_access": bool(current_user.is_authenticated and can_use_tool(current_user, "pdf_scraper")),
             "systematic_access": bool(current_user.is_authenticated and can_use_tool(current_user, "document_analysis")),
             "qualitative_access": bool(current_user.is_authenticated and can_use_tool(current_user, QUALITATIVE_TOOL)),
+            "instagram_access": bool(current_user.is_authenticated and can_use_tool(current_user, ANALYTICS_INSTAGRAM_TOOL)),
             "assistant_context": assistant_context,
             "platform_help": tutorial_for(assistant_context.get("key")),
             "platform_help_for": tutorial_for,
@@ -151,6 +154,7 @@ app.register_blueprint(profile_bp)
 app.register_blueprint(historico_racial_bp)
 app.register_blueprint(analyses_bp)
 app.register_blueprint(qualitative_bp)
+app.register_blueprint(instagram_bp)
 app.register_blueprint(assistant_bp)
 
 
@@ -1143,6 +1147,7 @@ def create_app(test_config: dict | None = None) -> Flask:
     isolated.register_blueprint(historico_racial_bp)
     isolated.register_blueprint(analyses_bp)
     isolated.register_blueprint(qualitative_bp)
+    isolated.register_blueprint(instagram_bp)
     isolated.register_blueprint(assistant_bp)
     isolated.before_request(_enforce_platform_access)
     isolated.register_error_handler(CSRFError, _csrf_error)

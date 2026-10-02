@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 from .services import UNAVAILABLE_TOOLS
 
@@ -31,7 +32,7 @@ LABELS = {
     "allow": "Permitir", "deny": "Bloquear", "student": "Estudante",
     "researcher": "Pesquisador", "pro": "Pro", "institutional": "Institucional",
     "pdf_scraper": "Busca por termos", "document_analysis": "Busca estruturada",
-    "qualitative_analysis": "Análise quali-dados",
+    "qualitative_analysis": "Análise quali-dados", "analytics_instagram": "Análysis Instagram",
     "user_registered": "Usuário cadastrado", "admin_created": "Administrador criado",
     "user_status_changed": "Estado do usuário alterado",
     "access_grant_changed": "Acesso alterado", "tool_override_changed": "Permissão de ferramenta alterada",
@@ -110,10 +111,31 @@ def date_br(value: object) -> str:
         return str(value)
 
 
+def to_local_datetime(value: datetime | None, timezone_name: str) -> datetime | None:
+    """Converte UTC persistido para apresentação; SQLite devolve UTC sem tzinfo."""
+    if value is None:
+        return None
+    utc_value = value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
+    return utc_value.astimezone(ZoneInfo(timezone_name))
+
+
+def format_local_datetime(value: datetime | None, timezone_name: str, *, date_only: bool = False) -> str:
+    local_value = to_local_datetime(value, timezone_name)
+    if local_value is None:
+        return "—"
+    return local_value.strftime("%d/%m/%Y" if date_only else "%d/%m/%Y %H:%M")
+
+
 def register_presentation(app) -> None:
     app.jinja_env.filters["rotulo"] = label
     app.jinja_env.filters["metodo_base"] = analysis_method
     app.jinja_env.filters["detalhes_auditoria"] = audit_details
     app.jinja_env.filters["data_br"] = date_br
+    app.jinja_env.filters["data_hora_local"] = lambda value: format_local_datetime(
+        value, app.config["PRESENTATION_TIMEZONE"]
+    )
+    app.jinja_env.filters["data_local"] = lambda value: format_local_datetime(
+        value, app.config["PRESENTATION_TIMEZONE"], date_only=True
+    )
     app.jinja_env.globals.update(education_options=EDUCATION, gender_options=GENDER, race_options=RACE_COLOR,
                                 presentation_labels=LABELS, unavailable_tools=UNAVAILABLE_TOOLS)

@@ -1,0 +1,25 @@
+{% extends 'platform/base.html' %}
+{% from 'platform/_icons.html' import icon %}
+{% block title %}Projetos arquivados — Análysis Instagram{% endblock %}
+{% block page_intro %}<h1 class="visually-hidden">Projetos arquivados de Análysis Instagram</h1>{% endblock %}
+{% block body %}
+<p class="platform-muted">Projetos arquivados ficam fora da lista principal, mas preservam a conta e todo o histórico de importações.</p>
+<p><a class="btn btn-outline-primary btn-sm" href="{{ url_for('instagram.home') }}">Voltar aos projetos</a></p>
+{% if projects %}
+<div class="platform-project-grid">
+  {% for project in projects %}
+  <section class="platform-project-card">
+    <h2 class="h5">{{ project.name }}</h2>
+    <p>{{ project.description or 'Sem descrição.' }}</p>
+    <p class="platform-muted"><strong>Arquivado em:</strong> {{ project.archived_at | data_hora_local }}</p>
+    <div class="platform-card-actions">
+      <a class="btn btn-outline-primary btn-sm" href="{{ url_for('instagram.project_detail', project_id=project.id) }}">Ver histórico</a>
+      <form method="post" action="{{ url_for('instagram.restore_project', project_id=project.id) }}" onsubmit="return confirm('Desarquivar este projeto e restaurar o acesso?')"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="confirm" value="yes"><button class="btn btn-outline-primary btn-sm platform-action-button" type="submit" title="Restaurar projeto" aria-label="Restaurar projeto">{{ icon('restaurar') }}</button></form>
+    </div>
+  </section>
+  {% endfor %}
+</div>
+{% else %}
+<div class="platform-empty-state"><h2 class="h5">Nenhum projeto arquivado.</h2><p>Projetos arquivados aparecerão aqui.</p><a class="btn btn-outline-primary" href="{{ url_for('instagram.home') }}">Voltar aos projetos</a></div>
+{% endif %}
+{% endblock %}

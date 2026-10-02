@@ -1,0 +1,27 @@
+{% extends "platform/base.html" %}
+{% from 'platform/_view_controls.html' import toggle, action_link %}
+{% block title %}Projetos de Análysis Instagram{% endblock %}
+{% block page_intro %}<h1 class="visually-hidden">Projetos de Análysis Instagram</h1>{% endblock %}
+
+{% block body %}
+<div class="platform-toolbar platform-toolbar-actions">
+  <div class="d-flex flex-wrap gap-2 align-items-center ms-auto">
+    <a class="btn btn-outline-primary btn-sm" href="{{ url_for('instagram.new_project') }}">Novo projeto</a>
+    <a class="btn btn-outline-primary btn-sm" href="{{ url_for('instagram.archived_projects') }}">Projetos arquivados</a>
+    {{ toggle('instagram-projects-list') }}
+  </div>
+</div>
+{% if projects %}
+<div class="platform-view-list" id="instagram-projects-list" data-view-container>
+  {% for project in projects %}
+  <article class="platform-list-item">
+    <div><div class="platform-list-title">{{ project.name }}</div><div class="platform-list-meta">{{ project.description or 'Sem descrição.' }}</div></div>
+    <div class="platform-list-meta">{{ project.updated_at | data_local }} · <span class="platform-badge">{{ project.status | rotulo }}</span></div>
+    <div class="platform-list-actions">{{ action_link(url_for('instagram.project_detail', project_id=project.id), 'Abrir projeto ' ~ project.name, 'ficha') }}</div>
+  </article>
+  {% endfor %}
+</div>
+{% else %}
+<div class="platform-empty-state"><h2 class="h5">Você ainda não possui projetos no Análysis Instagram.</h2><p>Crie um projeto para organizar suas importações de dados.</p></div>
+{% endif %}
+{% endblock %}

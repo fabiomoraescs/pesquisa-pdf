@@ -527,8 +527,8 @@ class DashboardRefinementsTests(unittest.TestCase):
         self.assertNotIn("dashboard-chart-workspace", admin_html)
         self.assertEqual(chart_data(admin_html, "dashboard-admin-chart-data")["usage"], {
             "labels": ["Busca por termos", "Busca estruturada", "Análise quali-dados",
-                       "Análise quantitativa", "ChatDoc"],
-            "values": [1, 1, 0, 0, 0],
+                       "Análysis Instagram", "Análise quantitativa", "ChatDoc"],
+            "values": [1, 1, 0, 0, 0, 0],
         })
 
     def assert_recent_records_have_no_chart(self, html):

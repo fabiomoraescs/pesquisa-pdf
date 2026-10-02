@@ -1,0 +1,21 @@
+{% extends "platform/base.html" %}
+
+{% block title %}Prévia da importação — {{ project.name }}{% endblock %}
+{% block page_intro %}<div class="mb-3"><h1 class="h4 mb-1">Prévia da importação</h1><p class="platform-muted mb-0">{{ project.name }}</p></div>{% endblock %}
+{% block body %}
+<section class="platform-panel" aria-labelledby="instagram-preview-title">
+  <h2 id="instagram-preview-title" class="h5">Dados validados</h2>
+  <dl class="row mb-3"><dt class="col-sm-4">Arquivo</dt><dd class="col-sm-8">{{ preview.dataset.original_filename }}</dd><dt class="col-sm-4">Conta identificada</dt><dd class="col-sm-8">@{{ preview.dataset.account_username }}</dd><dt class="col-sm-4">Linhas do arquivo</dt><dd class="col-sm-8">{{ preview.dataset.source_row_count }}</dd><dt class="col-sm-4">Mídias distintas</dt><dd class="col-sm-8">{{ preview.dataset.rows | length }}</dd><dt class="col-sm-4">Mídias novas / já conhecidas</dt><dd class="col-sm-8">{{ preview.new_media_count }} / {{ preview.known_media_count }}</dd><dt class="col-sm-4">Observações históricas a criar</dt><dd class="col-sm-8">{{ preview.dataset.rows | length }}</dd><dt class="col-sm-4">Observadas entre</dt><dd class="col-sm-8">{{ preview.dataset.observed_at_min | data_hora_local }} e {{ preview.dataset.observed_at_max | data_hora_local }}</dd>{% if preview.dataset.run_period_start %}<dt class="col-sm-4">Período coberto</dt><dd class="col-sm-8">{{ preview.dataset.run_period_start | data_hora_local }} a {{ preview.dataset.run_period_end | data_hora_local }}</dd>{% endif %}<dt class="col-sm-4">Snapshot da conta</dt><dd class="col-sm-8">{{ 'Será criado' if preview.dataset.account_snapshot else 'Não informado' }}</dd></dl>
+  <h3 class="h6">Amostra das publicações validadas</h3>
+  <p class="platform-muted">Exibindo até 10 de {{ preview.dataset.rows | length }} publicações; todas as linhas foram validadas.</p>
+  <div class="table-responsive mb-3">
+    <table class="table">
+      <thead><tr><th scope="col">ID da publicação</th><th scope="col">Publicada em</th><th scope="col">Observada em</th><th scope="col">Alcance</th></tr></thead>
+      <tbody>{% for row in preview.dataset.rows[:10] %}<tr><td>{{ row.media_external_id }}</td><td>{{ row.published_at | data_hora_local }}</td><td>{{ row.observed_at | data_hora_local }}</td><td>{{ row.media_metrics['reach'] if row.media_metrics['reach'] is not none else 'Não informado' }}</td></tr>{% endfor %}</tbody>
+    </table>
+  </div>
+  {% if preview.warnings %}<div class="alert alert-warning" role="alert"><strong>Avisos</strong><ul class="mb-0">{% for warning in preview.warnings %}<li>{{ warning }}</li>{% endfor %}</ul></div>{% endif %}
+  <p class="platform-muted">O arquivo bruto não será mantido. A confirmação criará uma nova execução e não substituirá observações anteriores.</p>
+  <div class="d-flex flex-wrap gap-2"><form method="post" action="{{ url_for('instagram.confirm_import', project_id=project.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="preview_token" value="{{ token }}"><button class="btn btn-primary" type="submit">Confirmar importação</button></form><form method="post" action="{{ url_for('instagram.cancel_import', project_id=project.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="preview_token" value="{{ token }}"><button class="btn btn-outline-primary" type="submit">Cancelar</button></form></div>
+</section>
+{% endblock %}

@@ -68,6 +68,7 @@ class ToolCatalogTests(unittest.TestCase):
             "Busca por termos": 0,
             "Busca estruturada": 0,
             "Análise quali-dados": 0,
+            "Análysis Instagram": 0,
             "Análise quantitativa": 0,
             "ChatDoc": 0,
         })
@@ -84,7 +85,7 @@ class ToolCatalogTests(unittest.TestCase):
         self.assertEqual(len(catalog), len({tool["id"] for tool in catalog}))
         self.assertEqual({tool["name"] for tool in catalog}, {
             "Busca por termos", "Busca estruturada", "Análise quali-dados",
-            "Outra ferramenta", "Análise quantitativa", "ChatDoc",
+            "Análysis Instagram", "Outra ferramenta", "Análise quantitativa", "ChatDoc",
         })
         for path in ('/admin/ferramentas', '/admin/definir-acessos'):
             html = self.client.get(path).text
@@ -94,6 +95,7 @@ class ToolCatalogTests(unittest.TestCase):
             "Busca por termos": 2,
             "Busca estruturada": 1,
             "Análise quali-dados": 3,
+            "Análysis Instagram": 0,
             "Outra ferramenta": 1,
             "Análise quantitativa": 0,
             "ChatDoc": 0,

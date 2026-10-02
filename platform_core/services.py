@@ -22,10 +22,12 @@ PLANOS = (
     ("pro", "Pro", "Plano avançado"),
     ("institutional", "Institucional", "Plano institucional"),
 )
+ANALYTICS_INSTAGRAM_TOOL = "analytics_instagram"
 FERRAMENTAS = (
     ("pdf_scraper", "Busca por termos", "/"),
     ("document_analysis", "Busca estruturada", "/analise-documental"),
     ("qualitative_analysis", "Análise quali-dados", "/analise-qualitativa"),
+    (ANALYTICS_INSTAGRAM_TOOL, "Análysis Instagram", "/analytics/instagram"),
 )
 # Somente apresentação: não semear Tool/PlanTool nem conceder acesso funcional.
 UNAVAILABLE_TOOLS = (
@@ -73,8 +75,9 @@ def seed_platform() -> None:
     if db.session.get(AssistantAISettings, 1) is None:
         db.session.add(AssistantAISettings())
     db.session.flush()
-    # Ambas as ferramentas iniciais ficam no plano gratuito; nenhum limite
-    # arbitrário de PDFs ou projetos é introduzido nesta etapa.
+    # Somente as duas ferramentas iniciais ficam no plano gratuito. Ferramentas
+    # posteriores são cadastradas de forma idempotente, mas recebem acesso por
+    # plano ou override apenas quando essa política for definida pelo admin.
     for plan_id, tool_id in (() if not initial_bootstrap else (
         ("student", "pdf_scraper"), ("student", "document_analysis"),
         ("researcher", "pdf_scraper"), ("researcher", "document_analysis"),

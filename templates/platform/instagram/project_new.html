@@ -1,0 +1,15 @@
+{% extends "platform/base.html" %}
+
+{% block title %}Novo projeto — Análysis Instagram{% endblock %}
+{% block page_intro %}<h1 class="visually-hidden">Novo projeto</h1>{% endblock %}
+{% block body %}
+<section class="platform-panel">
+  <form method="post" action="{{ url_for('instagram.create_project') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="platform-form-group"><label class="form-label" for="instagram-project-name">Nome do projeto</label><input class="form-control" id="instagram-project-name" name="name" maxlength="200" required value="{{ request.form.get('name', '') }}" placeholder="Ex.: Instagram Revista Latitude"></div>
+    <div class="platform-form-group"><label class="form-label" for="instagram-project-description">Descrição (opcional)</label><textarea class="form-control" id="instagram-project-description" name="description" maxlength="4000" rows="3">{{ request.form.get('description', '') }}</textarea></div>
+    <p class="form-text">Após criar o projeto, você poderá importar coletas CSV ou XLSX.</p>
+    <div class="d-flex flex-wrap gap-2"><button class="btn btn-primary" type="submit">Novo projeto</button><a class="btn btn-outline-primary" href="{{ url_for('instagram.home') }}">Cancelar</a></div>
+  </form>
+</section>
+{% endblock %}

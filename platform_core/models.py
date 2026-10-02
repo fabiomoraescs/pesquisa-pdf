@@ -34,6 +34,7 @@ class User(UserMixin, db.Model):
     status_before_deletion: Mapped[str | None] = mapped_column(db.String(16))
     grants: Mapped[list[AccessGrant]] = relationship(back_populates="user", foreign_keys="AccessGrant.user_id", order_by="AccessGrant.created_at")
     projects: Mapped[list[Project]] = relationship(back_populates="owner")
+    analytics_projects: Mapped[list[AnalyticsProject]] = relationship(back_populates="owner")
     profile: Mapped[UserProfile | None] = relationship(back_populates="user", uselist=False)
 
     def set_password(self, password: str) -> None:
@@ -248,6 +249,225 @@ class AnalysisDocument(db.Model):
         UniqueConstraint("analysis_id", "stored_name"),
         # Permite FKs compostas que provam que o documento pertence à Base.
         Index("ux_analysis_documents_id_analysis_id", "id", "analysis_id", unique=True),
+    )
+
+
+class AnalyticsProject(db.Model):
+    """Acompanhamento Analytics independente dos projetos e Bases de PDF."""
+
+    __tablename__ = "analytics_projects"
+    id: Mapped[str] = mapped_column(db.String(36), primary_key=True, default=lambda: str(uuid4()))
+    owner_user_id: Mapped[str] = mapped_column(db.ForeignKey("users.id"), nullable=False)
+    # A V1 cria somente projetos Instagram; a coluna mantém o núcleo utilizável
+    # por um módulo futuro sem acoplar este domínio a Project.scrape_type.
+    module_key: Mapped[str] = mapped_column(db.String(40), nullable=False, default="instagram")
+    name: Mapped[str] = mapped_column(db.String(200), nullable=False)
+    description: Mapped[str] = mapped_column(db.Text, default="", nullable=False)
+    status: Mapped[str] = mapped_column(db.String(16), nullable=False, default="active")
+    created_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        db.DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
+    archived_at: Mapped[datetime | None] = mapped_column(db.DateTime(timezone=True))
+
+    owner: Mapped[User] = relationship(back_populates="analytics_projects")
+    runs: Mapped[list[AnalyticsRun]] = relationship(back_populates="analytics_project")
+    instagram_account: Mapped[InstagramAccount | None] = relationship(
+        back_populates="analytics_project", uselist=False
+    )
+
+    __table_args__ = (
+        CheckConstraint("length(trim(name)) > 0", name="ck_analytics_project_name"),
+        Index("ix_analytics_projects_owner_module_status", "owner_user_id", "module_key", "status"),
+        Index("ix_analytics_projects_owner_updated", "owner_user_id", "updated_at"),
+    )
+
+
+class AnalyticsRun(db.Model):
+    """Execução histórica de coleta ou importação, sem identidade por hash."""
+
+    __tablename__ = "analytics_runs"
+    id: Mapped[str] = mapped_column(db.String(36), primary_key=True, default=lambda: str(uuid4()))
+    analytics_project_id: Mapped[str] = mapped_column(db.ForeignKey("analytics_projects.id"), nullable=False)
+    source_kind: Mapped[str] = mapped_column(db.String(24), nullable=False, default="manual")
+    status: Mapped[str] = mapped_column(db.String(16), nullable=False, default="pending")
+    period_start: Mapped[datetime | None] = mapped_column(db.DateTime(timezone=True))
+    period_end: Mapped[datetime | None] = mapped_column(db.DateTime(timezone=True))
+    started_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+    completed_at: Mapped[datetime | None] = mapped_column(db.DateTime(timezone=True))
+    processor_version: Mapped[str] = mapped_column(db.String(64), nullable=False, default="v1")
+    # Evidência para alertar reimportações; não é uma chave única de execução.
+    source_hash: Mapped[str | None] = mapped_column(db.String(64))
+    parameters_json: Mapped[dict] = mapped_column(db.JSON, default=dict, nullable=False)
+    record_count: Mapped[int] = mapped_column(db.BigInteger, default=0, nullable=False)
+    error_message: Mapped[str | None] = mapped_column(db.String(300))
+    created_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        db.DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
+
+    analytics_project: Mapped[AnalyticsProject] = relationship(back_populates="runs")
+    media_observations: Mapped[list[InstagramMediaObservation]] = relationship(back_populates="analytics_run")
+    account_snapshots: Mapped[list[InstagramAccountSnapshot]] = relationship(back_populates="analytics_run")
+
+    __table_args__ = (
+        CheckConstraint("record_count >= 0", name="ck_analytics_run_record_count"),
+        CheckConstraint(
+            "period_start IS NULL OR period_end IS NULL OR period_start <= period_end",
+            name="ck_analytics_run_period",
+        ),
+        Index("ix_analytics_runs_project_started", "analytics_project_id", "started_at"),
+        Index("ix_analytics_runs_project_status", "analytics_project_id", "status"),
+        Index("ix_analytics_runs_project_period", "analytics_project_id", "period_start", "period_end"),
+    )
+
+
+class InstagramAccount(db.Model):
+    """Conta acompanhada por um projeto Instagram; não armazena credenciais."""
+
+    __tablename__ = "instagram_accounts"
+    id: Mapped[str] = mapped_column(db.String(36), primary_key=True, default=lambda: str(uuid4()))
+    # Um projeto Instagram representa uma conta na V1, de forma explícita.
+    analytics_project_id: Mapped[str] = mapped_column(db.ForeignKey("analytics_projects.id"), nullable=False)
+    username: Mapped[str] = mapped_column(db.String(100), nullable=False)
+    username_normalized: Mapped[str] = mapped_column(db.String(100), nullable=False)
+    external_id: Mapped[str | None] = mapped_column(db.String(128))
+    display_name: Mapped[str] = mapped_column(db.String(200), default="", nullable=False)
+    account_type: Mapped[str | None] = mapped_column(db.String(40))
+    connection_status: Mapped[str] = mapped_column(db.String(24), nullable=False, default="not_connected")
+    created_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        db.DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
+
+    analytics_project: Mapped[AnalyticsProject] = relationship(back_populates="instagram_account")
+    media: Mapped[list[InstagramMedia]] = relationship(back_populates="instagram_account")
+    snapshots: Mapped[list[InstagramAccountSnapshot]] = relationship(back_populates="instagram_account")
+
+    __table_args__ = (
+        UniqueConstraint("analytics_project_id", name="uq_instagram_account_project"),
+        UniqueConstraint("external_id", name="uq_instagram_account_external_id"),
+        CheckConstraint("length(trim(username)) > 0", name="ck_instagram_account_username"),
+        CheckConstraint("length(trim(username_normalized)) > 0", name="ck_instagram_account_username_normalized"),
+    )
+
+
+class InstagramMedia(db.Model):
+    """Publicação estável; métricas mutáveis ficam somente nas observações."""
+
+    __tablename__ = "instagram_media"
+    id: Mapped[str] = mapped_column(db.String(36), primary_key=True, default=lambda: str(uuid4()))
+    instagram_account_id: Mapped[str] = mapped_column(db.ForeignKey("instagram_accounts.id"), nullable=False)
+    external_id: Mapped[str | None] = mapped_column(db.String(128))
+    # Importadores futuros devem preencher uma chave estável quando a fonte não
+    # fornecer external_id; linhas sem qualquer identidade serão rejeitadas.
+    source_key: Mapped[str | None] = mapped_column(db.String(200))
+    permalink: Mapped[str | None] = mapped_column(db.String(512))
+    caption_original: Mapped[str] = mapped_column(db.Text, default="", nullable=False)
+    published_at: Mapped[datetime | None] = mapped_column(db.DateTime(timezone=True))
+    media_type_raw: Mapped[str | None] = mapped_column(db.String(40))
+    first_seen_at: Mapped[datetime | None] = mapped_column(db.DateTime(timezone=True))
+    last_seen_at: Mapped[datetime | None] = mapped_column(db.DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        db.DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
+
+    instagram_account: Mapped[InstagramAccount] = relationship(back_populates="media")
+    observations: Mapped[list[InstagramMediaObservation]] = relationship(back_populates="instagram_media")
+
+    __table_args__ = (
+        UniqueConstraint("instagram_account_id", "external_id", name="uq_instagram_media_account_external_id"),
+        UniqueConstraint("instagram_account_id", "source_key", name="uq_instagram_media_account_source_key"),
+        CheckConstraint(
+            "external_id IS NOT NULL OR source_key IS NOT NULL",
+            name="ck_instagram_media_identity",
+        ),
+        Index("ix_instagram_media_account_published", "instagram_account_id", "published_at"),
+    )
+
+
+class InstagramMediaObservation(db.Model):
+    """Métricas brutas observadas para uma publicação em uma execução."""
+
+    __tablename__ = "instagram_media_observations"
+    id: Mapped[str] = mapped_column(db.String(36), primary_key=True, default=lambda: str(uuid4()))
+    instagram_media_id: Mapped[str] = mapped_column(db.ForeignKey("instagram_media.id"), nullable=False)
+    analytics_run_id: Mapped[str] = mapped_column(db.ForeignKey("analytics_runs.id"), nullable=False)
+    observed_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+    period_start: Mapped[datetime | None] = mapped_column(db.DateTime(timezone=True))
+    period_end: Mapped[datetime | None] = mapped_column(db.DateTime(timezone=True))
+    reach: Mapped[int | None] = mapped_column(db.BigInteger)
+    impressions: Mapped[int | None] = mapped_column(db.BigInteger)
+    plays: Mapped[int | None] = mapped_column(db.BigInteger)
+    likes: Mapped[int | None] = mapped_column(db.BigInteger)
+    comments_count: Mapped[int | None] = mapped_column(db.BigInteger)
+    shares: Mapped[int | None] = mapped_column(db.BigInteger)
+    saves: Mapped[int | None] = mapped_column(db.BigInteger)
+    interactions: Mapped[int | None] = mapped_column(db.BigInteger)
+    follows_generated: Mapped[int | None] = mapped_column(db.BigInteger)
+    created_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+
+    instagram_media: Mapped[InstagramMedia] = relationship(back_populates="observations")
+    analytics_run: Mapped[AnalyticsRun] = relationship(back_populates="media_observations")
+
+    __table_args__ = (
+        UniqueConstraint("analytics_run_id", "instagram_media_id", name="uq_instagram_media_observation_run_media"),
+        CheckConstraint(
+            "period_start IS NULL OR period_end IS NULL OR period_start <= period_end",
+            name="ck_instagram_media_observation_period",
+        ),
+        CheckConstraint(
+            "(reach IS NULL OR reach >= 0) AND "
+            "(impressions IS NULL OR impressions >= 0) AND "
+            "(plays IS NULL OR plays >= 0) AND "
+            "(likes IS NULL OR likes >= 0) AND "
+            "(comments_count IS NULL OR comments_count >= 0) AND "
+            "(shares IS NULL OR shares >= 0) AND "
+            "(saves IS NULL OR saves >= 0) AND "
+            "(interactions IS NULL OR interactions >= 0) AND "
+            "(follows_generated IS NULL OR follows_generated >= 0)",
+            name="ck_instagram_media_observation_nonnegative",
+        ),
+        Index("ix_instagram_media_observations_media_observed", "instagram_media_id", "observed_at"),
+    )
+
+
+class InstagramAccountSnapshot(db.Model):
+    """Métricas históricas da conta, independentes das observações de mídia."""
+
+    __tablename__ = "instagram_account_snapshots"
+    id: Mapped[str] = mapped_column(db.String(36), primary_key=True, default=lambda: str(uuid4()))
+    instagram_account_id: Mapped[str] = mapped_column(db.ForeignKey("instagram_accounts.id"), nullable=False)
+    analytics_run_id: Mapped[str] = mapped_column(db.ForeignKey("analytics_runs.id"), nullable=False)
+    observed_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+    period_start: Mapped[datetime | None] = mapped_column(db.DateTime(timezone=True))
+    period_end: Mapped[datetime | None] = mapped_column(db.DateTime(timezone=True))
+    followers_count: Mapped[int | None] = mapped_column(db.BigInteger)
+    new_followers: Mapped[int | None] = mapped_column(db.BigInteger)
+    account_reach: Mapped[int | None] = mapped_column(db.BigInteger)
+    profile_views: Mapped[int | None] = mapped_column(db.BigInteger)
+    website_clicks: Mapped[int | None] = mapped_column(db.BigInteger)
+    created_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+
+    instagram_account: Mapped[InstagramAccount] = relationship(back_populates="snapshots")
+    analytics_run: Mapped[AnalyticsRun] = relationship(back_populates="account_snapshots")
+
+    __table_args__ = (
+        UniqueConstraint("analytics_run_id", "instagram_account_id", name="uq_instagram_account_snapshot_run_account"),
+        CheckConstraint(
+            "period_start IS NULL OR period_end IS NULL OR period_start <= period_end",
+            name="ck_instagram_account_snapshot_period",
+        ),
+        CheckConstraint(
+            "(followers_count IS NULL OR followers_count >= 0) AND "
+            "(new_followers IS NULL OR new_followers >= 0) AND "
+            "(account_reach IS NULL OR account_reach >= 0) AND "
+            "(profile_views IS NULL OR profile_views >= 0) AND "
+            "(website_clicks IS NULL OR website_clicks >= 0)",
+            name="ck_instagram_account_snapshot_nonnegative",
+        ),
+        Index("ix_instagram_account_snapshots_account_observed", "instagram_account_id", "observed_at"),
     )
 
 

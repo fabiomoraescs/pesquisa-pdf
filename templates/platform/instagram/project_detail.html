@@ -1,0 +1,33 @@
+{% extends "platform/base.html" %}
+{% from 'platform/_icons.html' import icon %}
+
+{% block title %}{{ project.name }} — Análysis Instagram{% endblock %}
+{% block body %}
+<section class="platform-panel mb-3" aria-labelledby="instagram-project-title">
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+    <h1 id="instagram-project-title" class="h4 mb-0">{{ project.name }}</h1>
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      {% if project.status == 'active' %}
+      <a class="btn btn-outline-primary btn-sm" href="{{ url_for('instagram.new_import', project_id=project.id) }}">Importar dados</a>
+      <form method="post" action="{{ url_for('instagram.archive_project', project_id=project.id) }}" onsubmit="return confirm('Arquivar este projeto? Os dados serão preservados.')"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="confirm" value="yes"><button class="btn btn-outline-primary btn-sm platform-action-button" type="submit" title="Arquivar projeto" aria-label="Arquivar projeto">{{ icon('arquivar') }}</button></form>
+      {% else %}<span class="platform-badge platform-badge-inactive">Arquivado</span>{% endif %}
+    </div>
+  </div>
+  <p class="platform-muted mb-0">{{ project.description or 'Sem descrição.' }}</p>
+</section>
+<section class="platform-panel mb-3" aria-labelledby="instagram-project-imports-title">
+  <h2 id="instagram-project-imports-title" class="h5">Importações</h2>
+  <dl class="row mb-0"><dt class="col-sm-4">Conta</dt><dd class="col-sm-8">{% if account %}@{{ account.username }}{% else %}Será definida na primeira importação.{% endif %}</dd><dt class="col-sm-4">Execuções registradas</dt><dd class="col-sm-8">{{ run_count }}</dd>{% if last_run %}<dt class="col-sm-4">Última importação</dt><dd class="col-sm-8">{{ last_run.completed_at | data_hora_local if last_run.completed_at else 'Em processamento' }}</dd>{% endif %}</dl>
+</section>
+<section class="platform-panel" aria-labelledby="instagram-run-history-title">
+  <h2 id="instagram-run-history-title" class="h5">Histórico de importações</h2>
+  {% if runs %}
+  <div class="table-responsive">
+    <table class="table">
+      <thead><tr><th scope="col">Concluída em</th><th scope="col">Formato</th><th scope="col">Período</th><th scope="col">Publicações observadas</th><th scope="col">Estado</th><th scope="col">Versão do processador</th></tr></thead>
+      <tbody>{% for run in runs %}<tr><td>{{ run.completed_at | data_hora_local if run.completed_at else 'Em processamento' }}</td><td>{{ run.source_kind | upper }}</td><td>{% if run.period_start and run.period_end %}{{ run.period_start | data_hora_local }} a {{ run.period_end | data_hora_local }}{% else %}Não informado{% endif %}</td><td>{{ run.record_count }}</td><td>{{ 'Concluída' if run.status == 'completed' else 'Pendente' if run.status == 'pending' else 'Falhou' if run.status == 'failed' else run.status }}</td><td>{{ run.processor_version }}</td></tr>{% endfor %}</tbody>
+    </table>
+  </div>
+  {% else %}<div class="platform-empty-state">Nenhuma importação registrada neste projeto.</div>{% endif %}
+</section>
+{% endblock %}
