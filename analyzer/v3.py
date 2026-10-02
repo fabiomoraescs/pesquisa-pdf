@@ -22,6 +22,7 @@ from openpyxl.worksheet.datavalidation import DataValidation
 
 from .auditoria import adicionar_aba_parametros, gerar_ids_resultado
 from . import v1
+from .dashboard_metrics import frequencia_relativa_por_documento
 
 
 MODELO_SEMANTICO = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
@@ -304,38 +305,45 @@ def _registros_lexicais(
 
         for item in termos:
             consulta = item["termo"]
-            quantidade = v1.contar_ocorrencias(atual, consulta)
-            if not quantidade:
+            matches = v1.encontrar_ocorrencias(atual, consulta, metodo="lexical")
+            if not matches:
                 continue
-            tipo, termo_encontrado = _tipo_lexical(atual, consulta)
             trecho = v1.extrair_frase_com_termo(atual, consulta)
             descricao = v1.descrever_ocorrencia(
                 consulta, atual, contexto_amplo, contexto
             )
-            registros.append(
-                {
-                    "ID livro": v1.id_livro(caminho),
-                    "Consulta": consulta,
-                    "Termo encontrado": termo_encontrado,
-                    "Tipo de correspondência": tipo,
-                    "Similaridade semântica": None,
-                    "Página inicial": bloco.get("pagina"),
-                    "Página final": bloco.get("pagina"),
-                    "Bloco anterior": bloco_anterior,
-                    # O Excel guarda o bloco original; ``trecho`` continua sendo
-                    # usado somente pela comparação híbrida já existente.
-                    "Trecho da ocorrência": atual,
-                    "Bloco posterior": bloco_posterior,
-                    "Contexto sociológico": contexto,
-                    "Descrição": descricao,
-                    "Validação manual": "",
-                    "Observações do pesquisador": "",
-                    "_quantidade_no_registro": int(quantidade),
-                    "_pagina_inicial_pdf": int(bloco.get("pagina_pdf", 0) or 0),
-                    "_pagina_final_pdf": int(bloco.get("pagina_pdf", 0) or 0),
-                    "_texto_normalizado": v1.normalizar(trecho),
-                }
-            )
+            from .lexical_family import lexical_code_name
+            formas: dict[str, dict[str, Any]] = {}
+            for start, end, relation in matches:
+                code_name = lexical_code_name(atual[start:end])
+                forma = formas.setdefault(code_name, {"quantidade": 0, "relacao": relation})
+                forma["quantidade"] += 1
+            for code_name, forma in formas.items():
+                tipo = "Morfológica" if forma["relacao"] == "morphological" else "Lexical"
+                registros.append(
+                    {
+                        "ID livro": v1.id_livro(caminho),
+                        "Consulta": consulta,
+                        "Termo encontrado": code_name,
+                        "Tipo de correspondência": tipo,
+                        "Similaridade semântica": None,
+                        "Página inicial": bloco.get("pagina"),
+                        "Página final": bloco.get("pagina"),
+                        "Bloco anterior": bloco_anterior,
+                        # O Excel guarda o bloco original; ``trecho`` continua sendo
+                        # usado somente pela comparação híbrida já existente.
+                        "Trecho da ocorrência": atual,
+                        "Bloco posterior": bloco_posterior,
+                        "Contexto sociológico": contexto,
+                        "Descrição": descricao,
+                        "Validação manual": "",
+                        "Observações do pesquisador": "",
+                        "_quantidade_no_registro": forma["quantidade"],
+                        "_pagina_inicial_pdf": int(bloco.get("pagina_pdf", 0) or 0),
+                        "_pagina_final_pdf": int(bloco.get("pagina_pdf", 0) or 0),
+                        "_texto_normalizado": v1.normalizar(trecho),
+                    }
+                )
         if (
             indice == total_blocos - 1
             or (indice + 1) % passo_progresso == 0
@@ -622,6 +630,7 @@ def analisar_pdf(
 
     diagnostico = {
         "arquivo": caminho.name,
+        "palavras_analisadas": sum(len(str(bloco.get("texto", "")).split()) for bloco in blocos),
         "paginas_com_texto_extraivel": paginas_texto,
         "paginas_processadas_com_OCR": paginas_ocr,
         "idioma_OCR": idioma_ocr or "não utilizado",
@@ -891,6 +900,16 @@ def criar_dashboard(resultado: dict[str, Any]) -> dict[str, Any]:
                 if consulta in pivot.index and livro in pivot.columns:
                     matriz[indice_consulta][indice_livro] = int(pivot.loc[consulta, livro])
 
+    matriz_termos = [[0 for _ in livros] for _ in consultas]
+    if not lexical.empty:
+        pivot_termos = lexical.pivot_table(
+            index="Consulta", columns="ID livro", values="_quantidade_no_registro", aggfunc="sum", fill_value=0,
+        )
+        for indice_consulta, consulta in enumerate(consultas):
+            for indice_livro, livro in enumerate(livros):
+                if consulta in pivot_termos.index and livro in pivot_termos.columns:
+                    matriz_termos[indice_consulta][indice_livro] = int(pivot_termos.loc[consulta, livro])
+
     semelhancas = pd.to_numeric(semantico["Similaridade semântica"], errors="coerce").dropna().tolist()
     total_ocr = int(resultado["diagnosticos"]["paginas_processadas_com_OCR"].sum()) if not resultado["diagnosticos"].empty else 0
     return {
@@ -913,6 +932,10 @@ def criar_dashboard(resultado: dict[str, Any]) -> dict[str, Any]:
         },
         "resultados_por_livro": _serie(df, "ID livro"),
         "comparacao": {"consultas": consultas, "livros": livros, "matriz": matriz},
+        "termos_documentos": {"termos": consultas, "documentos": livros, "matriz": matriz_termos},
+        "frequencia_relativa": frequencia_relativa_por_documento(
+            livros, matriz_termos, resultado["diagnosticos"],
+        ),
         "contextos": _serie(df, "Contexto sociológico"),
         "distribuicao_similaridade": [round(float(valor), 4) for valor in semelhancas],
         "sankey": _dados_sankey(df),

@@ -83,6 +83,7 @@ def combinar_semantica(
             "entidade_canonica": entidade.forma_canonica,
             "variantes": list(entidade.variantes),
             "grupo": list(entidade.grupo),
+            "variante_configurada": "",
             "termo_encontrado": "",
             "forma_original_no_texto": "",
             "metodo_localizacao": "semantica",

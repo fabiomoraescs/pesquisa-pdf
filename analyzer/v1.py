@@ -14,6 +14,7 @@ from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
 
 from .auditoria import adicionar_aba_parametros, gerar_ids_resultado
+from .lexical_family import lexical_code_name
 
 
 # O módulo fica em ``analyzer/``; a pasta de trabalho continua sendo a raiz
@@ -385,9 +386,48 @@ def contar_ocorrencias(texto, termo):
     """
     Conta forma literal, flexões e derivações controladas da família lexical.
     """
-    from .lexical_family import count_lexical_occurrences
+    return len(encontrar_ocorrencias(texto, termo))
 
-    return count_lexical_occurrences(texto, termo, criar_regex(termo))
+
+def encontrar_ocorrencias(
+    texto: str,
+    termo: str,
+    *,
+    metodo: str = "lexical",
+    usar_regex: bool = False,
+) -> list[tuple[int, int, str]]:
+    """Localiza Literal/Regex/Lexical pelo mesmo motor adotado no Quali.
+
+    A V1 continua expondo ``contar_ocorrencias`` com o comportamento lexical
+    histórico. Os modos novos são explícitos para não reinterpretar análises
+    persistidas que já usam a versão ``v1``.
+    """
+    if metodo not in {"literal", "lexical"}:
+        raise ValueError("Método textual inválido.")
+    if usar_regex and metodo != "literal":
+        raise ValueError("Regex só pode ser usada com o método Literal.")
+    if metodo == "literal":
+        from .search_matching import find_search_spans
+
+        return [(start, end, "regex" if usar_regex else "literal")
+                for start, end in find_search_spans(texto, termo, use_regex=usar_regex)]
+    from .lexical_family import find_lexical_matches
+
+    return list(find_lexical_matches(texto, termo))
+
+
+def agrupar_formas_encontradas(texto, termo, *, metodo="lexical", usar_regex=False):
+    """Agrupa a quantidade por código concreto sem perder a consulta de origem."""
+    matches = encontrar_ocorrencias(texto, termo, metodo=metodo, usar_regex=usar_regex)
+    if metodo != "lexical":
+        return [(termo, len(matches))] if matches else []
+    from .lexical_family import lexical_code_name
+
+    quantities = OrderedDict()
+    for start, end, _kind in matches:
+        name = lexical_code_name(texto[start:end])
+        quantities[name] = quantities.get(name, 0) + 1
+    return list(quantities.items())
 
 
 def carregar_termos_referencia():
@@ -1061,17 +1101,14 @@ def identificar_contexto_sociologico(texto):
     )
 
 
-def extrair_frase_com_termo(texto, termo):
+def extrair_frase_com_termo(texto, termo, *, metodo="lexical", usar_regex=False):
     frases = re.split(
         r"(?<=[.!?])\s+",
         limpar_texto(texto)
     )
 
     for frase in frases:
-        if contar_ocorrencias(
-            frase,
-            termo
-        ):
+        if encontrar_ocorrencias(frase, termo, metodo=metodo, usar_regex=usar_regex):
             return frase.strip()
 
     return limpar_texto(texto)[:700].strip()
@@ -1531,8 +1568,23 @@ def id_livro(caminho):
     return caminho.stem
 
 
-def analisar_pdf(caminho, termos, progress_callback=None):
+def analisar_pdf(caminho, termos, configuracoes=None, progress_callback=None):
     print(f"\nAnalisando: {caminho.name}")
+
+    # Compatibilidade para os chamadores legados que passavam o callback como
+    # terceiro argumento posicional.
+    if callable(configuracoes) and progress_callback is None:
+        progress_callback = configuracoes
+        configuracoes = None
+    configuracoes = configuracoes or {}
+    # ``v1`` é a API lexical legada. As rotas novas passam o método Literal
+    # explicitamente pelo dispatcher, sem reinterpretar os chamadores antigos.
+    metodo_busca = configuracoes.get("metodo_busca", "lexical")
+    usar_regex = bool(configuracoes.get("usar_regex", False))
+    if metodo_busca not in {"literal", "lexical"}:
+        raise ValueError("Método textual inválido.")
+    if usar_regex and metodo_busca != "literal":
+        raise ValueError("Regex só pode ser usada com o método Literal.")
 
     (
         blocos,
@@ -1550,8 +1602,8 @@ def analisar_pdf(caminho, termos, progress_callback=None):
     passo_progresso = max(1, total_blocos // 100)
     _emitir_progresso(
         progress_callback,
-        fase="busca_lexical",
-        etapa="Executando busca lexical…",
+        fase="busca_lexical" if metodo_busca == "lexical" else "busca_literal",
+        etapa="Executando busca lexical…" if metodo_busca == "lexical" else "Executando busca literal…",
         bloco_atual=0,
         blocos_total=total_blocos,
     )
@@ -1583,12 +1635,10 @@ def analisar_pdf(caminho, termos, progress_callback=None):
             termo = item["termo"]
             categoria = item["categoria"]
 
-            quantidade = contar_ocorrencias(
-                atual,
-                termo
+            matches = encontrar_ocorrencias(
+                atual, termo, metodo=metodo_busca, usar_regex=usar_regex,
             )
-
-            if quantidade == 0:
+            if not matches:
                 continue
 
             tipo_ocorrencia = bloco[
@@ -1606,25 +1656,35 @@ def analisar_pdf(caminho, termos, progress_callback=None):
                 contexto_soc
             )
 
-            ocorrencias.append({
-                "ID livro": id_livro(caminho),
-                "Termo": termo,
-                "Categoria do termo": categoria,
-                "Parágrafo anterior": paragrafo_anterior,
-                "Parágrafo do termo": atual,
-                "Parágrafo posterior": paragrafo_posterior,
-                "Unidade": bloco["unidade"],
-                "Capítulo": bloco["capitulo"],
-                "Seção": bloco["secao"],
-                "Subseção": bloco["subsecao"],
-                "Página": bloco["pagina"],
-                "Tipo da ocorrência": tipo_ocorrencia,
-                "Contexto sociológico da ocorrência": contexto_soc,
-                "Descrição da ocorrência": descricao,
-                "Validação manual": "revisar",
-                "_quantidade_no_registro": quantidade,
-                "_metodo": bloco["metodo"],
-            })
+            for inicio, fim, _relacao in matches:
+                termo_encontrado = (
+                    lexical_code_name(atual[inicio:fim])
+                    if metodo_busca == "lexical" else termo
+                )
+                ocorrencias.append({
+                    "ID livro": id_livro(caminho),
+                    "Consulta": termo,
+                    "Termo": termo_encontrado,
+                    "Categoria do termo": categoria,
+                    "Parágrafo anterior": paragrafo_anterior,
+                    "Parágrafo do termo": atual,
+                    "Parágrafo posterior": paragrafo_posterior,
+                    "Unidade": bloco["unidade"],
+                    "Capítulo": bloco["capitulo"],
+                    "Seção": bloco["secao"],
+                    "Subseção": bloco["subsecao"],
+                    "Página": bloco["pagina"],
+                    "Tipo da ocorrência": tipo_ocorrencia,
+                    "Contexto sociológico da ocorrência": contexto_soc,
+                    "Descrição da ocorrência": descricao,
+                    "Validação manual": "revisar",
+                    # Cada span é uma ocorrência canônica. Não agrupar aqui:
+                    # o dashboard e a exportação devem consumir a mesma coleção.
+                    "_quantidade_no_registro": 1,
+                    "_inicio_ocorrencia": inicio,
+                    "_fim_ocorrencia": fim,
+                    "_metodo": bloco["metodo"],
+                })
 
         if (
             indice == total_blocos - 1
@@ -1632,14 +1692,15 @@ def analisar_pdf(caminho, termos, progress_callback=None):
         ):
             _emitir_progresso(
                 progress_callback,
-                fase="busca_lexical",
-                etapa="Executando busca lexical…",
+                fase="busca_lexical" if metodo_busca == "lexical" else "busca_literal",
+                etapa="Executando busca lexical…" if metodo_busca == "lexical" else "Executando busca literal…",
                 bloco_atual=indice + 1,
                 blocos_total=total_blocos,
             )
 
     diagnostico = {
         "arquivo": caminho.name,
+        "palavras_analisadas": sum(len(str(bloco.get("texto", "")).split()) for bloco in blocos),
         "paginas_com_texto_extraivel": paginas_texto,
         "paginas_processadas_com_OCR": paginas_ocr,
         "idioma_OCR": (
@@ -1789,6 +1850,7 @@ def formatar_excel(caminho):
 
             elif titulo in {
                 "ID resultado",
+                "Consulta",
                 "Termo",
                 "Categoria do termo",
                 "Tipo da ocorrência",
@@ -1887,6 +1949,7 @@ def salvar_excel_completo(
     colunas_saida = [
         "ID resultado",
         "ID livro",
+        "Consulta",
         "Termo",
         "Parágrafo anterior",
         "Parágrafo do termo",
@@ -1988,6 +2051,7 @@ def dataframe_vazio():
     return pd.DataFrame(
         columns=[
             "ID livro",
+            "Consulta",
             "Termo",
             "Categoria do termo",
             "Parágrafo anterior",

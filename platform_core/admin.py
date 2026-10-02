@@ -7,7 +7,7 @@ from functools import wraps
 from pathlib import Path
 from uuid import UUID
 
-from flask import Blueprint, abort, current_app, flash, redirect, render_template, request, send_file, url_for
+from flask import Blueprint, abort, current_app, flash, jsonify, redirect, render_template, request, send_file, url_for
 from flask_login import current_user, login_required
 from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -19,7 +19,15 @@ from .models import (
     QualitativeCode, QualitativeCoding, QualitativeExcerpt, QualitativeMemo, QualitativeRejection, Tool, User,
     UserProfile, UserToolOverride, VocabularyLibrary, utcnow,
 )
-from .assistant_ai_manager import AIProviderManager, AISettingsValidationError
+from .assistant_ai_manager import (
+    AIProviderManager,
+    AISettingsValidationError,
+    CONNECTION_AVAILABLE,
+    CONNECTION_AUDIT_ACTION,
+    CONNECTION_FAILED,
+    CONNECTION_NATIVE_AVAILABLE,
+    PROVIDERS,
+)
 from .password_policy import TEMPORARY_PASSWORD
 from .project_lifecycle import ProjectActionError, archive, delete_archived, restore
 from .profile import remove_profile_photo
@@ -424,9 +432,12 @@ def _ai_settings_snapshot(settings: AssistantAISettings) -> dict[str, object]:
         "primary_provider": settings.primary_provider,
         "enabled_providers": list(settings.enabled_providers or []),
         "fallback_order": list(settings.fallback_order or []),
+        "analysis_native_model": settings.analysis_native_model,
         "gemini_model": settings.gemini_model,
         "openai_model": settings.openai_model,
         "anthropic_model": settings.anthropic_model,
+        "docchat_provider": settings.docchat_provider,
+        "docchat_model": settings.docchat_model,
     }
 
 
@@ -435,11 +446,16 @@ def _ai_settings_snapshot(settings: AssistantAISettings) -> dict[str, object]:
 def assistant_ai_settings():
     manager = AIProviderManager()
     settings = manager.get_settings()
+    provider_statuses = manager.provider_statuses(settings)
+    provider_labels = {status["id"]: status["display_name"] for status in provider_statuses}
+    fallback_summary = [provider_labels.get(provider_id, provider_id) for provider_id in (settings.fallback_order or [])]
     return render_template(
         "platform/admin.html",
         section="assistant_ai_settings",
         ai_settings=settings,
-        provider_statuses=manager.provider_statuses(settings),
+        provider_statuses=provider_statuses,
+        provider_labels=provider_labels,
+        fallback_summary=fallback_summary,
     )
 
 
@@ -454,6 +470,7 @@ def save_assistant_ai_settings():
         "primary_provider": request.form.get("primary_provider"),
         "enabled_providers": request.form.getlist("enabled_providers"),
         "fallback_order": request.form.getlist("fallback_order"),
+        "analysis_native_model": request.form.get("analysis_native_model"),
         "gemini_model": request.form.get("gemini_model"),
         "openai_model": request.form.get("openai_model"),
         "anthropic_model": request.form.get("anthropic_model"),
@@ -474,25 +491,117 @@ def save_assistant_ai_settings():
     return redirect(url_for("admin.assistant_ai_settings"))
 
 
+@admin_bp.post("/inteligencia-artificial/docchat")
+@admin_only
+def save_docchat_ai_settings():
+    """Persiste somente a preparação do DocChat futuro; não testa nem executa IA."""
+    manager = AIProviderManager()
+    current = manager.get_settings()
+    before = _ai_settings_snapshot(current)
+    try:
+        settings = manager.save_docchat_configuration({
+            "docchat_provider": request.form.get("docchat_provider"),
+            "docchat_model": request.form.get("docchat_model"),
+        })
+        after = _ai_settings_snapshot(settings)
+        record_audit(current_user, "docchat_ai_settings_changed", "assistant_ai_settings", "1", before, after)
+        db.session.commit()
+    except AISettingsValidationError as error:
+        db.session.rollback()
+        flash(str(error), "danger")
+    except SQLAlchemyError:
+        db.session.rollback()
+        flash("Não foi possível salvar a preparação do DocChat com segurança.", "danger")
+    else:
+        flash("Configuração futura do DocChat atualizada.", "success")
+    return redirect(url_for("admin.assistant_ai_settings"))
+
+
 @admin_bp.post("/inteligencia-artificial/<provider_id>/testar-conexao")
 @admin_only
 def test_assistant_ai_connection(provider_id: str):
+    """Testa um provider e persiste somente seu estado operacional seguro."""
+    wants_json = (
+        request.headers.get("X-Requested-With") == "XMLHttpRequest"
+        or request.accept_mimetypes.best == "application/json"
+    )
+
+    def respond(*, ok: bool, state: str | None, message: str, status_code: int):
+        if wants_json:
+            return jsonify({
+                "ok": ok,
+                "provider_id": provider_id,
+                "connection_state": state,
+                "connection_status": AIProviderManager.connection_status_label(state),
+                "message": message,
+            }), status_code
+        # Mantém o contrato visual já existente do flash, sem alterar o rótulo
+        # padronizado usado pelo cartão e pelo retorno AJAX.
+        flash(message if not ok or message.endswith(".") else f"{message}.", "success" if ok else "danger")
+        return redirect(url_for("admin.assistant_ai_settings"))
+
+    if provider_id not in PROVIDERS or not PROVIDERS[provider_id]["implemented"]:
+        return respond(
+            ok=False,
+            state=None,
+            message="Este provider ainda não possui integração disponível.",
+            status_code=400,
+        )
+
+    manager = AIProviderManager()
     try:
-        AIProviderManager().test_provider_connection(provider_id)
+        manager.test_provider_connection(provider_id)
     except AISettingsValidationError as error:
-        flash(str(error), "danger")
+        return respond(ok=False, state=None, message=str(error), status_code=400)
     except Exception as error:
         # O provider normaliza as mensagens técnicas; nenhuma resposta externa,
         # credencial, prompt ou payload de teste é retornado ao navegador.
         from .assistant_ai_provider import AIProviderError
+        state = CONNECTION_FAILED
+        record_audit(
+            current_user,
+            CONNECTION_AUDIT_ACTION,
+            "assistant_ai_provider",
+            provider_id,
+            after={"state": state},
+        )
+        try:
+            db.session.commit()
+        except SQLAlchemyError:
+            db.session.rollback()
+            current_app.logger.warning("assistant_ai_connection_status_persist_failed provider=%s", provider_id)
         if isinstance(error, AIProviderError):
-            flash(error.public_message, "danger")
+            message, status_code = error.public_message, error.status_code
         else:
-            current_app.logger.warning("Teste de conexão de IA falhou: %s", type(error).__name__)
-            flash("Não foi possível testar a conexão neste momento.", "danger")
-    else:
-        flash("Conexão disponível.", "success")
-    return redirect(url_for("admin.assistant_ai_settings"))
+            current_app.logger.warning(
+                "assistant_ai_connection_test_failed provider=%s exception_type=%s",
+                provider_id,
+                type(error).__name__,
+            )
+            message, status_code = "Não foi possível testar a conexão neste momento.", 503
+        return respond(ok=False, state=state, message=message, status_code=status_code)
+
+    state = CONNECTION_NATIVE_AVAILABLE if PROVIDERS[provider_id].get("native") else CONNECTION_AVAILABLE
+    record_audit(
+        current_user,
+        CONNECTION_AUDIT_ACTION,
+        "assistant_ai_provider",
+        provider_id,
+        after={"state": state},
+    )
+    try:
+        db.session.commit()
+    except SQLAlchemyError:
+        db.session.rollback()
+        current_app.logger.warning("assistant_ai_connection_status_persist_failed provider=%s", provider_id)
+        return respond(
+            ok=False,
+            state=None,
+            message="Não foi possível registrar o resultado do teste de conexão.",
+            status_code=500,
+        )
+    message = AIProviderManager.connection_status_label(state)
+    return respond(ok=True, state=state, message=message, status_code=200)
 
 
 @admin_bp.get("/projetos")

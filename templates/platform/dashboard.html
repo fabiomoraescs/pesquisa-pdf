@@ -1,65 +1,69 @@
-{% extends 'platform/base.html' %}
+{% extends "platform/base.html" %}
+{% from "platform/_icons.html" import icon %}
+
 {% block title %}Dashboard — Análysis{% endblock %}
+
 {% block body %}
-<section class="platform-dashboard-intro">
-  <h1 class="visually-hidden">Dashboard</h1>
-  <p class="platform-muted">Visão geral dos seus projetos e das suas Bases de análise</p>
-</section>
-<section class="platform-dashboard-stats" aria-label="Resumo da pesquisa">
-  <article class="platform-panel"><span>Projetos ativos</span><strong>{{ projects_total }}</strong></article>
-  <article class="platform-panel"><span>Busca por termos</span><strong>{{ projects_by_type['free'] }}</strong></article>
-  <article class="platform-panel"><span>Busca estruturada</span><strong>{{ projects_by_type['systematic'] }}</strong></article>
-  <article class="platform-panel"><span>Análise quali-dados</span><strong>{{ projects_by_type['qualitative'] }}</strong></article>
-  <article class="platform-panel"><span>Bases de análise</span><strong>{{ bases_total }}</strong></article>
-</section>
-<section class="platform-panel mb-3" aria-labelledby="dashboard-bases-title">
-  <div class="platform-toolbar"><h2 id="dashboard-bases-title" class="h5 mb-0">Bases de análise recentes</h2></div>
-  {% if recent_bases %}<ul class="platform-dashboard-records">
-    {% for base, project_name in recent_bases %}
-    <li><a href="{{ url_for('analyses.dashboard', analysis_id=base.id) }}">{{ base.display_name }}</a><small>Projeto: {{ project_name or 'Sem projeto' }}</small><small>{{ base.tool_id | rotulo }} · {{ base.status | rotulo }} · {{ base.created_at.strftime('%d/%m/%Y') }}</small></li>
+<section class="platform-panel platform-workspace-section" aria-labelledby="workspace-summary-heading">
+  <header class="platform-workspace-section-header">
+    <h1 id="workspace-summary-heading">Resumo da área de trabalho</h1>
+  </header>
+  <div class="platform-workspace-metrics">
+    {% for metric in workspace_metrics %}
+    <article class="metric-card platform-workspace-metric-card">
+      {{ icon(metric.icon) }}
+      <strong>{{ metric.value }}</strong>
+      <span>{{ metric.label }}</span>
+    </article>
     {% endfor %}
-  </ul>{% else %}<p class="platform-muted mb-0">Nenhuma Base de análise disponível.</p>{% endif %}
+  </div>
+  <p class="platform-muted platform-workspace-note">“Documentos nas Bases” soma os registros de documentos vinculados às suas Bases acessíveis.</p>
 </section>
-<div class="platform-dashboard-charts platform-dashboard-latest">
-  {% for kind, label in [('free', 'Busca por termos'), ('systematic', 'Busca estruturada')] %}
-  {% set latest = latest_bases[kind] %}
-  <section class="platform-panel" aria-labelledby="dashboard-latest-{{ kind }}">
-    <h2 id="dashboard-latest-{{ kind }}" class="h5">Última Base — {{ label }}</h2>
-    {% if latest %}
-      {% set base = latest[0] %}
-      <a class="platform-dashboard-base-link" href="{{ url_for('analyses.dashboard', analysis_id=base.id) }}">{{ base.display_name }}</a>
-      <p class="platform-muted mb-2">Projeto: {{ latest[1] or 'Sem projeto' }} · {{ (base.completed_at or base.created_at).strftime('%d/%m/%Y') }}</p>
-      {% if chart_data.get(kind) and chart_data[kind].labels %}
-      <div class="chart-card"><h3 class="h6">{{ chart_data[kind].title }}</h3><div id="dashboard-chart-{{ kind }}" class="chart" role="img" aria-label="{{ chart_data[kind].title }} da Base {{ base.display_name }}"></div></div>
-      {% else %}<p class="platform-muted mb-0">Não há ocorrências para exibir neste gráfico.</p>{% endif %}
-    {% else %}<p class="platform-muted mb-0">Nenhuma Base concluída ainda.</p>{% endif %}
-  </section>
-  {% endfor %}
-  {% set latest = latest_bases['qualitative'] %}
-  <section class="platform-panel" aria-labelledby="dashboard-latest-qualitative">
-    <h2 id="dashboard-latest-qualitative" class="h5">Última análise quali-dados</h2>
-    {% if latest %}
-      {% set base = latest[0] %}
-      <a class="platform-dashboard-base-link" href="{{ url_for('qualitative.base', analysis_id=base.id) }}">{{ latest[1] }}</a>
-      <p class="platform-muted mb-2">{{ base.created_at.strftime('%d/%m/%Y') }}</p>
-      {% if chart_data['qualitative'].labels %}
-      <div class="chart-card"><h3 class="h6">Trechos por código</h3><div id="dashboard-chart-qualitative" class="chart" role="img" aria-label="Trechos por código do projeto {{ latest[1] }}"></div></div>
-      {% else %}<p class="platform-muted mb-0">Ainda não há dados para exibir neste gráfico.</p>{% endif %}
-    {% else %}<p class="platform-muted mb-0">Nenhuma análise quali-dados ainda.</p>{% endif %}
-  </section>
-</div>
+
+<section class="platform-panel platform-workspace-section" aria-labelledby="continue-working-heading">
+  <header class="platform-workspace-section-header">
+    <h2 id="continue-working-heading">Continuar trabalhando</h2>
+  </header>
+
+  {% if recent_work %}
+  <ul class="platform-workspace-work-list">
+    {% for work in recent_work %}
+    <li class="platform-workspace-work-item">
+      <a class="platform-list-title" href="{{ work.continue_url }}" title="{{ work.analysis.display_name }}">{{ work.analysis.display_name }}</a>
+      <span class="platform-workspace-work-details">
+        <span class="platform-badge">{{ work.tool_label }}</span>
+        <span>{{ work.analysis.document_count }} documento(s)</span>
+      </span>
+      <a class="btn btn-outline-primary btn-sm platform-action-button platform-workspace-open-action" href="{{ work.continue_url }}" title="Abrir {{ work.analysis.display_name }}" aria-label="Abrir {{ work.analysis.display_name }}">{{ icon('abrir') }}</a>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <div class="platform-empty-state">
+    <p>Você ainda não possui análises para continuar.</p>
+  </div>
+  {% endif %}
+</section>
+
 {% if admin_charts is not none %}
 <section class="platform-dashboard-admin" aria-labelledby="dashboard-admin-title">
   <h2 id="dashboard-admin-title" class="h5">Visão geral da plataforma</h2>
   <div class="platform-dashboard-charts">
-    <section class="platform-panel" aria-labelledby="dashboard-users-title"><h3 id="dashboard-users-title" class="h6">Novos usuários</h3><p class="platform-muted">Cadastros por mês nos últimos 12 meses</p><div id="dashboard-chart-users" class="chart" role="img" aria-label="Novos usuários por mês"></div></section>
-    <section class="platform-panel" aria-labelledby="dashboard-usage-title"><h3 id="dashboard-usage-title" class="h6">Uso das ferramentas</h3><p class="platform-muted">Bases de análise concluídas por ferramenta</p><div id="dashboard-chart-usage" class="chart" role="img" aria-label="Bases concluídas por ferramenta"></div></section>
+    <section class="platform-panel" aria-labelledby="dashboard-users-title">
+      <h3 id="dashboard-users-title" class="h6">Novos usuários</h3>
+      <p class="platform-muted">Cadastros por mês nos últimos 12 meses</p>
+      <div id="dashboard-chart-users" class="chart" role="img" aria-label="Novos usuários por mês"></div>
+    </section>
+    <section class="platform-panel" aria-labelledby="dashboard-usage-title">
+      <h3 id="dashboard-usage-title" class="h6">Uso das ferramentas</h3>
+      <p class="platform-muted">Bases de análise concluídas por ferramenta</p>
+      <div id="dashboard-chart-usage" class="chart" role="img" aria-label="Bases concluídas por ferramenta"></div>
+    </section>
   </div>
 </section>
-{% endif %}
-<script id="dashboard-chart-data" type="application/json">{{ chart_data|tojson }}</script>
-{% if admin_charts is not none %}<script id="dashboard-admin-chart-data" type="application/json">{{ admin_charts|tojson }}</script>{% endif %}
+<script id="dashboard-admin-chart-data" type="application/json">{{ admin_charts|tojson }}</script>
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 <script src="{{ url_for('static', filename='js/plot_theme.js') }}"></script>
 <script src="{{ url_for('static', filename='js/platform_dashboard.js') }}"></script>
+{% endif %}
 {% endblock %}

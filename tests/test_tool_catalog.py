@@ -58,13 +58,21 @@ class ToolCatalogTests(unittest.TestCase):
 
     def _usage(self):
         html = self.client.get('/').text
-        data = json.loads(re.search(r'<script id="dashboard-admin-chart-data" type="application/json">(.*?)</script>', html, re.S)[1])
+        data = json.loads(re.search(
+            r'<script id="dashboard-admin-chart-data" type="application/json">(.*?)</script>', html, re.S
+        )[1])
         return dict(zip(data["usage"]["labels"], data["usage"]["values"]))
 
-    def test_complete_catalog_preserves_real_counts_and_all_zero_categories(self):
-        self.assertEqual(self._usage(), {"Busca por termos": 0, "Busca estruturada": 0,
-            "Análise quali-dados": 0, "Análise quantitativa": 0, "ChatDoc": 0})
-        # Qualquer outra ferramenta persistida também participa, mesmo inativa.
+    def test_catalog_remains_complete_and_feeds_historical_admin_usage_chart(self):
+        self.assertEqual(self._usage(), {
+            "Busca por termos": 0,
+            "Busca estruturada": 0,
+            "Análise quali-dados": 0,
+            "Análise quantitativa": 0,
+            "ChatDoc": 0,
+        })
+        # Qualquer outra ferramenta persistida permanece no catálogo administrativo
+        # e é exibida como categoria mesmo quando não possui rota implementada.
         db.session.add(Tool(id="extra_tool", name="Outra ferramenta", route="/test-only", active=False))
         db.session.commit()
         for tool, total in (("pdf_scraper", 2), ("document_analysis", 1), ("qualitative_analysis", 3), ("extra_tool", 1)):
@@ -72,14 +80,21 @@ class ToolCatalogTests(unittest.TestCase):
                 db.session.add(Analysis(user_id=self.admin.id, name="Execução de teste", source_type="upload",
                                        tool_id=tool, tool_version="v1", status=status))
         db.session.commit()
-        expected = {"Busca por termos": 2, "Busca estruturada": 1, "Análise quali-dados": 3,
-                    "Outra ferramenta": 1, "Análise quantitativa": 0, "ChatDoc": 0}
-        self.assertEqual(self._usage(), expected)
         catalog = tool_catalog()
         self.assertEqual(len(catalog), len({tool["id"] for tool in catalog}))
-        self.assertEqual({tool["name"] for tool in catalog}, set(expected))
+        self.assertEqual({tool["name"] for tool in catalog}, {
+            "Busca por termos", "Busca estruturada", "Análise quali-dados",
+            "Outra ferramenta", "Análise quantitativa", "ChatDoc",
+        })
         for path in ('/admin/ferramentas', '/admin/definir-acessos'):
             html = self.client.get(path).text
             for tool in catalog:
                 self.assertEqual(html.count(f'data-tool-id="{tool["id"]}"'), 1)
-        self.assertEqual(self._usage(), expected)  # Abrir menus não é uso.
+        self.assertEqual(self._usage(), {
+            "Busca por termos": 2,
+            "Busca estruturada": 1,
+            "Análise quali-dados": 3,
+            "Outra ferramenta": 1,
+            "Análise quantitativa": 0,
+            "ChatDoc": 0,
+        })

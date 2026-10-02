@@ -1,22 +1,21 @@
 (() => {
-  const source = document.getElementById('dashboard-chart-data');
+  const source = document.getElementById('dashboard-admin-chart-data');
   if (!source || !window.Plotly || !window.PesquisaPdfPlotTheme) return;
-  const personal = JSON.parse(source.textContent);
-  const adminSource = document.getElementById('dashboard-admin-chart-data');
-  const admin = adminSource ? JSON.parse(adminSource.textContent) : null;
+
+  let admin;
+  try {
+    admin = JSON.parse(source.textContent);
+  } catch (_) {
+    return;
+  }
+
   const theme = window.PesquisaPdfPlotTheme;
 
-  function draw(id, series, { horizontal = true, colorIndex = 0, label = 'Ocorrências', showZeros = false } = {}) {
+  function draw(id, series, { horizontal = true, colorIndex = 0, label = 'registro(s)' } = {}) {
     const target = document.getElementById(id);
     if (!target || !series) return;
     const labels = series.labels || [];
     const values = series.values || [];
-    if (!labels.length || (!showZeros && !values.some(value => Number(value) > 0))) {
-      if (target.classList.contains('js-plotly-plot')) Plotly.purge(target);
-      target.textContent = 'Ainda não há dados para exibir neste gráfico.';
-      target.classList.add('empty-chart');
-      return;
-    }
     target.classList.remove('empty-chart');
     Plotly.react(target, [{
       type: 'bar',
@@ -29,60 +28,42 @@
         : `%{x}<br><b>%{y} ${label}</b><extra></extra>`,
     }], {
       ...theme.layout({ l: horizontal ? 135 : 50, r: 20, t: 12, b: horizontal ? 45 : 70 }),
-      xaxis: theme.axis(horizontal ? { title: label, rangemode: 'tozero', dtick: 1 }
-                                   : { type: 'category', automargin: true, tickangle: -35, tickmode: 'array',
-                                       tickvals: labels.filter((_, index) => index % 3 === 0 || index === labels.length - 1) }),
-      yaxis: theme.axis(horizontal ? { automargin: true, autorange: 'reversed' }
-                                   : { title: label, rangemode: 'tozero', dtick: 1 }),
+      xaxis: theme.axis(horizontal
+        ? { title: label, rangemode: 'tozero', dtick: 1 }
+        : { type: 'category', automargin: true, tickangle: -35 }),
+      yaxis: theme.axis(horizontal
+        ? { automargin: true, autorange: 'reversed' }
+        : { title: label, rangemode: 'tozero', dtick: 1 }),
       autosize: true,
     }, { responsive: true, displaylogo: false });
   }
 
   function render() {
-    draw('dashboard-chart-free', personal.free,
-      { label: personal.free?.unit || 'ocorrência(s)' });
-    draw('dashboard-chart-systematic', personal.systematic,
-      { colorIndex: 1, label: 'ocorrência(s)' });
-    draw('dashboard-chart-qualitative', personal.qualitative,
-      { colorIndex: 2, label: 'trecho(s)' });
-    if (admin) {
-      const registrations = {
-        labels: admin.registrations.labels.map(month => `${month.slice(5, 7)}/${month.slice(0, 4)}`),
-        values: admin.registrations.values,
-      };
-      draw('dashboard-chart-users', registrations,
-        { horizontal: false, colorIndex: 2, label: 'cadastro(s)' });
-      draw('dashboard-chart-usage', admin.usage,
-        { colorIndex: 3, label: 'Base(s) concluída(s)', showZeros: true });
-    }
+    const registrations = {
+      labels: (admin.registrations?.labels || []).map(month => `${month.slice(5, 7)}/${month.slice(0, 4)}`),
+      values: admin.registrations?.values || [],
+    };
+    draw('dashboard-chart-users', registrations,
+      { horizontal: false, colorIndex: 2, label: 'cadastro(s)' });
+    draw('dashboard-chart-usage', admin.usage,
+      { colorIndex: 3, label: 'Base(s) concluída(s)' });
   }
-  render();
-  document.addEventListener('tema-alterado', render);
-  // Mesmo padrão do dashboard de resultados: observa o card e agrupa o resize
-  // em um frame. Também cobre mudanças de largura sem resize da janela.
+
   let resizeFrame;
-  const resizeCharts = () => {
+  function resizeCharts() {
     cancelAnimationFrame(resizeFrame);
     resizeFrame = requestAnimationFrame(() => {
-      document.querySelectorAll('.platform-dashboard-latest .js-plotly-plot')
+      document.querySelectorAll('.platform-dashboard-admin .js-plotly-plot')
         .forEach(chart => Plotly.Plots.resize(chart));
     });
-  };
+  }
+
+  render();
+  document.addEventListener('tema-alterado', render);
   document.addEventListener('dashboard-redimensionar', resizeCharts);
   if ('ResizeObserver' in window) {
-    const widths = new WeakMap();
-    const observer = new ResizeObserver(entries => {
-      let changed = false;
-      for (const entry of entries) {
-        const width = entry.contentRect.width;
-        if (widths.get(entry.target) !== width) {
-          widths.set(entry.target, width);
-          changed = true;
-        }
-      }
-      if (changed) resizeCharts();
-    });
-    document.querySelectorAll('.platform-dashboard-latest .chart-card')
+    const observer = new ResizeObserver(resizeCharts);
+    document.querySelectorAll('.platform-dashboard-admin .platform-panel')
       .forEach(card => observer.observe(card));
   }
 })();

@@ -55,21 +55,21 @@ class DashboardAvatarTests(unittest.TestCase):
         response = self.client.get("/")
         self.assertEqual(response.status_code, 200)
         html = response.get_data(as_text=True)
-        for label in ("Dashboard", "Bases de análise recentes", "Projeto: Livre própria",
-                      "Projeto: Sistemática própria", "Base própria", "Base sistemática"):
+        for label in ("Dashboard", "Resumo da área de trabalho", "Continuar trabalhando",
+                      "Base própria", "Base sistemática"):
             self.assertIn(label, html)
-        self.assertNotIn("Projetos recentes", html)
+        self.assertNotIn("Ações rápidas", html)
         self.assertNotIn("Projeto alheio", html)
         self.assertNotIn("Base alheia", html)
-        self.assertIn("Projetos ativos</span><strong>2</strong>", html)
-        self.assertIn("Bases de análise</span><strong>2</strong>", html)
+        self.assertRegex(html, r'<strong>2</strong>\s*<span>Projetos</span>')
+        self.assertRegex(html, r'<strong>2</strong>\s*<span>Bases</span>')
         db.session.delete(db.session.get(PlanTool, ("student", "pdf_scraper")))
         db.session.commit()
         restricted = self.client.get("/").get_data(as_text=True)
         self.assertNotIn("Livre própria", restricted)
         self.assertNotIn("Base própria", restricted)
-        self.assertIn("Sistemática própria", restricted)
-        self.assertIn("Projetos ativos</span><strong>1</strong>", restricted)
+        self.assertIn("Base sistemática", restricted)
+        self.assertRegex(restricted, r'<strong>1</strong>\s*<span>Projetos</span>')
 
     def test_header_uses_profile_link_and_fallback_without_sidebar_profile(self):
         create_user()

@@ -149,14 +149,15 @@ class QualitativeAutomaticTests(unittest.TestCase):
         for mode in modes.values():
             self.assertLess(parser.items.index(rejection), parser.items.index(mode))
             self.assertLess(parser.items.index(mode), parser.items.index(scope))
-        for label in ("Regex", "Maiúsculas e minúsculas", "Autocodificação", "Múltiplos termos", "Rejeição contextual",
-                      "autocodificação Literal", "autocodificação Lexical", "autocodificação Semântica"):
-            help_button = next(i for i in parser.items if i.get("aria-label") == f"Sobre {label}" and "popovertarget" in i)
-            self.assertEqual(help_button["type"], "button")
-            self.assertNotIn("disabled", help_button)
-            self.assertNotIn("label", help_button["_parents"])
-            self.assertTrue(any(i.get("id") == help_button["popovertarget"] and "data-temporary-popover" in i
-                                for i in parser.items))
+        info_buttons = [i for i in parser.items if "data-platform-tutorial-open" in i]
+        self.assertEqual(len(info_buttons), 1)
+        info_button = info_buttons[0]
+        self.assertEqual(info_button["type"], "button")
+        self.assertEqual(info_button["aria-controls"], "platform-tutorial-dialog")
+        self.assertEqual(info_button["aria-label"], "Como funciona a Análise quali-dados")
+        self.assertNotIn("disabled", info_button)
+        self.assertNotIn("label", info_button["_parents"])
+        self.assertEqual(html.count('id="platform-tutorial-dialog"'), 1)
         url = self.auto_url.replace("/codificar", "/buscar")
         self.assertEqual(self.client.get(url, query_string={"q": "Documento"}).json["total"], 2)
         self.assertEqual(self.codings(), [])

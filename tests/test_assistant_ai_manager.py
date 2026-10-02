@@ -12,7 +12,15 @@ from unittest.mock import patch
 from flask_migrate import upgrade
 
 from app import create_app
-from platform_core.assistant_ai_manager import AIProviderManager, AISettingsValidationError
+from platform_core.assistant_ai_manager import (
+    AIProviderManager,
+    AISettingsValidationError,
+    CONNECTION_AUDIT_ACTION,
+    CONNECTION_AVAILABLE,
+    CONNECTION_FAILED,
+    CONNECTION_NATIVE_AVAILABLE,
+    CONNECTION_NOT_TESTED,
+)
 from platform_core.assistant_ai_provider import (
     AIProviderError,
     DEFAULT_GEMINI_ASSISTANT_MODEL,
@@ -75,6 +83,13 @@ class AssistantAIManagerTests(unittest.TestCase):
         self.assertTrue(gemini["credential_configured"])
         self.assertFalse(anthropic["implemented"])
         self.assertNotIn("never-render-this-secret", json.dumps(statuses))
+
+    def test_connection_status_defaults_are_safe_and_native_is_local(self):
+        statuses = {item["id"]: item for item in AIProviderManager().provider_statuses()}
+        self.assertEqual(statuses["gemini"]["connection_state"], CONNECTION_NOT_TESTED)
+        self.assertEqual(statuses["gemini"]["connection_status"], "Não testado")
+        self.assertEqual(statuses["analysis_native"]["connection_state"], CONNECTION_NATIVE_AVAILABLE)
+        self.assertEqual(statuses["analysis_native"]["connection_status"], "Motor nativo disponível")
 
 
 class GeminiProviderTests(unittest.TestCase):
@@ -471,6 +486,16 @@ class AssistantAIAdminTests(unittest.TestCase):
         self.assertIn("Configuração operacional de Inteligência Artificial", html)
         self.assertIn("Claude / Anthropic", html)
         self.assertIn("Credencial configurada", html)
+        self.assertIn("Provider primário", html)
+        self.assertIn("PRIMÁRIO", html)
+        self.assertIn("Habilitado", html)
+        self.assertIn("Não testado", html)
+        self.assertIn('class="platform-ai-provider-card platform-ai-docchat"', html)
+        self.assertIn("DocChat (em breve)", html)
+        self.assertIn('form="docchat-settings-form"', html)
+        self.assertIn('action="/admin/inteligencia-artificial/docchat"', html)
+        docchat_card = html.split('class="platform-ai-provider-card platform-ai-docchat"', 1)[1].split('</article>', 1)[0]
+        self.assertNotIn('value="analysis_native"', docchat_card)
         self.assertNotIn("never-render-this-secret", html)
         self.client.post("/logout", data={"csrf_token": csrf_from(response)})
         regular = create_user("Regular", "assistant-ai-regular@example.org")
@@ -491,6 +516,18 @@ class AssistantAIAdminTests(unittest.TestCase):
         self.assertEqual(audit.after_json["primary_provider"], "gemini")
         self.assertNotIn("never-render-this-secret", json.dumps(audit.after_json))
 
+    def test_docchat_card_saves_only_its_future_provider_and_model(self):
+        page = self.client.get("/admin/inteligencia-artificial")
+        response = self.client.post("/admin/inteligencia-artificial/docchat", data={
+            "csrf_token": csrf_from(page), "docchat_provider": "gemini", "docchat_model": "gemini-docchat-future",
+        })
+        self.assertEqual(response.status_code, 302)
+        settings = db.session.get(AssistantAISettings, 1)
+        self.assertEqual((settings.docchat_provider, settings.docchat_model), ("gemini", "gemini-docchat-future"))
+        self.assertEqual(settings.primary_provider, "gemini")
+        audit = db.session.scalar(db.select(AuditLog).where(AuditLog.action == "docchat_ai_settings_changed"))
+        self.assertEqual(audit.after_json["docchat_provider"], "gemini")
+
     def test_connection_route_uses_no_corpus_and_returns_friendly_flash(self):
         page = self.client.get("/admin/inteligencia-artificial")
         with patch("platform_core.admin.AIProviderManager.test_provider_connection") as connection:
@@ -500,6 +537,65 @@ class AssistantAIAdminTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         connection.assert_called_once_with("gemini")
         self.assertIn("Conexão disponível.", response.get_data(as_text=True))
+
+    def test_connection_status_json_updates_only_tested_provider_and_persists_after_reload(self):
+        page = self.client.get("/admin/inteligencia-artificial")
+        headers = {"Accept": "application/json", "X-Requested-With": "XMLHttpRequest"}
+        with patch("platform_core.admin.AIProviderManager.test_provider_connection") as connection:
+            response = self.client.post(
+                "/admin/inteligencia-artificial/gemini/testar-conexao",
+                data={"csrf_token": csrf_from(page)},
+                headers=headers,
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json["connection_state"], CONNECTION_AVAILABLE)
+        self.assertEqual(response.json["connection_status"], "Conexão disponível")
+        connection.assert_called_once_with("gemini")
+        states = {item["id"]: item["connection_state"] for item in AIProviderManager().provider_statuses()}
+        self.assertEqual(states["gemini"], CONNECTION_AVAILABLE)
+        self.assertEqual(states["openai"], CONNECTION_NOT_TESTED)
+        self.assertEqual(states["analysis_native"], CONNECTION_NATIVE_AVAILABLE)
+        reload = self.client.get("/admin/inteligencia-artificial")
+        self.assertIn("Conexão disponível", reload.get_data(as_text=True))
+        audit = db.session.scalar(
+            db.select(AuditLog).where(
+                AuditLog.action == CONNECTION_AUDIT_ACTION,
+                AuditLog.target_id == "gemini",
+            )
+        )
+        self.assertEqual(audit.after_json["state"], CONNECTION_AVAILABLE)
+
+    def test_connection_failure_is_persisted_per_provider_and_returns_json(self):
+        page = self.client.get("/admin/inteligencia-artificial")
+        headers = {"Accept": "application/json", "X-Requested-With": "XMLHttpRequest"}
+        failure = AIProviderError("temporário", status_code=503, reason_class="unavailable")
+        with patch("platform_core.admin.AIProviderManager.test_provider_connection", side_effect=failure):
+            response = self.client.post(
+                "/admin/inteligencia-artificial/openai/testar-conexao",
+                data={"csrf_token": csrf_from(page)},
+                headers=headers,
+            )
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.json["connection_state"], CONNECTION_FAILED)
+        self.assertEqual(response.json["connection_status"], "Falha na conexão")
+        states = {item["id"]: item["connection_state"] for item in AIProviderManager().provider_statuses()}
+        self.assertEqual(states["openai"], CONNECTION_FAILED)
+        self.assertEqual(states["gemini"], CONNECTION_NOT_TESTED)
+        self.assertEqual(states["analysis_native"], CONNECTION_NATIVE_AVAILABLE)
+
+    def test_native_connection_test_is_local_and_uses_native_available_status(self):
+        page = self.client.get("/admin/inteligencia-artificial")
+        headers = {"Accept": "application/json", "X-Requested-With": "XMLHttpRequest"}
+        with patch("platform_core.admin.AIProviderManager.test_provider_connection") as connection:
+            response = self.client.post(
+                "/admin/inteligencia-artificial/analysis_native/testar-conexao",
+                data={"csrf_token": csrf_from(page)},
+                headers=headers,
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json["connection_state"], CONNECTION_NATIVE_AVAILABLE)
+        self.assertEqual(response.json["connection_status"], "Motor nativo disponível")
+        connection.assert_called_once_with("analysis_native")
 
 
 class AssistantAISettingsMigrationTests(unittest.TestCase):

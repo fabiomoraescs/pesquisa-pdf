@@ -33,12 +33,11 @@ from flask import (
 )
 from flask_login import current_user, logout_user
 from flask_wtf.csrf import CSRFError
-from sqlalchemy import extract, false, func, or_, select
-from werkzeug.exceptions import NotFound
+from sqlalchemy import and_, extract, false, func, or_, select
 
 from platform_core.extensions import csrf, db, login_manager, migrate
-from platform_core.models import Analysis, Project, QualitativeCode, Tool, User
-from platform_core.analyses import create_analysis, document_paths, get_analysis, history_access_filter, load_result, preserve_documents, save_error, save_success, systematic_chart_data
+from platform_core.models import Analysis, Project, Tool, User
+from platform_core.analyses import create_analysis, document_paths, get_analysis, history_access_filter, preserve_documents, save_error, save_success
 from platform_core.auth import auth_bp
 from platform_core.projects import projects_bp
 from platform_core.admin import admin_bp
@@ -46,15 +45,15 @@ from platform_core.library_access import user_libraries_bp
 from platform_core.profile import profile_bp
 from platform_core.analysis_routes import analyses_bp
 from platform_core.qualitative_routes import qualitative_bp
-from platform_core.qualitative import code_excerpt_counts
 from platform_core.presentation import register_presentation
 from platform_core.cli import register_cli
 from platform_core.services import ACCOUNT_LIFECYCLE_LOCK, access_is_active, account_accepts_new_work, can_use_tool, get_project_for_user, tool_catalog
-from platform_core.scraping_types import FREE, QUALITATIVE, QUALITATIVE_TOOL, SYSTEMATIC, TOOL_BY_TYPE, tool_for_project
+from platform_core.scraping_types import FREE, LABEL_BY_TOOL, QUALITATIVE, QUALITATIVE_TOOL, SYSTEMATIC, TOOL_BY_TYPE, tool_for_project
 from platform_core.semantic_threshold import normalize as normalize_semantic_threshold, template_settings
 from platform_core.term_input import has_invalid_term_separator
 from platform_core.assistant_context import assistant_context_for_endpoint, assistant_context_for_request
 from platform_core.assistant_routes import assistant_bp
+from platform_core.platform_help import load_help_registry, tutorial_for
 
 from analyzer.common import (
     ANALISADORES,
@@ -63,6 +62,7 @@ from analyzer.common import (
     ler_arquivo_termos,
     montar_termos,
 )
+from analyzer.search_matching import SearchPatternError, compile_search_pattern
 from historico_racial.routes import historico_racial_bp
 
 
@@ -132,11 +132,15 @@ def _semantic_threshold_template_context():
         # continua com a ajuda funcional já disponível na Fase 2.
         current_app.logger.exception("Falha ao montar contexto factual do Assistente")
         assistant_context = assistant_context_for_endpoint(request.endpoint, request.view_args)
+    help_registry = load_help_registry()
     return {"semantic_threshold": template_settings(),
             "free_access": bool(current_user.is_authenticated and can_use_tool(current_user, "pdf_scraper")),
             "systematic_access": bool(current_user.is_authenticated and can_use_tool(current_user, "document_analysis")),
             "qualitative_access": bool(current_user.is_authenticated and can_use_tool(current_user, QUALITATIVE_TOOL)),
-            "assistant_context": assistant_context}
+            "assistant_context": assistant_context,
+            "platform_help": tutorial_for(assistant_context.get("key")),
+            "platform_help_for": tutorial_for,
+            "platform_help_version": help_registry["version"]}
 
 
 app.register_blueprint(auth_bp)
@@ -752,74 +756,76 @@ def arquivo_grande(_erro):
 
 @app.get("/")
 def home():
-    available_project_types = [kind for kind in TOOL_BY_TYPE
-                       if can_use_tool(current_user, TOOL_BY_TYPE[kind])]
+    """Mesa de trabalho baseada apenas em metadados persistidos e autorizados."""
+    available_project_types = [
+        kind for kind in TOOL_BY_TYPE
+        if can_use_tool(current_user, TOOL_BY_TYPE[kind])
+    ]
     project_filter = (Project.owner_user_id == current_user.id,
                       Project.status == "active", Project.deleted_at.is_(None),
                       Project.scrape_type.in_(available_project_types))
-    project_counts = dict(db.session.execute(
-        select(Project.scrape_type, func.count()).where(*project_filter)
-        .group_by(Project.scrape_type)).all())
-    projects_by_type = {kind: project_counts.get(kind, 0) for kind in TOOL_BY_TYPE}
-    projects_total = sum(projects_by_type.values())
-    # Resumos de Bases públicas continuam exclusivos das buscas existentes.
-    available_types = [kind for kind in (FREE, SYSTEMATIC) if kind in available_project_types]
-    base_filter = (or_(*(history_access_filter(current_user.id, kind)
-                         for kind in available_types)) if available_types else false(),)
-    base_query = select(Analysis, Project.name).outerjoin(Project, Analysis.project_id == Project.id)
-    bases_total = db.session.scalar(select(func.count()).select_from(Analysis)
-                                    .outerjoin(Project, Analysis.project_id == Project.id)
-                                    .where(*base_filter))
-    recent_bases = db.session.execute(base_query.where(*base_filter)
-                                      .order_by(Analysis.created_at.desc()).limit(5)).all()
-    latest_bases = {}
-    chart_data = {}
-    # O ambiente qualitativo é apresentado pelo projeto, sem criar uma Base pública
-    # ou tentar carregar resultados/gráficos de raspagem para esta modalidade.
-    latest_bases[QUALITATIVE] = (db.session.execute(base_query.where(
-        history_access_filter(current_user.id, QUALITATIVE), Project.status == "active"
-    ).order_by(Analysis.created_at.desc(), Analysis.id.desc()).limit(1)).first()
-        if QUALITATIVE in available_project_types else None)
-    if latest_bases[QUALITATIVE] is not None:
-        qualitative_analysis = latest_bases[QUALITATIVE][0]
-        counts = code_excerpt_counts(qualitative_analysis)
-        codes = db.session.scalars(select(QualitativeCode).where(
-            QualitativeCode.analysis_id == qualitative_analysis.id)).all()
-        pairs = sorted(((code.name, counts.get(code.id, 0)) for code in codes),
-                       key=lambda pair: (-pair[1], pair[0]))
-        chart_data[QUALITATIVE] = {"title": "Trechos por código", "unit": "trecho(s)",
-                                  "labels": [name for name, _ in pairs],
-                                  "values": [count for _, count in pairs]}
-    for kind in (FREE, SYSTEMATIC):
-        if kind not in available_types:
-            latest_bases[kind] = None
-            continue
-        latest = db.session.execute(base_query.where(
-            *base_filter, Analysis.tool_id == TOOL_BY_TYPE[kind], Analysis.status == "concluida"
-        ).order_by(func.coalesce(Analysis.completed_at, Analysis.created_at).desc(),
-                   Analysis.created_at.desc()).limit(1)).first()
-        latest_bases[kind] = latest
-        if latest is None:
-            continue
-        try:
-            result = load_result(latest[0])
-        except NotFound:
-            continue
-        if kind == FREE:
-            version = result.get("versao") or latest[0].tool_version
-            key = "resultados_por_livro" if version == "v3" else "por_livro"
-            series = (result.get("dashboard") or {}).get(key) or {}
-            title = "Resultados recuperados por livro" if version == "v3" else "Ocorrências por livro"
-            unit = "resultado(s)" if version == "v3" else "ocorrência(s)"
-            pairs = list(zip(series.get("rotulos", []), series.get("valores", [])))
+    projects_total = int(db.session.scalar(
+        select(func.count()).select_from(Project).where(*project_filter)
+    ) or 0)
+
+    history_filter = or_(*(
+        history_access_filter(current_user.id, kind)
+        for kind in available_project_types
+    )) if available_project_types else false()
+    # A Base livre sem projeto permanece acessível pela regra histórica; as
+    # Bases vinculadas aparecem aqui somente enquanto o projeto está ativo.
+    analysis_access = and_(
+        history_filter,
+        or_(Analysis.project_id.is_(None),
+            and_(Project.status == "active", Project.deleted_at.is_(None))),
+    )
+    metric_rows = db.session.execute(
+        select(
+            Analysis.tool_id,
+            Analysis.status,
+            func.count(Analysis.id),
+            func.coalesce(func.sum(Analysis.document_count), 0),
+        )
+        .outerjoin(Project, Analysis.project_id == Project.id)
+        .where(analysis_access)
+        .group_by(Analysis.tool_id, Analysis.status)
+    ).all()
+    bases_total = sum(int(row[2]) for row in metric_rows)
+    documents_in_bases = sum(int(row[3]) for row in metric_rows)
+    concluded_total = sum(int(row[2]) for row in metric_rows if row[1] == "concluida")
+    activity_at = func.coalesce(Analysis.completed_at, Analysis.created_at).label("activity_at")
+    recent_rows = db.session.execute(
+        select(Analysis, activity_at)
+        .outerjoin(Project, Analysis.project_id == Project.id)
+        .where(analysis_access)
+        .order_by(activity_at.desc(), Analysis.id.desc())
+        .limit(5)
+    ).all()
+    status_labels = {
+        "concluida": "Concluída",
+        "processando": "Em processamento",
+        "erro": "Com erro",
+    }
+    recent_work = []
+    for analysis, activity_time in recent_rows:
+        if analysis.status == "concluida":
+            activity_label = "Concluída em"
+        elif analysis.status == "erro":
+            activity_label = "Falhou em"
         else:
-            title = "Ocorrências por entidade"
-            unit = "ocorrência(s)"
-            pairs = systematic_chart_data(result)["entities"]
-        pairs = sorted(pairs, key=lambda pair: (-pair[1], str(pair[0])))[:8]
-        chart_data[kind] = {"title": title, "unit": unit,
-                            "labels": [pair[0] for pair in pairs],
-                            "values": [pair[1] for pair in pairs]}
+            activity_label = "Criada em"
+        recent_work.append({
+            "analysis": analysis,
+            "tool_label": LABEL_BY_TOOL.get(analysis.tool_id, analysis.tool_id),
+            "status_label": status_labels.get(analysis.status, analysis.status),
+            "activity_label": activity_label,
+            "activity_at": activity_time,
+            "continue_url": url_for(
+                "qualitative.base" if analysis.tool_id == QUALITATIVE_TOOL else "analyses.dashboard",
+                analysis_id=analysis.id,
+            ),
+        })
+
     admin_charts = None
     if current_user.role == "admin":
         month_cursor = datetime.now(timezone.utc).date().replace(day=1)
@@ -831,26 +837,43 @@ def home():
         first_year, first_month = map(int, months[0].split("-"))
         year_expression = extract("year", User.created_at)
         month_expression = extract("month", User.created_at)
-        registration_counts = {f"{int(year):04d}-{int(month):02d}": count
-                               for year, month, count in db.session.execute(
-            select(year_expression, month_expression, func.count())
-            .where(User.created_at >= datetime(first_year, first_month, 1, tzinfo=timezone.utc))
-            .group_by(year_expression, month_expression)).all()}
-        catalog = tool_catalog()
-        usage_counts = dict(db.session.execute(select(Analysis.tool_id, func.count())
-            .where(Analysis.status == "concluida")
-            .group_by(Analysis.tool_id)).all())
-        admin_charts = {
-            "registrations": {"labels": months,
-                              "values": [registration_counts.get(month, 0) for month in months]},
-            "usage": {"labels": [tool["name"] for tool in catalog],
-                      "values": [usage_counts.get(tool["id"], 0) if tool["implemented"] else 0
-                                 for tool in catalog]},
+        registration_counts = {
+            f"{int(year):04d}-{int(month):02d}": count
+            for year, month, count in db.session.execute(
+                select(year_expression, month_expression, func.count())
+                .where(User.created_at >= datetime(first_year, first_month, 1, tzinfo=timezone.utc))
+                .group_by(year_expression, month_expression)
+            ).all()
         }
-    return render_template("platform/dashboard.html", projects_total=projects_total,
-                           projects_by_type=projects_by_type, bases_total=bases_total,
-                           recent_bases=recent_bases, latest_bases=latest_bases,
-                           chart_data=chart_data, admin_charts=admin_charts)
+        catalog = tool_catalog()
+        usage_counts = dict(db.session.execute(
+            select(Analysis.tool_id, func.count())
+            .where(Analysis.status == "concluida")
+            .group_by(Analysis.tool_id)
+        ).all())
+        admin_charts = {
+            "registrations": {
+                "labels": months,
+                "values": [registration_counts.get(month, 0) for month in months],
+            },
+            "usage": {
+                "labels": [tool["name"] for tool in catalog],
+                "values": [usage_counts.get(tool["id"], 0) if tool["implemented"] else 0
+                           for tool in catalog],
+            },
+        }
+
+    return render_template(
+        "platform/dashboard.html",
+        workspace_metrics=(
+            {"label": "Projetos", "value": projects_total, "icon": "projetos"},
+            {"label": "Bases", "value": bases_total, "icon": "ficha"},
+            {"label": "Documentos nas Bases", "value": documents_in_bases, "icon": "pdf"},
+            {"label": "Bases concluídas", "value": concluded_total, "icon": "ativar"},
+        ),
+        recent_work=recent_work,
+        admin_charts=admin_charts,
+    )
 
 
 @app.route("/", methods=["POST"], endpoint="legacy_free_submit")
@@ -915,18 +938,23 @@ def inicio():
         # projeto, mas execuções legadas sem projeto continuam recuperáveis.
         target_project = db.session.get(Project, duplicate.project_id) if duplicate and duplicate.project_id else None
 
-    versao = request.form.get("versao", "").casefold()
+    versao = request.form.get("versao", "literal").casefold()
     if versao not in ANALISADORES:
         return _resposta_erro("Escolha a metodologia da varredura antes de iniciar a análise.")
+    usar_regex = request.form.get("usar_regex") in {"1", "true", "on"}
+    if usar_regex and versao != "literal":
+        return _resposta_erro("Regex só pode ser usada com o método Literal.")
 
     texto_termos = request.form.get("termos", "")
     original_terms_text = "; ".join(item["termo"] for item in duplicate.parameters_json.get("termos", [])) if duplicate else None
     reuse_terms = (duplicate is not None and versao == duplicate.tool_version
-                   and texto_termos == original_terms_text and not request.files.get("arquivo_termos"))
-    if not reuse_terms and _termos_digitados_tem_separador_invalido(texto_termos):
+                    and texto_termos == original_terms_text and not request.files.get("arquivo_termos"))
+    if not usar_regex and not reuse_terms and _termos_digitados_tem_separador_invalido(texto_termos):
         return _resposta_erro("Use ponto e vírgula (;) para separar os termos de pesquisa.")
 
-    configuracoes_v3 = _configuracoes_v3() if versao == "v3" else None
+    configuracoes_v3 = _configuracoes_v3() if versao == "v3" else (
+        {"metodo_busca": "literal", "usar_regex": usar_regex} if versao == "literal" else None
+    )
 
     arquivos_pdf = [
         arquivo
@@ -952,6 +980,12 @@ def inicio():
         return _resposta_erro(
             "Informe pelo menos um termo no campo de texto ou no arquivo TXT."
         )
+    if usar_regex:
+        try:
+            for item in termos:
+                compile_search_pattern(item["termo"], use_regex=True)
+        except SearchPatternError as error:
+            return _resposta_erro(str(error))
 
     job_id = str(uuid4())
     pasta_upload = UPLOAD_DIR / job_id
@@ -991,7 +1025,9 @@ def inicio():
                 project_id=target_project.id if target_project else None,
                 tool_id="pdf_scraper", tool_version=versao,
                 parameters={"termos": termos, "texto_termos": texto_termos, "texto_arquivo": texto_arquivo,
-                            "configuracoes_v3": configuracoes_v3, "versao": versao},
+                             "configuracoes_v3": configuracoes_v3, "versao": versao,
+                             "metodo_busca": "literal" if versao == "literal" else "hibrido" if versao == "v3" else "lexical",
+                             "usar_regex": usar_regex},
             )
             preserve_documents(analysis, [(path, path.name) for path in pdfs_salvos])
         except Exception:

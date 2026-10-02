@@ -14,11 +14,7 @@
   <main class="platform-main platform-main-legacy">
     <div class="app-content-container platform-toolbar mb-4" data-base-intro>
       {% if selected_project or legacy_project %}<p class="h5 mb-0">{{ (selected_project or legacy_project).name }}</p>{% endif %}
-      <div aria-label="Controles da aplicação">
-        <button class="btn btn-outline-primary info-icon-button" type="button" data-bs-toggle="modal" data-bs-target="#modal-como-funciona" aria-label="Como funciona a busca" title="Como funciona a busca">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 10v6M12 7h.01"></path></svg>
-        </button>
-      </div>
+      {% from 'platform/_tutorial_info.html' import tutorial_button with context %}<div aria-label="Controles da aplicação">{{ tutorial_button(platform_help, label='Abrir tutorial da Busca por termos') }}</div>
     </div>
     <section class="hero-card">
       <h1 class="visually-hidden">Busca por termos</h1>
@@ -58,11 +54,13 @@
 
         <fieldset class="mb-4" aria-describedby="ajuda-metodo">
           <legend class="form-label platform-form-section-title">Método de raspagem</legend>
-          <div class="d-flex flex-wrap gap-3">
-            <label class="d-inline-flex align-items-center gap-2"><input type="radio" name="versao" value="v1" required {% if duplicate and duplicate.tool_version in ('v1', 'v2') %}checked{% endif %}> Lexical</label>
-            <label class="d-inline-flex align-items-center gap-2"><input type="radio" name="versao" value="v3" {% if duplicate and duplicate.tool_version == 'v3' %}checked{% endif %}> Híbrido</label>
+          <div class="platform-method-toggles" role="radiogroup" aria-label="Método de raspagem">
+            <label class="platform-method-toggle"><input class="platform-qualitative-switch" type="radio" name="versao" value="literal" required {% if not duplicate or duplicate.tool_version == 'literal' %}checked{% endif %}> Literal</label>
+            <label class="platform-method-toggle"><input class="platform-qualitative-switch" type="radio" name="versao" value="v1" {% if duplicate and duplicate.tool_version in ('v1', 'v2') %}checked{% endif %}> Lexical</label>
+            <label class="platform-method-toggle"><input class="platform-qualitative-switch" type="radio" name="versao" value="v3" {% if duplicate and duplicate.tool_version == 'v3' %}checked{% endif %}> Híbrido</label>
+            <label class="platform-method-toggle"><input class="platform-qualitative-switch" id="usar-regex" name="usar_regex" type="checkbox" value="1" {% if duplicate and duplicate.parameters_json.get('usar_regex') %}checked{% endif %}> Regex</label>
           </div>
-          <div class="form-text" id="ajuda-metodo">Escolha o método de raspagem conforme o objetivo da sua busca.</div>
+          <div class="form-text" id="ajuda-metodo">Literal localiza o texto informado; Lexical amplia para a família lexical; Híbrido acrescenta similaridade semântica. Regex interpreta o texto como expressão regular somente no modo Literal.</div>
         </fieldset>
 
         <section class="v3-settings mb-4" id="configuracoes-v3" hidden aria-labelledby="titulo-configuracoes-v3">
@@ -93,22 +91,7 @@
 
   {% include 'platform/_footer.html' %}
 
-  <div class="modal fade" id="modal-como-funciona" tabindex="-1" aria-labelledby="titulo-modal-como-funciona" aria-describedby="descricao-modal-como-funciona">
-    <div class="modal-dialog modal-dialog-scrollable modal-xl">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h2 class="modal-title fs-5" id="titulo-modal-como-funciona">Como funciona a busca</h2>
-          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
-        </div>
-        <div class="modal-body modal-help" id="descricao-modal-como-funciona">
-          {% include "platform/_info_terms.html" %}
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Fechar</button>
-        </div>
-      </div>
-    </div>
-  </div>
+  {% from 'platform/_tutorial_info.html' import tutorial_dialog with context %}{{ tutorial_dialog(platform_help) }}
   {% include 'platform/_progress_overlay.html' %}
   <script src="{{ url_for('static', filename='js/processing_progress.js') }}"></script>
   <script src="{{ url_for('static', filename='js/term_input.js') }}"></script>
@@ -120,6 +103,10 @@
       const overlay = document.getElementById('overlay-processamento');
       const campoTermos = document.getElementById('termos');
       const erroSeparadorTermos = document.getElementById('erro-separador-termos');
+      const regex = document.getElementById('usar-regex');
+      const metodos = [...formulario.querySelectorAll('input[name="versao"]')];
+      const configuracoesV3 = document.getElementById('configuracoes-v3');
+      const limiarSemantico = document.getElementById('limiar-semantico');
       const tituloProcessamento = document.getElementById('titulo-processamento');
       const mensagemProcessamento = document.getElementById('mensagem-processamento');
       const progressoProcessamento = document.getElementById('progresso-processamento');
@@ -248,7 +235,18 @@
 
       function validarSeparadorDosTermos() {
         const reutilizaTermos = formulario.querySelector('[name="duplicate_id"]') && campoTermos.value === {{ duplicate_terms|default('')|tojson }};
-        return window.TermInput.validate(campoTermos, erroSeparadorTermos, !reutilizaTermos);
+        return window.TermInput.validate(campoTermos, erroSeparadorTermos, !reutilizaTermos && !regex.checked);
+      }
+
+      function atualizarMetodo() {
+        const selecionado = formulario.querySelector('input[name="versao"]:checked')?.value;
+        const literal = selecionado === 'literal';
+        const hibrido = selecionado === 'v3';
+        regex.disabled = !literal;
+        if (!literal) regex.checked = false;
+        configuracoesV3.hidden = !hibrido;
+        limiarSemantico.disabled = !hibrido;
+        validarSeparadorDosTermos();
       }
 
       function restaurarFormulario() {
@@ -373,6 +371,9 @@
       });
 
       campoTermos.addEventListener('input', validarSeparadorDosTermos);
+      regex.addEventListener('change', validarSeparadorDosTermos);
+      metodos.forEach((metodo) => metodo.addEventListener('change', atualizarMetodo));
+      atualizarMetodo();
       formulario.addEventListener('invalid', restaurarFormulario, true);
       window.addEventListener('pageshow', () => {
         if (!formulario.dataset.jobInicial) restaurarFormulario();
@@ -389,6 +390,7 @@
       }
     })();
   </script>
+  <script defer src="{{ url_for('static', filename='js/platform_tutorial.js') }}"></script>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   <script src="{{ url_for('static', filename='js/interface.js') }}"></script>
   <script src="{{ url_for('static', filename='js/platform.js') }}"></script>

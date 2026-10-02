@@ -15,11 +15,7 @@
   {% include 'platform/_header.html' %}
   <main class="platform-main">
     <section class="hero-card" aria-labelledby="titulo-historico-racial">
-      <div class="hero-actions" aria-label="Controles da aplicação">
-        <button class="btn btn-outline-primary info-icon-button" type="button" data-bs-toggle="modal" data-bs-target="#modal-sobre-historico-racial" aria-label="Como funciona" title="Como funciona">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 10v6M12 7h.01"></path></svg>
-        </button>
-      </div>
+      {% from 'platform/_tutorial_info.html' import tutorial_button with context %}{% set structured_tutorial = platform_help_for('structured_search') %}<div class="hero-actions" aria-label="Controles da aplicação">{{ tutorial_button(structured_tutorial, label='Abrir tutorial da Busca estruturada') }}</div>
 
       <h1 class="visually-hidden" id="titulo-historico-racial">Busca estruturada</h1>
       <p class="h5 mb-4">{{ project.name }}</p>
@@ -42,10 +38,13 @@
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           {% if duplicate %}<input type="hidden" name="duplicate_id" value="{{ duplicate.id }}"><p class="alert alert-info">Nova execução baseada em {{ duplicate.name }}. Os PDFs preservados serão reutilizados se você não selecionar outros.</p>{% endif %}
           <fieldset class="mb-3"><legend class="form-label platform-form-section-title">Método de raspagem</legend>
-            <div class="d-flex flex-wrap gap-3">
-              <label class="d-inline-flex align-items-center gap-2"><input type="radio" name="metodo_analise" value="lexical" {% if not duplicate or duplicate.tool_version == 'lexical' %}checked{% endif %}> Lexical</label>
-              <label class="d-inline-flex align-items-center gap-2"><input type="radio" name="metodo_analise" value="hibrido" {% if duplicate and duplicate.tool_version == 'hibrido' %}checked{% endif %}> Híbrido</label>
+            <div class="platform-method-toggles" role="radiogroup" aria-label="Método de raspagem">
+              <label class="platform-method-toggle"><input class="platform-qualitative-switch" type="radio" name="metodo_analise" value="literal" {% if not duplicate or duplicate.tool_version == 'literal' %}checked{% endif %}> Literal</label>
+              <label class="platform-method-toggle"><input class="platform-qualitative-switch" type="radio" name="metodo_analise" value="lexical" {% if duplicate and duplicate.tool_version == 'lexical' %}checked{% endif %}> Lexical</label>
+              <label class="platform-method-toggle"><input class="platform-qualitative-switch" type="radio" name="metodo_analise" value="hibrido" {% if duplicate and duplicate.tool_version == 'hibrido' %}checked{% endif %}> Híbrido</label>
+              <label class="platform-method-toggle"><input class="platform-qualitative-switch" id="hr-usar-regex" name="usar_regex" type="checkbox" value="1" {% if duplicate and duplicate.parameters_json.get('usar_regex') %}checked{% endif %}> Regex</label>
             </div>
+            <div class="form-text">Literal localiza cada variante conforme informada; Lexical amplia as variantes pela família lexical; Híbrido acrescenta similaridade semântica. Regex só fica disponível com Literal.</div>
           </fieldset>
           <div class="mb-3" id="hr-controles-semanticos" hidden>
             <label class="form-label d-flex justify-content-between gap-3" for="hr-limiar"><span>Limiar de similaridade</span><output id="hr-valor-limiar" for="hr-limiar">{{ '%.2f'|format(semantic_threshold.default)|replace('.', ',') }}</output></label>
@@ -70,25 +69,11 @@
 
   {% include 'platform/_footer.html' %}
 
-  <div class="modal fade" id="modal-sobre-historico-racial" tabindex="-1" aria-labelledby="titulo-modal-sobre-historico-racial" aria-describedby="descricao-modal-sobre-historico-racial">
-    <div class="modal-dialog modal-dialog-scrollable modal-lg">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h2 class="modal-title fs-5" id="titulo-modal-sobre-historico-racial">Como funciona</h2>
-          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
-        </div>
-        <div class="modal-body modal-help" id="descricao-modal-sobre-historico-racial">
-          {% include "historico_racial/_info.html" %}
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Fechar</button>
-        </div>
-      </div>
-    </div>
-  </div>
+  {% from 'platform/_tutorial_info.html' import tutorial_dialog with context %}{{ tutorial_dialog(structured_tutorial) }}
 
   {% with progress_prefix='hr-', progress_allow_close=true %}{% include 'platform/_progress_overlay.html' %}{% endwith %}
 
+  <script defer src="{{ url_for('static', filename='js/platform_tutorial.js') }}"></script>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   <script src="{{ url_for('static', filename='js/interface.js') }}"></script>
   <script src="{{ url_for('static', filename='js/platform.js') }}"></script>

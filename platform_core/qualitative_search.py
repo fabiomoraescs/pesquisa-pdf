@@ -2,16 +2,13 @@
 
 from __future__ import annotations
 
-import regex
-
+from analyzer.search_matching import (
+    MAX_QUERY_LENGTH, SEARCH_TIMEOUT_SECONDS, SearchPatternError, compile_search_pattern,
+)
 from .models import Analysis
 from .qualitative_corpus import (
     QualitativePageNotFoundError, load_qualitative_manifest, read_qualitative_page,
 )
-
-
-MAX_QUERY_LENGTH = 200
-SEARCH_TIMEOUT_SECONDS = 2.0
 
 
 class QualitativeSearchError(ValueError):
@@ -29,18 +26,15 @@ def search_qualitative_document(
     uma interrupção falha a operação inteira, nunca retorna resultados parciais.
     Spans de strings Python são offsets Unicode code points do corpus.
     """
-    query = query.strip()
-    if not query or len(query) > MAX_QUERY_LENGTH:
-        raise QualitativeSearchError(f"Informe uma busca de até {MAX_QUERY_LENGTH} caracteres.")
-    flags = regex.VERSION1 | (0 if case_sensitive else regex.IGNORECASE | regex.FULLCASE)
-    # Autocodificação escolhe o match completo mais longo (raç(a|as) -> raças).
-    # A consulta permanece intacta; a busca consultiva mantém sua semântica atual.
-    if grep and longest_regex:
-        flags |= regex.POSIX
     try:
-        pattern = regex.compile(query if grep else regex.escape(query), flags)
-    except regex.error as error:
-        raise QualitativeSearchError("Expressão GREP inválida.") from error
+        # Autocodificação escolhe o match completo mais longo (raç(a|as) -> raças).
+        # A consulta permanece intacta; a busca consultiva mantém sua semântica atual.
+        pattern = compile_search_pattern(
+            query, use_regex=grep, case_sensitive=case_sensitive, longest_regex=longest_regex,
+        )
+    except SearchPatternError as error:
+        message = str(error).replace("Expressão Regex inválida.", "Expressão GREP inválida.")
+        raise QualitativeSearchError(message) from error
     manifest = load_qualitative_manifest(analysis)
     documents = [item for item in manifest["documents"] if document_id is None or item["document_id"] == document_id]
     if not documents:

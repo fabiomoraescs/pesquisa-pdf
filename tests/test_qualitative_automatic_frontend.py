@@ -50,12 +50,12 @@ const fetch=async url=>{requested=url;return {ok:true,json:async()=>({percent:43
 
     def test_enabled_modes_control_regex_without_changing_other_options(self):
         template = (ROOT / "templates/platform/qualitative_reader.html").read_text(encoding="utf-8")
-        help_text = (ROOT / "templates/platform/_qualitative_search_help.html").read_text(encoding="utf-8")
+        help_text = (ROOT / "resources/platform_tutorials.json").read_text(encoding="utf-8")
         for mode in ("literal", "lexical", "semantic"):
             self.assertIn(f'name="automatic_mode" value="{mode}"', template)
             self.assertNotIn(f'name="automatic_mode" value="{mode}" disabled', template)
         self.assertNotIn("Recurso ainda não disponível", help_text)
-        self.assertIn("Regex fica indisponível", help_text)
+        self.assertIn("Não se aplica a Lexical ou Semântica", help_text)
         controls = SOURCE[SOURCE.index("  const regexInput ="):SOURCE.index("  searchForm.addEventListener('submit'")]
         self.run_js(r"""
 const modes=['literal','lexical','semantic'].map(value=>({value,checked:value==='literal',
@@ -170,51 +170,15 @@ assert.deepEqual(initialStates,[true,true]);
 assert.deepEqual(positions,[[8,8],[8,8]]);
 """)
 
-    def test_help_buttons_use_decorative_info_circle_without_changing_popover_contract(self):
-        from html.parser import HTMLParser
-        from jinja2 import Environment, FileSystemLoader
-
-        class Tags(HTMLParser):
-            def __init__(self):
-                super().__init__(); self.items = []
-            def handle_starttag(self, tag, attrs):
-                self.items.append((tag, dict(attrs)))
-
-        template = Environment(loader=FileSystemLoader(ROOT / "templates")).get_template(
-            "platform/_qualitative_search_help.html").module
-        labels = {"regex": "Regex", "case": "Maiúsculas e minúsculas", "automatic": "Autocodificação",
-                  "multiple": "Múltiplos termos", "rejection": "Rejeição contextual", "literal": "autocodificação Literal",
-                  "lexical": "autocodificação Lexical", "semantic": "autocodificação Semântica"}
-        for key, label in labels.items():
-            with self.subTest(control=key):
-                html = str(template.help_button(key))
-                tags = Tags(); tags.feed(html)
-                self.assertEqual([tag for tag, _ in tags.items], ["button", "svg", "circle", "path"])
-                button, svg, circle = (attrs for _, attrs in tags.items[:3])
-                self.assertEqual(button["type"], "button")
-                self.assertEqual(button["aria-label"], f"Sobre {label}")
-                self.assertEqual(button["popovertarget"], f"qualitative-help-{key}")
-                self.assertEqual(button["aria-controls"], button["popovertarget"])
-                self.assertEqual(button["aria-expanded"], "false")
-                self.assertNotIn("disabled", button)
-                self.assertEqual(svg["aria-hidden"], "true")
-                self.assertEqual(svg["focusable"], "false")
-                self.assertEqual(circle, {"cx": "12", "cy": "12", "r": "9"})
-                self.assertNotIn("(i)", html)
-        css = (ROOT / "static/css/platform.css").read_text(encoding="utf-8")
-        button_css = css.split(".platform-qualitative-help-button {", 1)[1].split("}", 1)[0]
-        self.assertIn("align-self: center", button_css)
-        self.assertIn("min-width: 1.5rem", button_css)
-        self.assertIn("justify-content: flex-start", button_css)
-        self.assertIn("padding: 0", button_css)
-        control_css = css.split(".platform-qualitative-search-control {", 1)[1].split("}", 1)[0]
-        self.assertIn("gap: 0", control_css)
-        icon_css = css.split(".platform-qualitative-help-button svg {", 1)[1].split("}", 1)[0]
-        self.assertIn("width: .75rem", icon_css)
-        self.assertIn("height: .75rem", icon_css)
-        self.assertIn("stroke: currentColor", icon_css)
-        self.assertIn(".platform-qualitative-help-button:hover", css)
-        self.assertIn(".platform-qualitative-help-button:focus-visible", css)
+    def test_search_controls_keep_their_behavior_without_inline_info_buttons(self):
+        template = (ROOT / "templates/platform/qualitative_reader.html").read_text(encoding="utf-8")
+        documentation = (ROOT / "resources/platform_tutorials.json").read_text(encoding="utf-8")
+        self.assertNotIn("data-platform-tutorial-open", template)
+        self.assertNotIn("_qualitative_search_help", template)
+        for subject in ("Regex", "Maiúsculas e minúsculas", "Autocodificação", "Múltiplos termos",
+                        "Rejeição contextual", "Literal", "Lexical", "Semântica"):
+            with self.subTest(subject=subject):
+                self.assertIn(subject, documentation)
 
     def run_js(self, code):
         node = shutil.which("node")

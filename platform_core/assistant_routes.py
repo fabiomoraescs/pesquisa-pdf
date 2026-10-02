@@ -33,9 +33,13 @@ def _project_context_from_payload(payload: dict, context_key: str):
         }.get(context_key)
         if candidate is not None and (expected_tool is None or candidate["tool"]["id"] == expected_tool):
             return candidate
-    except Exception:
+    except Exception as error:
         # Não inclui referências, contexto privado ou conteúdo documental nos logs.
-        current_app.logger.exception("Falha ao resolver contexto factual do Assistente")
+        current_app.logger.warning(
+            "assistant_context_resolution_failed context_key=%s exception_type=%s",
+            context_key,
+            type(error).__name__,
+        )
     return None
 
 
@@ -55,19 +59,52 @@ def ask():
         return jsonify({"error": "Informe uma pergunta de até 1000 caracteres."}), 400
     context_key = payload.get("context")
     context_key = context_key if isinstance(context_key, str) and context_key in ASSISTANT_CONTEXTS else "fallback"
-    project_context = _project_context_from_payload(payload, context_key)
-    suggestion_scope = suggestion_scope_for_id(
-        user=current_user,
-        context_key=context_key,
-        project_context=project_context,
-        suggestion_id=payload.get("suggestion_id"),
-        question=question,
-    )
+    stage = "project_context"
     try:
-        return jsonify(ask_with_ai(user=current_user, question=question, context_key=context_key,
-                                   project_context=project_context, suggestion_scope=suggestion_scope))
+        project_context = _project_context_from_payload(payload, context_key)
+        stage = "suggestion_scope"
+        try:
+            suggestion_scope = suggestion_scope_for_id(
+                user=current_user,
+                context_key=context_key,
+                project_context=project_context,
+                suggestion_id=payload.get("suggestion_id"),
+                question=question,
+            )
+        except Exception as error:
+            # Sugestão é auxiliar e nunca pode impedir a pergunta livre. Falha
+            # fechada: ignora o id e reaplica a policy textual no serviço.
+            current_app.logger.warning(
+                "assistant_suggestion_scope_failed context_key=%s exception_type=%s",
+                context_key,
+                type(error).__name__,
+            )
+            suggestion_scope = None
+        stage = "assistant_service"
+        result = ask_with_ai(user=current_user, question=question, context_key=context_key,
+                             project_context=project_context, suggestion_scope=suggestion_scope)
+        stage = "response_serialization"
+        return jsonify(result)
     except AIProviderError as error:
-        return jsonify({"error": error.public_message}), error.status_code
+        payload = {"error": error.public_message}
+        if error.reason_class == "unsupported_capability":
+            payload["reason_class"] = error.reason_class
+        return jsonify(payload), error.status_code
+    except Exception as error:
+        # A API do chat nunca devolve a página HTML de erro da plataforma.
+        # O log guarda só a classe técnica; pergunta, contexto, corpus e dados
+        # do provider não são incluídos neste diagnóstico.
+        current_app.logger.error(
+            "assistant_ask_internal_error context_key=%s stage=%s exception_type=%s",
+            context_key,
+            stage,
+            type(error).__name__,
+        )
+        return jsonify({
+            "ok": False,
+            "reason_class": "internal_error",
+            "error": "O Assistente encontrou um erro ao processar esta pergunta.",
+        }), 500
 
 
 @assistant_bp.post("/suggestions")

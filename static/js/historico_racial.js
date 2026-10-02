@@ -18,18 +18,23 @@
   const semanticControls = document.getElementById('hr-controles-semanticos');
   const semanticThreshold = document.getElementById('hr-limiar');
   const semanticThresholdValue = document.getElementById('hr-valor-limiar');
+  const regex = document.getElementById('hr-usar-regex');
   semanticThreshold.addEventListener('input', () => {
     semanticThresholdValue.textContent = Number(semanticThreshold.value).toFixed(2).replace('.', ',');
   });
-  document.querySelectorAll('input[name="metodo_analise"]').forEach((radio) => radio.addEventListener('change', () => {
-    const hybrid = document.querySelector('input[name="metodo_analise"]:checked')?.value === 'hibrido';
+  function atualizarMetodo() {
+    const method = document.querySelector('input[name="metodo_analise"]:checked')?.value;
+    const hybrid = method === 'hibrido';
+    const literal = method === 'literal';
     semanticControls.hidden = !hybrid;
     semanticThreshold.disabled = !hybrid;
-  }));
-  if (document.querySelector('input[name="metodo_analise"]:checked')?.value === 'hibrido') {
-    semanticControls.hidden = false;
-    semanticThreshold.disabled = false;
+    regex.disabled = !literal;
+    if (!literal) regex.checked = false;
   }
+  document.querySelectorAll('input[name="metodo_analise"]').forEach((radio) => radio.addEventListener('change', () => {
+    atualizarMetodo();
+  }));
+  atualizarMetodo();
   let ocupado = false;
   let temporizador = null;
 

@@ -1636,6 +1636,7 @@ def analisar_pdf(caminho, termos, progress_callback=None):
 
     diagnostico = {
         "arquivo": caminho.name,
+        "palavras_analisadas": sum(len(str(bloco.get("texto", "")).split()) for bloco in blocos),
         "paginas_com_texto_extraivel": paginas_texto,
         "paginas_processadas_com_OCR": paginas_ocr,
         "idioma_OCR": (

@@ -80,16 +80,17 @@ class AssistantContextTests(unittest.TestCase):
         self.assertEqual(context["tool"], "qualitative_analysis")
         self.assertNotIn("private data", json.dumps(context, ensure_ascii=False))
 
-    def test_avatar_asset_and_info_controls_remain(self):
+    def test_avatar_asset_and_info_controls_are_limited_to_main_tool_entries(self):
         served = (ROOT / "static/img/assistant/robot_assistente.png").read_bytes()
         self.assertTrue(served.startswith(b"\x89PNG\r\n\x1a\n"))
         original = ROOT / "img/robot_assistente.png"
         if original.exists():
             self.assertEqual(original.read_bytes(), served)
         reader = (ROOT / "templates/platform/qualitative_reader.html").read_text(encoding="utf-8")
-        for key in ("regex", "case", "automatic", "multiple", "rejection",
-                    "literal", "lexical", "semantic"):
-            self.assertIn(f"help_button('{key}')", reader)
+        self.assertNotIn("help_button(", reader)
+        qualitative_intro = (ROOT / "templates/platform/_qualitative_page_intro.html").read_text(encoding="utf-8")
+        self.assertIn("tutorial_button", qualitative_intro)
+        self.assertIn("Como funciona a Análise quali-dados", qualitative_intro)
 
 
 class AssistantPageTests(unittest.TestCase):

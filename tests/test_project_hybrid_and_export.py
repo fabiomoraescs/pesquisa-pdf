@@ -37,7 +37,7 @@ class ProjectMethodTests(unittest.TestCase):
                 login(client)
                 project_id = create_project(client)
                 path = f"/analise-documental/projetos/{project_id}"
-                for method in ("lexical", "hibrido"):
+                for method in ("literal", "lexical", "hibrido"):
                     with self.subTest(method=method):
                         token = csrf_from(client.get(path))
                         with patch("historico_racial.routes.EXECUTOR_HR.submit") as submit:
@@ -54,6 +54,53 @@ class ProjectMethodTests(unittest.TestCase):
                         with JOBS_LOCK:
                             PROGRESSOS_HR.pop(response.json["job_id"], None)
 
+    def test_structured_missing_method_defaults_to_literal(self):
+        with isolated_platform() as app:
+            create_user()
+            with app.test_client() as client:
+                login(client)
+                project_id = create_project(client)
+                path = f"/analise-documental/projetos/{project_id}"
+                token = csrf_from(client.get(path))
+                with patch("historico_racial.routes.EXECUTOR_HR.submit") as submit:
+                    response = client.post(f"{path}/analisar", data={
+                        "csrf_token": token,
+                        "pdfs": (io.BytesIO(pdf_curto("Du Bois foi citado.")), "teste.pdf"),
+                    }, content_type="multipart/form-data")
+                self.assertEqual(response.status_code, 202)
+                analysis = db.session.get(Analysis, response.json["job_id"])
+                self.assertEqual(analysis.tool_version, "literal")
+                self.assertEqual(analysis.parameters_json["metodo_analise"], "literal")
+                self.assertEqual(submit.call_args.args[10], "literal")
+                submit.call_args.args[3].cleanup()
+                with JOBS_LOCK:
+                    PROGRESSOS_HR.pop(response.json["job_id"], None)
+
+    def test_structured_regex_is_rejected_outside_literal_and_forwarded_only_for_literal(self):
+        with isolated_platform() as app:
+            create_user()
+            with app.test_client() as client:
+                login(client)
+                project_id = create_project(client)
+                path = f"/analise-documental/projetos/{project_id}"
+                token = csrf_from(client.get(path))
+                incompatible = client.post(f"{path}/analisar", data={
+                    "csrf_token": token, "metodo_analise": "lexical", "usar_regex": "1",
+                }, content_type="multipart/form-data", headers={"X-Requested-With": "XMLHttpRequest"})
+                self.assertEqual(incompatible.status_code, 400)
+                self.assertIn("Regex só pode ser usada com o método Literal", incompatible.json["erro"])
+                token = csrf_from(client.get(path))
+                with patch("historico_racial.routes.EXECUTOR_HR.submit") as submit:
+                    response = client.post(f"{path}/analisar", data={
+                        "csrf_token": token, "metodo_analise": "literal", "usar_regex": "1",
+                        "pdfs": (io.BytesIO(pdf_curto("Du Bois foi citado.")), "teste.pdf"),
+                    }, content_type="multipart/form-data")
+                self.assertEqual(response.status_code, 202)
+                self.assertTrue(submit.call_args.kwargs["usar_regex"])
+                submit.call_args.args[3].cleanup()
+                with JOBS_LOCK:
+                    PROGRESSOS_HR.pop(response.json["job_id"], None)
+
     def test_hibrido_sem_limiar_explicito_usa_default_compartilhado(self):
         with tempfile.TemporaryDirectory() as root:
             path = Path(root) / "controle.pdf"
@@ -65,16 +112,16 @@ class ProjectMethodTests(unittest.TestCase):
         self.assertEqual(result["limiar_semantico"], 0.50)
         self.assertEqual(semantic.call_args.args[-2], 0.50)
 
-    def test_lexical_padrao_nao_importa_motor_semantico(self):
+    def test_literal_padrao_nao_importa_motor_semantico(self):
         with tempfile.TemporaryDirectory() as root:
             path = Path(root) / "controle.pdf"
             path.write_bytes(pdf_curto("Du Bois foi citado em debate publico."))
             with patch("historico_racial.semantic.combinar_semantica") as semantic:
                 result = processar_documentos([ArquivoPDF(path, path.name, "arquivo-1")])
             semantic.assert_not_called()
-        self.assertEqual(result["metodo_analise"], "lexical")
+        self.assertEqual(result["metodo_analise"], "literal")
         self.assertIsNone(result["limiar_semantico"])
-        self.assertTrue(all(item["metodo_localizacao"] == "lexical" for item in result["ocorrencias"]))
+        self.assertTrue(all(item["metodo_localizacao"] == "literal" for item in result["ocorrencias"]))
 
     def test_hibrido_preserva_lexical_e_chama_adaptador(self):
         with tempfile.TemporaryDirectory() as root:
@@ -144,7 +191,8 @@ class ProjectMethodTests(unittest.TestCase):
                                 "pagina_pdf_inicio": 1, "pagina_pdf_fim": 1, "ocr_utilizado": False}],
                 "ocorrencias": [{"id_ocorrencia": "occ", "id_documento": "doc", "arquivo_pdf": "a.pdf", "pagina_pdf": 1,
                                  "categoria_busca": "entidades", "tipo_entidade": "autor", "id_entidade": "du_bois",
-                                 "entidade_canonica": "W. E. B. Du Bois", "termo_encontrado": "Du Bois",
+                                 "entidade_canonica": "W. E. B. Du Bois", "variante_configurada": "Du Bois",
+                                 "termo_encontrado": "Du Bois",
                                  "forma_original_no_texto": "Du Bois", "grupo": ["C"], "trecho_anterior": "",
                                  "trecho_ocorrencia": "Du Bois foi citado.", "trecho_posterior": "",
                                  "contexto_completo": "Du Bois foi citado."}],
@@ -154,6 +202,9 @@ class ProjectMethodTests(unittest.TestCase):
             self.assertEqual(book["DOCUMENTOS"]["O2"].value, "Híbrido" if method == "hibrido" else "Lexical")
             self.assertEqual(book["DOCUMENTOS"]["P2"].value, 0.7 if method == "hibrido" else None)
             self.assertEqual(book["OCORRENCIAS"]["A2"].value, "occ")
+            headers = [cell.value for cell in book["OCORRENCIAS"][1]]
+            variant_column = headers.index("Variante configurada") + 1
+            self.assertEqual(book["OCORRENCIAS"].cell(2, variant_column).value, "Du Bois")
             self.assertEqual(book["CODIFICACAO"]["A2"].value, "occ")
             self.assertEqual(book["COOCORRENCIAS"].max_row, 1)
 

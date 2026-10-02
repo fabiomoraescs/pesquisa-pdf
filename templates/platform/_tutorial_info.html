@@ -1,0 +1,20 @@
+{% macro tutorial_button(tutorial, section_id=None, label=None, extra_class='') -%}
+<button class="btn btn-outline-primary info-icon-button {{ extra_class }}" type="button" data-platform-tutorial-open{% if section_id %} data-platform-tutorial-section="{{ section_id }}"{% endif %} aria-controls="platform-tutorial-dialog" aria-label="{{ label or ('Abrir tutorial: ' ~ tutorial.title) }}" title="{{ label or 'Abrir tutorial' }}"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"></circle><path d="M12 10v6M12 7h.01"></path></svg></button>
+{%- endmacro %}
+
+{% macro tutorial_dialog(tutorial, legacy_qualitative=False) -%}
+<dialog class="platform-tutorial-dialog" id="platform-tutorial-dialog"{% if legacy_qualitative %} data-qualitative-info{% endif %} aria-labelledby="platform-tutorial-title" aria-describedby="platform-tutorial-summary">
+  <header class="platform-tutorial-dialog__header">
+    <div><p class="platform-tutorial-dialog__eyebrow">Manual da plataforma · {{ platform_help_version }}</p><h2 id="platform-tutorial-title">{{ tutorial.title }}</h2><p id="platform-tutorial-summary">{{ tutorial.summary }}</p></div>
+    <button class="btn btn-outline-primary btn-sm" type="button" data-platform-tutorial-close{% if legacy_qualitative %} data-qualitative-info-close{% endif %} aria-label="Fechar tutorial">Fechar</button>
+  </header>
+  <div class="platform-tutorial-dialog__body">
+    <nav class="platform-tutorial-dialog__toc" aria-label="Neste tutorial"><p>Ir para</p><ol>{% for section in tutorial.sections %}<li><a href="#tutorial-{{ section.id }}">{{ section.title }}</a></li>{% endfor %}</ol></nav>
+    <div class="platform-tutorial-dialog__content">
+      {% for section in tutorial.sections %}
+      <section id="tutorial-{{ section.id }}" class="platform-tutorial-section" tabindex="-1"><h3>{{ section.title }}</h3>{% for paragraph in section.body %}<p>{{ paragraph }}</p>{% endfor %}{% if section['items'] %}<dl class="platform-tutorial-options">{% for item in section['items'] %}<div><dt>{{ item.name }}</dt><dd>{{ item.description }}</dd></div>{% endfor %}</dl>{% endif %}</section>
+      {% endfor %}
+    </div>
+  </div>
+</dialog>
+{%- endmacro %}

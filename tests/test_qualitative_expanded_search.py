@@ -40,7 +40,7 @@ class ExpandedAutomaticTests(unittest.TestCase):
     codings = automatic_fixture.QualitativeAutomaticTests.codings
     fixture_pages = automatic_fixture.QualitativeAutomaticTests.fixture_pages
 
-    def test_lexical_portuguese_forms_single_code_exact_spans_and_no_prefix(self):
+    def test_lexical_portuguese_forms_have_concrete_codes_exact_spans_and_no_prefix(self):
         self.fixture_pages([["professor professores professora professoras profissional"]])
         with patch("platform_core.qualitative_corpus.pdf_extractor.extrair_paginas",
                    side_effect=AssertionError("PDF/OCR não pode ser reaberto")):
@@ -48,8 +48,8 @@ class ExpandedAutomaticTests(unittest.TestCase):
         self.assertEqual(response.status_code, 201, response.json)
         self.assertEqual(response.json["search"]["total"], 4)
         self.assertEqual(response.json["summary"]["created"], 4)
-        self.assertEqual(db.session.query(QualitativeCode).count(), 1)
-        self.assertEqual(db.session.scalar(select(QualitativeCode.name)), "professor")
+        self.assertEqual({code.name for code in db.session.scalars(select(QualitativeCode))},
+                         {"professor", "professores", "professora", "professoras"})
         self.assertEqual({coding.origin for coding in self.codings()}, {"automatic_lexical"})
         quotes = {db.session.get(QualitativeExcerpt, coding.excerpt_id).quoted_text for coding in self.codings()}
         self.assertEqual(quotes, {"professor", "professores", "professora", "professoras"})
@@ -57,14 +57,14 @@ class ExpandedAutomaticTests(unittest.TestCase):
         self.assertEqual((again.json["summary"]["created"], again.json["summary"]["existing"]), (0, 4))
         self.assertEqual(db.session.query(QualitativeExcerpt).count(), 4)
 
-    def test_lexical_raca_derivations_keep_query_code_and_concrete_offsets(self):
+    def test_lexical_raca_derivations_keep_concrete_codes_and_offsets(self):
         forms = ("raça raças racial raciais racialmente racialização racializações "
                  "racializado racializada racializados racializadas racista racistas racismo")
         self.fixture_pages([[forms + " racional raciocínio raquete preconceito discriminação"]])
         response = self.automatic(q="raça", mode="lexical")
         self.assertEqual(response.status_code, 201, response.json)
         self.assertEqual(response.json["search"]["total"], 14)
-        self.assertEqual(db.session.scalar(select(QualitativeCode.name)), "raça")
+        self.assertEqual({code.name for code in db.session.scalars(select(QualitativeCode))}, set(forms.split()))
         self.assertEqual([item["match_text"] for item in response.json["search"]["results"]], forms.split())
         for item in response.json["search"]["results"]:
             self.assertEqual(forms[item["start_offset"]:item["end_offset"]], item["match_text"])
@@ -91,13 +91,13 @@ class ExpandedAutomaticTests(unittest.TestCase):
         self.assertEqual(current.status_code, 201, current.json)
         self.assertEqual([item["total"] for item in current.json["terms"]], [230, 1])
         self.assertEqual({code.name for code in db.session.scalars(select(QualitativeCode))},
-                         {"professor", "relação racial"})
+                         {"professores", "relação racial"})
         project = self.automatic(q="professor; relação racial", mode="lexical",
                                  multiple_terms=True, scope="project")
         self.assertEqual([item["total"] for item in project.json["terms"]], [232, 2])
         self.assertEqual(project.json["summary"]["created"], 3)
         self.assertEqual(project.json["summary"]["existing"], 231)
-        self.assertEqual(db.session.query(QualitativeCode).count(), 2)
+        self.assertEqual(db.session.query(QualitativeCode).count(), 4)
 
     def test_lexical_contextual_rejection_is_local_and_optional(self):
         self.fixture_pages([["professores professoras"]])

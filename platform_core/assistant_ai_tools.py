@@ -13,11 +13,14 @@ from .assistant_document_retrieval import retrieve_corpus_evidence
 from .assistant_document_summary import (
     build_corpus_summary_packs,
     build_document_summary_pack,
+    summarize_corpus_extractive,
+    summarize_document_extractive,
     summarize_document_with_provider,
 )
 from .assistant_project_context import resolve_project_context
 from .extensions import db
 from .models import Analysis, Plan, Tool
+from .platform_help import assistant_help
 from .qualitative_corpus import CorpusUnavailableError, load_qualitative_manifest, read_qualitative_page
 from .scraping_types import LABEL_BY_TOOL
 from .services import access_is_active, can_use_tool, current_grant
@@ -252,6 +255,9 @@ class AssistantToolExecutor:
         plan = build_corpus_summary_packs(self.user, self.project_context or {})
         if plan.get("status") != "ok":
             return plan, []
+        if getattr(self.provider, "provider_id", None) == "analysis_native":
+            summary = summarize_corpus_extractive(plan)
+            return summary, self._summary_sources(summary.get("source_pages"))
         summaries, sources = [], []
         for pack in plan.get("packs", []):
             summary = summarize_document_with_provider(self.provider, pack, question)
@@ -291,6 +297,7 @@ class AssistantToolExecutor:
             selected = {key: value for key, value in topics.items()
                         if not normalized or normalized in key or any(normalized in fact.casefold() for fact in value)}
             return {"status": "ok", "topics": selected if normalized else topics,
+                    "official_documentation": assistant_help(topic, self.context_key),
                     "access": access, "read_only": True}, []
         if name == "get_current_ui_context":
             result = dict(_UI_FACTS[self.context_key])
@@ -328,6 +335,9 @@ class AssistantToolExecutor:
             document = _mapping(page.get("document"))
             document_id = args.get("document_id") or document.get("id")
             pack = build_document_summary_pack(self.user, self.project_context or {}, document_id)
+            if getattr(self.provider, "provider_id", None) == "analysis_native":
+                result = summarize_document_extractive(pack)
+                return result, self._summary_sources(result.get("source_pages"))
             result = summarize_document_with_provider(self.provider, pack, str(args.get("question", ""))[:1000])
             return result, self._summary_sources(result.get("source_pages"))
         if name == "summarize_corpus":

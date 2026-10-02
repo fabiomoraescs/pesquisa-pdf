@@ -274,6 +274,22 @@
     if (section.children.length > 1) messages.append(section);
   };
 
+  const readAssistantJson = async (response) => {
+    // O endpoint deveria sempre devolver JSON, inclusive para uma falha
+    // interna. Ainda assim, uma resposta de infraestrutura pode ser HTML; não
+    // deixe o erro de parsing vazar para a pessoa como "Unexpected token <".
+    try {
+      const contentType = response.headers?.get?.('content-type') || '';
+      if (contentType && !contentType.toLowerCase().includes('application/json')) {
+        await response.text?.();
+        return null;
+      }
+      return await response.json();
+    } catch (_) {
+      return null;
+    }
+  };
+
   const submitQuestion = async (question, suggestionId = null) => {
     if (busy) return;
     if (!question || question.length > 1000) {
@@ -303,10 +319,14 @@
         },
         body: JSON.stringify(requestPayload),
       });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || result.erro || 'Não foi possível enviar a pergunta.');
+      const result = await readAssistantJson(response);
+      if (!response.ok) {
+        const message = result && (result.error || result.erro);
+        throw new Error(typeof message === 'string' && message.trim()
+          ? message : 'O Assistente não conseguiu processar esta pergunta. Tente novamente.');
+      }
       if (!result || typeof result.answer !== 'string' || !result.answer.trim()) {
-        throw new Error('Resposta inválida do Assistente.');
+        throw new Error('O Assistente não conseguiu processar esta pergunta. Tente novamente.');
       }
       addMessage(result.answer, 'assistant');
       addEvidence(result.evidence);

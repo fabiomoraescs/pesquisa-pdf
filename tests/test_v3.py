@@ -315,6 +315,7 @@ class TesteV3(unittest.TestCase):
         cabecalhos_v1 = [
             "ID resultado",
             "ID livro",
+            "Consulta",
             "Termo",
             "Parágrafo anterior",
             "Parágrafo do termo",
@@ -605,10 +606,10 @@ class TesteV3(unittest.TestCase):
             {"incluir_lexical": True, "incluir_semantica": False},
         )
 
-        self.assertEqual(len(registros), 1)
-        self.assertEqual(registros[0]["Consulta"], "São Paulo")
-        self.assertEqual(registros[0]["_quantidade_no_registro"], 3)
-        self.assertEqual(registros[0]["Tipo de correspondência"], "Lexical")
+        self.assertEqual([registro["Consulta"] for registro in registros], ["São Paulo"] * 2)
+        self.assertEqual([registro["Termo encontrado"] for registro in registros], ["são paulo", "sao paulo"])
+        self.assertEqual([registro["_quantidade_no_registro"] for registro in registros], [2, 1])
+        self.assertTrue(all(registro["Tipo de correspondência"] == "Lexical" for registro in registros))
 
     @patch("analyzer.v3.carregar_modelo_semantico")
     def test_v3_semantica_codifica_cada_expressao_composta_por_inteiro(self, carregar_modelo):
@@ -708,16 +709,17 @@ class TesteV3(unittest.TestCase):
                         inicio = cliente.get("/raspagem-livre")
                         pagina_v3 = cliente.get(f"/resultado/{identificador}")
                     self.assertEqual(inicio.status_code, 200)
+                    self.assertIn('name="versao" value="literal"', inicio.get_data(as_text=True))
                     self.assertIn('name="versao" value="v1"', inicio.get_data(as_text=True))
                     self.assertIn('name="versao" value="v3"', inicio.get_data(as_text=True))
                     self.assertNotIn('name="versao" value="v2"', inicio.get_data(as_text=True))
                     self.assertIn("© 2026 Análysis. Todos os direitos reservados.", inicio.get_data(as_text=True))
                     html_inicio = inicio.get_data(as_text=True)
                     for trecho in (
-                        "Método de raspagem", "Lexical", "Híbrido",
-                        "O que é", "Quando utilizar", "Como funciona",
-                        "O que o pesquisador fornece", "O que a plataforma produz",
-                        "Observações e limitações", "controle-limiar-semantico",
+                        "Método de raspagem", "Literal", "Lexical", "Híbrido", "Regex",
+                        "O que a Busca por termos faz", "Quando usar Busca por termos",
+                        "Método Literal e Literal + Regex", "Método Lexical",
+                        "controle-limiar-semantico",
                         "Use ponto e vírgula ou coloque um termo por linha.",
                     ):
                         self.assertIn(trecho, html_inicio)
@@ -725,8 +727,8 @@ class TesteV3(unittest.TestCase):
                     self.assertNotIn('name="incluir_lexical"', html_inicio)
                     self.assertNotIn('name="incluir_semantica"', html_inicio)
                     self.assertNotIn("Lexical e morfológico", html_inicio)
-                    self.assertIn("derivações da mesma família lexical", html_inicio)
-                    self.assertIn("Combina essa busca lexical e morfológica", html_inicio)
+                    self.assertIn("família lexical", html_inicio)
+                    self.assertIn("mantém a mesma etapa Lexical compartilhada", html_inicio)
                     self.assertNotIn("V1: Busca lexical", html_inicio)
                     self.assertNotIn("V2: Busca lexical", html_inicio)
                     self.assertNotIn("V3: Busca híbrida", html_inicio)

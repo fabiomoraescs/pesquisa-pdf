@@ -621,13 +621,15 @@ def _admin_ai_snapshot() -> tuple[dict[str, Any], tuple[object, ...]]:
         "enabled_providers": enabled,
         "fallback_order": fallback,
         "models": {
+            "analysis_native": _compact(settings.analysis_native_model, 160),
             "gemini": _compact(settings.gemini_model, 160),
             "openai": _compact(settings.openai_model, 160),
             "anthropic": _compact(settings.anthropic_model, 160),
         },
     }, (
         settings.strategy, settings.primary_provider, tuple(enabled), tuple(fallback),
-        settings.gemini_model, settings.openai_model, settings.anthropic_model, settings.updated_at,
+        settings.analysis_native_model, settings.gemini_model, settings.openai_model, settings.anthropic_model,
+        settings.updated_at,
     )
 
 
@@ -825,6 +827,70 @@ def _fallback_outcome(context_key: str) -> SuggestionOutcome:
     return SuggestionOutcome(suggestions, dynamic=False)
 
 
+def _native_textual_unit(value: object) -> str:
+    """Escolhe uma unidade textual real, nunca uma colagem de tokens soltos."""
+    text = " ".join(str(value or "").split())
+    if not text:
+        return ""
+    quoted = re.search(r'["“]([^"”]{3,180})["”]', text)
+    if quoted:
+        return quoted.group(1).strip()
+    definition = re.search(
+        r"^(.{2,100}?)\s+(?:é|foi)\s+(?:aqui\s+)?(?:compreendid[oa]|definid[oa]|concebid[oa])\b",
+        text, re.IGNORECASE,
+    )
+    if definition:
+        return definition.group(1).strip()
+    sentences = [sentence.strip() for sentence in re.findall(r"[^.!?]+[.!?]", text)
+                 if 24 <= len(sentence.strip()) <= 180]
+    if sentences:
+        return sentences[0]
+    # Um texto curto sem pontuação pode ser título ou subtítulo real. Não é
+    # empregado como evidência para resposta; só orienta uma pergunta inicial.
+    return text if 3 <= len(text) <= 120 else ""
+
+
+def _native_dynamic_questions(context: SuggestionContext) -> tuple[str, str, str]:
+    """Onboarding nativo ancorado em fatos locais, sem chamada de provider."""
+    payload = _mapping(context.payload)
+    if context.documentary:
+        page = _mapping(payload.get("current_page"))
+        corpus = _mapping(payload.get("corpus_profile"))
+        anchor = _native_textual_unit(page.get("canonical_text") or corpus.get("profile_sample"))
+        codes = page.get("codes") if isinstance(page.get("codes"), list) else []
+        code = _compact(codes[0], 100) if codes else ""
+        subject = anchor or code or _compact(page.get("document_name"), 140) or "este documento"
+        if len(corpus.get("documents") or []) >= 2:
+            connection = f"Como “{subject}” se articula com os outros documentos da Base?"
+        else:
+            connection = f"Que outras passagens deste documento ajudam a contextualizar “{subject}”?"
+        local = (f"Como o texto apresenta “{subject}”?" if anchor
+                 else f"Como “{subject}” pode orientar a leitura deste documento?")
+        analysis = (f"Como o código “{code}” pode orientar a leitura desta passagem?" if code
+                    else f"Que aspecto de “{subject}” merece uma anotação analítica?")
+        return (
+            local,
+            analysis,
+            connection,
+        )
+    purpose = _compact(payload.get("page_purpose"), 160) or "esta área"
+    actions = payload.get("available_actions") if isinstance(payload.get("available_actions"), list) else []
+    first_action = _compact(actions[0], 100) if actions else "usar os recursos disponíveis"
+    second_action = _compact(actions[1], 100) if len(actions) > 1 else "seguir para a próxima etapa"
+    return (
+        f"Qual é a finalidade de {purpose}?",
+        f"Como posso {first_action} nesta área?",
+        f"Qual é a próxima ação para {second_action}?",
+    )
+
+
+def _native_dynamic_outcome(context: SuggestionContext) -> SuggestionOutcome:
+    return SuggestionOutcome(tuple(
+        SuggestedQuestion(id=token_urlsafe(18), text=question, scope=scope)
+        for question, scope in zip(_native_dynamic_questions(context), context.scopes)
+    ), dynamic=True)
+
+
 def _register_dynamic_suggestions(context_key: str, context: SuggestionContext, outcome: SuggestionOutcome) -> None:
     """Mantém IDs opacos vinculados ao snapshot autorizado que os originou."""
     if not outcome.dynamic:
@@ -866,7 +932,17 @@ def suggestion_scope_for_id(
     cached = _cache_get(_suggestion_id_cache, suggestion_id)
     if not isinstance(cached, _SuggestionIdEntry):
         return None
-    context = _build_context(user, context_key, project_context)
+    try:
+        context = _build_context(user, context_key, project_context)
+    except Exception as error:
+        # O id de sugestão é opcional: se sua validação não puder ser refeita,
+        # ele não autoriza nada e a pergunta segue pela policy textual normal.
+        logging.getLogger(__name__).warning(
+            "assistant_suggestion_scope_ignored context_key=%s exception_type=%s",
+            context_key,
+            type(error).__name__,
+        )
+        return None
     if context is None:
         return None
     if (
@@ -904,6 +980,11 @@ def contextual_suggestions(*, user: object, context_key: str, project_context: M
         if not attempt_ids:
             raise AIProviderError("Provider indisponível.", reason_class="unavailable")
         provider_id = attempt_ids[0]
+        if provider_id == "analysis_native":
+            outcome = _native_dynamic_outcome(context)
+            _cache_put(_suggestion_cache, context.cache_key, outcome, ttl=SUCCESS_TTL_SECONDS)
+            _register_dynamic_suggestions(context_key, context, outcome)
+            return outcome
         provider = manager.provider_for_attempt(provider_id)
         response = provider.generate(
             instructions=SUGGESTION_INSTRUCTION if context.documentary else FUNCTIONAL_SUGGESTION_INSTRUCTION,

@@ -13,10 +13,24 @@ from .entities import Entidade
 class Correspondencia:
     id_entidade: str
     entidade: Entidade
+    variante_configurada: str
     termo_encontrado: str
     forma_original_no_texto: str
     inicio: int
     fim: int
+
+
+def _correspondencia(entidade: Entidade, variante: str, texto: str, inicio: int, fim: int,
+                     *, codigo_da_forma_encontrada: bool = False) -> Correspondencia:
+    original = texto[inicio:fim]
+    if codigo_da_forma_encontrada:
+        from analyzer.lexical_family import lexical_code_name
+        termo_encontrado = lexical_code_name(original)
+    else:
+        termo_encontrado = variante
+    return Correspondencia(
+        entidade.id_entidade, entidade, variante, termo_encontrado, original, inicio, fim,
+    )
 
 
 def normalizar_com_mapa(texto: str) -> tuple[str, list[int]]:
@@ -41,10 +55,37 @@ def _padrao_variante(variante: str) -> re.Pattern[str]:
 
 
 class BuscadorLexical:
-    """Compila variantes por job; expansão lexical é opt-in para novos jobs."""
+    """Localiza variantes preservando o contrato histórico e os novos modos."""
 
     def __init__(self, entidades: tuple[Entidade, ...], *, incluir_morfologia: bool = False,
-                 incluir_familia_lexical: bool = False):
+                 incluir_familia_lexical: bool = False, metodo: str | None = None,
+                 usar_regex: bool = False):
+        if metodo not in {None, "literal", "lexical"}:
+            raise ValueError("Método textual inválido.")
+        if usar_regex and metodo != "literal":
+            raise ValueError("Regex só pode ser usada com o método Literal.")
+        self._metodo = metodo
+        self._usar_regex = usar_regex
+        self._shared_variants: list[tuple[Entidade, str]] = []
+        self._literal_variants: list[tuple[Entidade, str]] = []
+        if metodo == "lexical":
+            self._shared_variants = [
+                (entidade, variante)
+                for entidade in entidades
+                for variante in entidade.variantes
+            ]
+            self._lexical_variants = []
+            self._padroes = []
+            return
+        if metodo == "literal":
+            self._literal_variants = [
+                (entidade, variante)
+                for entidade in entidades
+                for variante in entidade.variantes
+            ]
+            self._lexical_variants = []
+            self._padroes = []
+            return
         # Reutiliza as mesmas flexões simples da Análise por termos. O padrão
         # histórico, baseado somente nas variantes explícitas, não muda.
         if incluir_morfologia or incluir_familia_lexical:
@@ -66,6 +107,27 @@ class BuscadorLexical:
 
     def localizar(self, texto: str) -> list[Correspondencia]:
         """Retorna matches únicos com recortes originais e limites de palavra."""
+        if self._metodo == "literal":
+            from analyzer.search_matching import find_search_spans
+
+            candidatos_por_entidade: dict[str, list[Correspondencia]] = {}
+            for entidade, variante in self._literal_variants:
+                for inicio, fim in find_search_spans(texto, variante, use_regex=self._usar_regex):
+                    candidatos_por_entidade.setdefault(entidade.id_entidade, []).append(
+                        _correspondencia(entidade, variante, texto, inicio, fim)
+                    )
+            return self._deduplicar(candidatos_por_entidade)
+        if self._metodo == "lexical":
+            from analyzer.lexical_family import find_lexical_matches
+
+            candidatos_por_entidade: dict[str, list[Correspondencia]] = {}
+            for entidade, variante in self._shared_variants:
+                for inicio, fim, _ in find_lexical_matches(texto, variante):
+                    candidatos_por_entidade.setdefault(entidade.id_entidade, []).append(
+                        _correspondencia(entidade, variante, texto, inicio, fim,
+                                         codigo_da_forma_encontrada=True)
+                    )
+            return self._deduplicar(candidatos_por_entidade)
         normalizado, mapa = normalizar_com_mapa(texto)
         if not normalizado:
             return []
@@ -80,18 +142,19 @@ class BuscadorLexical:
                     variantes[0],
                 )
                 candidatos_por_entidade.setdefault(entidade.id_entidade, []).append(
-                    Correspondencia(
-                        entidade.id_entidade, entidade, variante, original, inicio, fim
-                    )
+                    _correspondencia(entidade, variante, texto, inicio, fim)
                 )
         if self._lexical_variants:
             from analyzer.lexical_family import find_lexical_spans
             for entidade, variante in self._lexical_variants:
                 for inicio, fim, _ in find_lexical_spans(texto, variante):
                     candidatos_por_entidade.setdefault(entidade.id_entidade, []).append(
-                        Correspondencia(entidade.id_entidade, entidade, variante,
-                                        texto[inicio:fim], inicio, fim)
+                        _correspondencia(entidade, variante, texto, inicio, fim)
                     )
+        return self._deduplicar(candidatos_por_entidade)
+
+    @staticmethod
+    def _deduplicar(candidatos_por_entidade: dict[str, list[Correspondencia]]) -> list[Correspondencia]:
         resultados: list[Correspondencia] = []
         for candidatos in candidatos_por_entidade.values():
             usados: list[tuple[int, int]] = []

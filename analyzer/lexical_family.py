@@ -11,8 +11,11 @@ import unicodedata
 import regex
 import snowballstemmer
 
+from .search_matching import find_search_spans
+
 
 WORDS = regex.compile(r"[\p{L}\p{M}]+")
+_WORD_CHAR = regex.compile(r"[\p{L}\p{M}\p{N}_]")
 _STEMMER = snowballstemmer.stemmer("portuguese")
 # Formas flexionadas dos sufixos também são explícitas: a fronteira da palavra
 # é sempre verificada pelo tokenizador, nunca por startswith no texto bruto.
@@ -28,6 +31,16 @@ _DERIVATIONAL_SUFFIXES = tuple(sorted({
 def normalize(word: str) -> str:
     decomposed = unicodedata.normalize("NFKD", word)
     return "".join(char for char in decomposed if not unicodedata.combining(char)).casefold()
+
+
+def lexical_code_name(found_text: str) -> str:
+    """Nome estável do código para uma forma concreta encontrada no corpus.
+
+    A forma visual original continua disponível no trecho. O código usa NFKC e
+    casefold, a mesma convenção de identidade dos códigos qualitativos, para
+    não criar códigos distintos apenas por caixa ou composição Unicode.
+    """
+    return unicodedata.normalize("NFKC", " ".join(found_text.split())).casefold()
 
 
 @lru_cache(maxsize=8192)
@@ -111,12 +124,32 @@ def find_lexical_spans(text: str, query: str, *, case_sensitive: bool = False):
             yield window[0].start(), window[-1].end(), kind
 
 
+def find_lexical_matches(text: str, query: str, *, case_sensitive: bool = False):
+    """Une Literal integral e família lexical como a busca Lexical do Quali.
+
+    A parte Literal é filtrada para não recuperar subcadeias de outra palavra;
+    a expansão seguinte permanece baseada em tokens e regras sufixais fechadas.
+    """
+    if not WORDS.search(query):
+        for start, end in find_search_spans(text, query, case_sensitive=case_sensitive):
+            yield start, end, "literal"
+        return
+    matches: dict[tuple[int, int], str] = {}
+    for start, end in find_search_spans(text, query, case_sensitive=case_sensitive):
+        if ((start and _WORD_CHAR.fullmatch(text[start - 1]))
+                or (end < len(text) and _WORD_CHAR.fullmatch(text[end]))):
+            continue
+        matches[start, end] = "literal"
+    for start, end, kind in find_lexical_spans(text, query, case_sensitive=case_sensitive):
+        matches.setdefault((start, end), kind)
+    for (start, end), kind in sorted(matches.items()):
+        yield start, end, kind
+
+
 def count_lexical_occurrences(text: str, query: str, legacy_pattern) -> int:
-    """Compatibilidade das três versões da Busca por termos, sem duplicar o motor."""
-    normalized = normalize(text)
-    intervals = {(match.start(), match.end()) for match in legacy_pattern.finditer(normalized)}
-    intervals.update((start, end) for start, end, _ in find_lexical_spans(normalized, query))
-    return len(intervals)
+    """Compatibilidade das versões legadas, agora pelo motor do Quali-dados."""
+    del legacy_pattern
+    return sum(1 for _ in find_lexical_matches(text, query))
 
 
 def _case_shape(word: str) -> str:

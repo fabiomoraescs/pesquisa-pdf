@@ -18,11 +18,12 @@ from werkzeug.utils import secure_filename
 
 from platform_core.extensions import db
 from platform_core.models import Analysis, Project, ProjectLibrary, ProjectVocabularyVersion, VocabularyLibrary
-from platform_core.analyses import analysis_dir, create_analysis, document_paths, get_analysis, preserve_documents, save_error, save_success
+from platform_core.analyses import analysis_dir, create_analysis, document_paths, get_analysis, preserve_documents, save_error, save_success, systematic_chart_data
 from platform_core.services import ACCOUNT_LIFECYCLE_LOCK, account_accepts_new_work, can_use_tool, get_project_for_user
 from platform_core.scraping_types import SYSTEMATIC
 from platform_core.semantic_threshold import DEFAULT as SEMANTIC_THRESHOLD_DEFAULT, normalize as normalize_semantic_threshold
 from platform_core.vocabularies import project_store, register_version
+from analyzer.search_matching import SearchPatternError, compile_search_pattern
 
 from .dictionaries import ConfiguracaoInvalidaError, carregar_categorias
 from .processor import ArquivoPDF, ProcessamentoError, processar_documentos
@@ -86,8 +87,9 @@ def _executar_job(
     job_id: str, arquivos: list[ArquivoPDF], temporario: TemporaryDirectory[str],
     resultado_url: str, vocabulario: dict, project_id: str, user_id: str,
     project_name: str, library_names: list[str],
-    metodo_analise: str = "lexical", limiar_semantico: float | None = None,
+    metodo_analise: str = "literal", limiar_semantico: float | None = None,
     app_instance=None, incluir_morfologia: bool = False, incluir_familia_lexical: bool = False,
+    usar_regex: bool = False,
 ) -> None:
     def atualizar(evento: dict) -> None:
         with JOBS_LOCK:
@@ -106,6 +108,7 @@ def _executar_job(
             project_id=project_id, vocabulary_version=vocabulario["version"],
             vocabulary_hash=vocabulario["hash"],
             metodo_analise=metodo_analise, limiar_semantico=limiar_semantico,
+            usar_regex=usar_regex,
             incluir_morfologia=incluir_morfologia,
             incluir_familia_lexical=incluir_familia_lexical,
         )
@@ -248,9 +251,12 @@ def analisar(project_id: UUID):
         duplicate = get_analysis(request.form["duplicate_id"], current_user)
         if (duplicate.user_id != current_user.id and project.owner_user_id != current_user.id) or duplicate.project_id != project.id or duplicate.tool_id != "document_analysis" or duplicate.status != "concluida":
             abort(403)
-    metodo_analise = request.form.get("metodo_analise", "lexical")
-    if metodo_analise not in {"lexical", "hibrido"}:
-        return _resposta_erro("Selecione Lexical ou Híbrido.", project_id)
+    metodo_analise = request.form.get("metodo_analise", "literal").casefold()
+    usar_regex = request.form.get("usar_regex") in {"1", "true", "on"}
+    if metodo_analise not in {"literal", "lexical", "hibrido"}:
+        return _resposta_erro("Selecione Literal, Lexical ou Híbrido.", project_id)
+    if usar_regex and metodo_analise != "literal":
+        return _resposta_erro("Regex só pode ser usada com o método Literal.", project_id)
     limiar_semantico = None
     if metodo_analise == "hibrido":
         limiar_semantico = normalize_semantic_threshold(
@@ -272,6 +278,13 @@ def analisar(project_id: UUID):
     except (VocabularioError, ConfiguracaoInvalidaError, OSError):
         logging.getLogger(__name__).exception("Vocabulário indisponível para projeto %s", project.id)
         return _resposta_erro("O vocabulário do projeto não está disponível.", project_id, 503)
+    if usar_regex:
+        try:
+            for entity in entidades_pesquisaveis(vocabulary["vocabulario"]):
+                for variant in entity.variantes:
+                    compile_search_pattern(variant, use_regex=True)
+        except SearchPatternError as error:
+            return _resposta_erro(str(error), project_id)
     _limpar_jobs()
     job_id = str(uuid4())
     temporary = TemporaryDirectory(prefix=f"{job_id}-", dir=UPLOAD_ROOT)
@@ -310,7 +323,8 @@ def analisar(project_id: UUID):
                 analysis = create_analysis(
                     analysis_id=job_id, user_id=current_user.id, project_id=project.id,
                     tool_id="document_analysis", tool_version=metodo_analise,
-                    parameters={"metodo_analise": metodo_analise, "limiar_semantico": limiar_semantico,
+                    parameters={"metodo_analise": metodo_analise, "usar_regex": usar_regex,
+                                "limiar_semantico": limiar_semantico,
                                 "morfologia_automatica": True,
                                 "vocabulario_version": vocabulary["version"], "vocabulario_hash": vocabulary["hash"],
                                 "termos_pesquisados": [{"id_entidade": entity.id_entidade,
@@ -342,6 +356,7 @@ def analisar(project_id: UUID):
                 metodo_analise, limiar_semantico, current_app._get_current_object(),
                 incluir_morfologia=True,
                 incluir_familia_lexical=True,
+                usar_regex=usar_regex,
             )
         except RuntimeError:
             temporary.cleanup()
@@ -394,7 +409,8 @@ def resultado(project_id: UUID, job_id: UUID):
             return redirect(url_for("analyses.dashboard", analysis_id=job_id))
     if data is None or data["project_id"] != project.id or (data["owner_user_id"] != current_user.id and current_user.role != "admin"):
         abort(404)
-    return render_template("historico_racial/resultado.html", resultado=data, project=project)
+    return render_template("historico_racial/resultado.html", resultado=data, project=project,
+                           chart_data=systematic_chart_data(data))
 
 
 @historico_racial_bp.get("/analise-documental/projetos/<uuid:project_id>/resultado/<uuid:job_id>/xlsx")

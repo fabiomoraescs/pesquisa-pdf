@@ -41,8 +41,9 @@ def processar_documentos(
     project_id: str | None = None,
     vocabulary_version: str | None = None,
     vocabulary_hash: str | None = None,
-    metodo_analise: str = "lexical",
+    metodo_analise: str = "literal",
     limiar_semantico: float | None = None,
+    usar_regex: bool = False,
     incluir_morfologia: bool = False,
     incluir_familia_lexical: bool = False,
 ) -> dict[str, Any]:
@@ -53,15 +54,21 @@ def processar_documentos(
     """
     if not arquivos:
         raise ProcessamentoError("Envie ao menos um PDF.")
-    if metodo_analise not in {"lexical", "hibrido"}:
+    if metodo_analise not in {"literal", "lexical", "hibrido"}:
         raise ProcessamentoError("Selecione um método de análise válido.")
+    if usar_regex and metodo_analise != "literal":
+        raise ProcessamentoError("Regex só pode ser usada com o método Literal.")
     if metodo_analise == "hibrido" and limiar_semantico is None:
         from platform_core.semantic_threshold import DEFAULT
         limiar_semantico = DEFAULT
     if vocabulario is None:
         configuracao_entidades = carregar_entidades()
-        buscador = BuscadorLexical(listar_entidades(), incluir_morfologia=incluir_morfologia,
-                                  incluir_familia_lexical=incluir_familia_lexical)
+        buscador = BuscadorLexical(
+            listar_entidades(), incluir_morfologia=incluir_morfologia,
+            incluir_familia_lexical=incluir_familia_lexical,
+            metodo="lexical" if metodo_analise == "hibrido" else metodo_analise,
+            usar_regex=usar_regex,
+        )
         grupos = configuracao_entidades["grupos"]
         vocabulario_version = None
         vocabulario_hash = None
@@ -70,8 +77,12 @@ def processar_documentos(
     else:
         conteudo = vocabulario["vocabulario"]
         entidades_ativas = entidades_pesquisaveis(conteudo)
-        buscador = BuscadorLexical(entidades_ativas, incluir_morfologia=incluir_morfologia,
-                                  incluir_familia_lexical=incluir_familia_lexical)
+        buscador = BuscadorLexical(
+            entidades_ativas, incluir_morfologia=incluir_morfologia,
+            incluir_familia_lexical=incluir_familia_lexical,
+            metodo="lexical" if metodo_analise == "hibrido" else metodo_analise,
+            usar_regex=usar_regex,
+        )
         grupos = {codigo: grupo["nome"] for codigo, grupo in conteudo["grupos"].items()}
         vocabulario_version = vocabulario["version"]
         vocabulario_hash = vocabulario["hash"]
@@ -87,7 +98,7 @@ def processar_documentos(
         raise ProcessamentoError("Nenhum PDF válido pôde ser lido.")
 
     total_paginas = sum(total for _, _, total in validos)
-    total_unidades = (2 if metodo_analise == "lexical" else 3) * total_paginas
+    total_unidades = (3 if metodo_analise == "hibrido" else 2) * total_paginas
     escala_lexical = 100
     unidades_concluidas = 0
     documentos: list[dict[str, Any]] = []
@@ -188,9 +199,10 @@ def processar_documentos(
                         "entidade_canonica": entidade.forma_canonica,
                         "variantes": list(entidade.variantes),
                         "grupo": list(entidade.grupo),
+                        "variante_configurada": correspondencia.variante_configurada,
                         "termo_encontrado": correspondencia.termo_encontrado,
                         "forma_original_no_texto": correspondencia.forma_original_no_texto,
-                        "metodo_localizacao": "lexical",
+                        "metodo_localizacao": "literal" if metodo_analise == "literal" else "lexical",
                         **contexto,
                         "tradicao_intelectual": entidade.tradicao_intelectual,
                         "pais_regiao_matriz": entidade.pais_regiao,
@@ -258,6 +270,7 @@ def processar_documentos(
         "total_ocorrencias": len(ocorrencias),
         "entidades_distintas": len({item["id_entidade"] for item in ocorrencias}),
         "metodo_analise": metodo_analise,
+        "usar_regex": usar_regex,
         "morfologia_automatica": incluir_morfologia,
         "limiar_semantico": limiar_semantico if metodo_analise == "hibrido" else None,
         "modelo_semantico": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2" if metodo_analise == "hibrido" else None,

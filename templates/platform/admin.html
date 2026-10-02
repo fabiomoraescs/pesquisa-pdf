@@ -45,8 +45,8 @@
 {% elif section == 'assistant_ai_settings' %}
 <section class="platform-panel platform-ai-settings" aria-labelledby="ai-settings-title">
   <div class="platform-ai-settings-heading">
-    <div><h2 class="h4" id="ai-settings-title">Assistente Análysis</h2><p class="platform-muted mb-0">Configuração operacional de Inteligência Artificial.</p></div>
-    <dl class="platform-ai-current mb-0"><dt>Provider atual</dt><dd>{{ ai_settings.primary_provider | capitalize }}</dd><dt>Estratégia</dt><dd>{{ 'Fallback' if ai_settings.strategy == 'fallback' else 'Provider único' }}</dd></dl>
+        <div><h2 class="h4" id="ai-settings-title">Assistente Análysis</h2><p class="platform-muted mb-0">Configuração operacional de Inteligência Artificial.</p></div>
+    <dl class="platform-ai-current mb-0"><dt>Provider primário</dt><dd>{{ provider_labels.get(ai_settings.primary_provider, ai_settings.primary_provider) }}</dd><dt>Estratégia</dt><dd>{{ 'Fallback técnico' if ai_settings.strategy == 'fallback' else 'Provider único' }}</dd><dt>Ordem de fallback</dt><dd>{% if ai_settings.strategy == 'fallback' and fallback_summary %}{{ fallback_summary | join(' → ') }}{% else %}Sem fallback técnico{% endif %}</dd></dl>
   </div>
   <p class="platform-ai-privacy" role="note">As credenciais são configuradas somente no ambiente do servidor e nunca são exibidas aqui. Em estratégia de fallback, uma solicitação pode ser enviada ao próximo provider configurado caso o principal esteja indisponível ou sem quota.</p>
   <form method="post" action="{{ url_for('admin.save_assistant_ai_settings') }}" class="platform-ai-settings-form" data-ai-settings-form>
@@ -67,19 +67,34 @@
     <div class="platform-ai-provider-grid" aria-label="Providers disponíveis">
       {% for status in provider_statuses %}
       <article class="platform-ai-provider-card" data-ai-provider-card="{{ status.id }}">
-        <div class="platform-ai-provider-card-heading"><h3 class="h5">{{ status.display_name }}</h3><span class="platform-badge">{% if not status.implemented %}Integração futura{% elif status.credential_configured %}Credencial configurada{% else %}Credencial não configurada{% endif %}</span></div>
+        <div class="platform-ai-provider-card-heading"><h3 class="h5">{{ status.display_name }}</h3><div class="d-flex flex-wrap gap-1 justify-content-end"><span class="platform-badge">{% if status.provider_type == 'native' %}Nativo · sem credencial{% elif not status.implemented %}Integração futura{% elif status.credential_configured %}Credencial configurada{% else %}Credencial não configurada{% endif %}</span><span class="platform-badge" data-ai-enabled-badge="{{ status.id }}">{{ 'Habilitado' if status.enabled else 'Desabilitado' }}</span><span class="platform-badge" data-ai-primary-badge="{{ status.id }}" {% if not status.is_primary %}hidden{% endif %}>PRIMÁRIO</span></div></div>
         <label class="form-check form-switch"><input class="form-check-input" type="checkbox" name="enabled_providers" value="{{ status.id }}" {% if status.enabled %}checked{% endif %} {% if not status.implemented %}disabled aria-disabled="true"{% endif %} data-ai-enabled="{{ status.id }}"><span class="form-check-label">Ativar provider</span></label>
         <label class="form-label" for="ai-model-{{ status.id }}">Modelo
-          <input class="form-control" id="ai-model-{{ status.id }}" name="{{ status.id }}_model" value="{{ status.selected_model }}" maxlength="160" {% if not status.implemented %}disabled aria-disabled="true"{% endif %}>
+          <input class="form-control" id="ai-model-{{ status.id }}" name="{{ status.id }}_model" value="{{ status.selected_model }}" maxlength="160" {% if not status.implemented or status.provider_type == 'native' %}readonly aria-readonly="true"{% endif %}>
         </label>
-        <p class="platform-muted mb-0">Status de conexão: <span>{{ status.connection_status }}</span></p>
-        {% if status.implemented %}<button class="btn btn-outline-primary btn-sm" type="submit" formmethod="post" formaction="{{ url_for('admin.test_assistant_ai_connection', provider_id=status.id) }}">Testar conexão</button>{% else %}<span class="platform-muted" aria-disabled="true">Provider preparado para fase futura.</span>{% endif %}
+        <p class="platform-muted mb-0">{% if status.provider_type == 'native' %}Tipo: Native · Credencial: Não necessária. Capacidades: {{ status.capabilities | join(', ') }}. {% endif %}Status de conexão: <span data-ai-connection-status="{{ status.id }}" data-ai-connection-state="{{ status.connection_state }}" aria-live="polite">{{ status.connection_status }}</span></p>
+        {% if status.implemented %}<button class="btn btn-outline-primary btn-sm" type="submit" formmethod="post" formaction="{{ url_for('admin.test_assistant_ai_connection', provider_id=status.id) }}" data-ai-connection-test="{{ status.id }}">Testar conexão</button>{% else %}<span class="platform-muted" aria-disabled="true">Provider preparado para fase futura.</span>{% endif %}
       </article>
       {% endfor %}
+      <article class="platform-ai-provider-card platform-ai-docchat" aria-labelledby="docchat-settings-title">
+        <div class="platform-ai-provider-card-heading"><h3 class="h5" id="docchat-settings-title">DocChat (em breve)</h3><span class="platform-badge">Preparação futura</span></div>
+        <p class="platform-muted mb-0">Esta configuração prepara o provider/modelo da futura ferramenta DocChat. O DocChat ainda não está disponível.</p>
+        <label class="form-label" for="docchat-provider">Provider
+          <select class="form-select" id="docchat-provider" name="docchat_provider" form="docchat-settings-form">
+            <option value="">Não configurado</option>
+            <option value="gemini" {% if ai_settings.docchat_provider == 'gemini' %}selected{% endif %}>Gemini</option>
+            <option value="openai" {% if ai_settings.docchat_provider == 'openai' %}selected{% endif %}>OpenAI</option>
+          </select>
+        </label>
+        <label class="form-label" for="docchat-model">Modelo
+          <input class="form-control" id="docchat-model" name="docchat_model" form="docchat-settings-form" value="{{ ai_settings.docchat_model or '' }}" maxlength="160">
+        </label>
+        <button class="btn btn-outline-primary" type="submit" form="docchat-settings-form">Salvar preparação do DocChat</button>
+      </article>
     </div>
     <fieldset class="platform-ai-fallback" data-ai-fallback {% if ai_settings.strategy != 'fallback' %}hidden{% endif %}>
       <legend>Ordem de fallback</legend>
-      <p class="platform-muted">Apenas falhas técnicas antes de qualquer tool documental podem avançar para o próximo provider.</p>
+      <p class="platform-muted">Ordem efetiva: {{ fallback_summary | join(' → ') if fallback_summary else 'sem providers adicionais' }}. Apenas falhas técnicas antes de qualquer tool documental podem avançar para o próximo provider.</p>
       <div class="platform-ai-fallback-options">
         {% for status in provider_statuses if status.implemented %}
         <label class="form-check"><input class="form-check-input" type="checkbox" name="fallback_order" value="{{ status.id }}" {% if status.id in ai_settings.fallback_order %}checked{% endif %} {% if status.id == ai_settings.primary_provider or not status.enabled %}disabled{% endif %} data-ai-fallback-provider="{{ status.id }}"><span class="form-check-label">{{ status.display_name }}</span></label>
@@ -87,6 +102,9 @@
       </div>
     </fieldset>
     <div class="d-flex flex-wrap gap-2"><button class="btn btn-primary" type="submit">Salvar configuração</button></div>
+  </form>
+  <form id="docchat-settings-form" method="post" action="{{ url_for('admin.save_docchat_ai_settings') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   </form>
 </section>
 <script src="{{ url_for('static', filename='js/admin_ai_settings.js') }}"></script>

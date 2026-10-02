@@ -1,0 +1,648 @@
+{
+  "version": "2026.09.30",
+  "tutorials": [
+    {
+      "key": "home",
+      "title": "Guia do Dashboard",
+      "summary": "Use o Dashboard para acompanhar projetos, Bases de análise recentes e os atalhos disponíveis ao seu acesso.",
+      "sections": [
+        {"id": "visao-geral", "title": "O que aparece aqui", "body": ["O Dashboard reúne a visão dos seus projetos ativos, das Bases de análise recentes e, quando houver dados, os resumos visuais das últimas Bases. Ele não altera documentos nem resultados.", "Os atalhos levam ao projeto ou à Base correspondente. A disponibilidade de cada ferramenta depende do acesso efetivo da sua conta."], "items": []},
+        {"id": "passos", "title": "Primeiros passos", "body": ["1. Escolha um projeto ou uma Base recente. 2. Abra o ambiente da ferramenta. 3. Envie documentos ou continue uma Base existente. 4. Revise os resultados antes de utilizá-los na pesquisa."], "items": []},
+        {"id": "leitura", "title": "Como interpretar os indicadores", "body": ["Os totais resumem registros da plataforma; não substituem a leitura dos documentos. Gráficos e contagens apoiam a navegação e a conferência, não são uma validação metodológica automática."], "items": []},
+        {"id": "ajuda", "title": "Se algo não aparecer", "body": ["Confirme se há um projeto ativo e se a ferramenta está liberada no plano ou por uma permissão individual. Projetos arquivados e Bases ainda em processamento podem não aparecer como prontos para uso."], "items": []}
+      ]
+    },
+    {
+      "key": "projects",
+      "title": "Guia de projetos",
+      "summary": "Projetos organizam Bases, documentos e a continuidade do trabalho por ferramenta.",
+      "sections": [
+        {"id": "visao-geral", "title": "O que é um projeto", "body": ["Um projeto é o contêiner de trabalho da plataforma. Ele identifica a pesquisa, reúne as Bases criadas nela e preserva sua organização ao longo do tempo.", "Projetos são separados por ferramenta: Busca por termos, Busca estruturada e Análise quali-dados têm fluxos próprios."], "items": []},
+        {"id": "passos", "title": "Criar e organizar", "body": ["Crie um projeto com nome e descrição, abra-o e adicione uma Base ou documentos conforme a ferramenta. Use os controles da lista para abrir, renomear, arquivar ou consultar as Bases do projeto."], "items": []},
+        {"id": "boas-praticas", "title": "Boas práticas", "body": ["Use nomes que permitam reconhecer corpus, recorte e etapa da pesquisa. Arquivar preserva os dados e tira o projeto da lista ativa; não é o mesmo que excluir permanentemente."], "items": []},
+        {"id": "limites", "title": "Atenção", "body": ["Uma Base deve ser interpretada no contexto do projeto e do método escolhido. Não misture resultados de ferramentas diferentes sem registrar a decisão metodológica."], "items": []}
+      ]
+    },
+    {
+      "key": "project",
+      "title": "Guia do projeto aberto",
+      "summary": "Nesta tela você continua o trabalho do projeto e escolhe a ferramenta ou a Base adequada.",
+      "sections": [
+        {"id": "visao-geral", "title": "O que você pode fazer", "body": ["O projeto aberto mostra as ações permitidas para o tipo de pesquisa. A partir dele você pode criar ou abrir Bases, retornar às listas e consultar o histórico disponível."], "items": []},
+        {"id": "passos", "title": "Fluxo recomendado", "body": ["Defina o objetivo da Base, escolha os documentos, selecione o método oferecido pela ferramenta e execute o processamento. Depois confira amostras de resultados e registre decisões analíticas fora ou dentro dos recursos da ferramenta."], "items": []},
+        {"id": "organizacao", "title": "Documentos e análises", "body": ["Documentos ficam associados às Bases conforme o fluxo da ferramenta. No Quali-dados, documentos, códigos e memos são organizados na Base selecionada; nas buscas, a Base preserva a execução e seus resultados."], "items": []},
+        {"id": "ajuda", "title": "Escolha da ferramenta", "body": ["Use Busca por termos para localizar expressões, Busca estruturada para consultar um vocabulário organizado e Quali-dados para leitura, codificação e memos. Cada uma produz evidências que exigem revisão humana."], "items": []}
+      ]
+    },
+    {
+      "key": "term_search",
+      "title": "Tutorial: Busca por termos",
+      "summary": "Crie uma Base a partir de PDFs e consultas definidas por você, escolha Literal, Lexical ou Híbrido, use Regex quando apropriado, revise os candidatos e use a planilha para documentar a leitura.",
+      "sections": [
+        {
+          "id": "modelo-mental",
+          "title": "O que a Busca por termos faz",
+          "keywords": ["busca livre", "consulta", "Base", "ocorrência", "contexto", "diferença Busca estruturada", "quando usar"],
+          "body": [
+            "A Busca por termos começa por consultas que você formula — palavras ou expressões que quer localizar em PDFs. Ela cria uma Base de análise que preserva os documentos enviados, as consultas, o método, os diagnósticos de leitura e as planilhas daquela execução. A cadeia de trabalho é: Projeto → Base → PDFs → consultas → processamento → candidatos localizados → contexto e planilha.",
+            "Use-a quando a pergunta puder ser operacionalizada por expressões que você já sabe procurar, como “Rio de Janeiro”, “trabalho escravo” ou uma lista de nomes. A Busca estruturada é mais apropriada quando o recorte deve ser previamente organizado em grupos, entidades e variantes reutilizáveis. O Quali-dados é mais adequado quando a tarefa principal é ler, selecionar e codificar passagens, e não apenas recuperá-las.",
+            "Encontrar uma ocorrência significa somente que o mecanismo localizou um candidato pelas regras do método. A ocorrência não prova por si só que o tema é central, que o autor concorda com a passagem ou que há relevância interpretativa. A leitura do trecho, de seu contexto e do PDF original continua necessária."
+          ],
+          "items": []
+        },
+        {
+          "id": "quando-usar-e-comparar",
+          "title": "Quando usar Busca por termos — e quando escolher outra ferramenta",
+          "keywords": ["quando usar", "diferença Busca estruturada", "Quali-dados", "comparação", "expressão", "padrão textual"],
+          "body": [
+            "Escolha Busca por termos quando a pergunta começa por palavras ou expressões que você consegue formular e deseja localizar em um conjunto de PDFs. Ela permite testar consultas, comparar Bases com métodos e limiares diferentes e revisar contextos em planilha, sem exigir que você modele antes uma lista reutilizável de entidades.",
+            "Prefira Busca estruturada quando o recorte precisa ser mantido como vocabulário: por exemplo, grupos, entidades canônicas e variantes que podem ser versionados e aplicados a novas Bases. Prefira Quali-dados quando o centro do trabalho é leitura atenta, seleção de passagens, códigos, memos e comparação interpretativa de trechos. A plataforma não transfere automaticamente documentos, ocorrências ou codificações entre as três ferramentas.",
+            "Exemplo comparativo: diante da pergunta “como o Nordeste aparece nos livros?”, você pode usar Busca por termos para localizar “Nordeste” e expressões escolhidas; Busca estruturada para organizar estados ou autores em entidades; e Quali-dados para codificar sentidos, avaliações e contextos das passagens. Escolha pelo procedimento que torna sua decisão mais explícita, não por uma hierarquia entre ferramentas."
+          ],
+          "items": []
+        },
+        {
+          "id": "base-e-documentos",
+          "title": "Base, projeto e documentos",
+          "keywords": ["criar Base", "PDF", "projeto", "duplicar Base", "reutilizar documentos", "arquivos PDF"],
+          "body": [
+            "No fluxo atual, abra primeiro um projeto de Busca por termos e, nele, inicie uma Base. A Base é o registro de uma execução: ela não é uma pasta genérica que muda automaticamente quando você altera consultas ou envia outros arquivos. Uma nova execução preserva a Base anterior para que método, corpus e resultados possam ser comparados depois.",
+            "Em Arquivos PDF, clique no seletor e escolha um ou vários arquivos com extensão .pdf. Esse campo é obrigatório em uma Base nova. Em uma nova execução aberta a partir de uma Base concluída, os PDFs preservados podem ser reutilizados se você não escolher novos arquivos; a tela informa essa condição. O sistema recusa extensões que não sejam PDF e informa erros quando não consegue salvar ou processar um arquivo.",
+            "PDFs com texto incorporado são lidos diretamente por página. A qualidade do arquivo importa: páginas digitalizadas, texto muito degradado, colunas, tabelas, cabeçalhos repetidos ou layout incomum podem afetar a ordem dos blocos e os trechos recuperados. Guarde nomes de Base que indiquem corpus, recorte e método, porque isso facilita a revisão comparativa posterior."
+          ],
+          "items": [
+            {"name": "Arquivos PDF", "description": "Aceita um ou vários PDFs. Se a Base for nova, envie ao menos um; em uma duplicação, os documentos da Base original só são reutilizados quando nenhum novo arquivo é escolhido."},
+            {"name": "Adicionar base", "description": "Na tela de resultado, volta ao fluxo do projeto para criar outra execução; não altera a Base aberta."},
+            {"name": "Duplicar Base", "description": "Quando oferecido pelo histórico da plataforma, parte dos parâmetros e dos PDFs preservados para uma nova execução, mantendo a Base original intacta."}
+          ]
+        },
+        {
+          "id": "termos-e-entrada",
+          "title": "Como informar os termos ou expressões",
+          "keywords": ["Termos para pesquisar", "ponto e vírgula", "uma linha", "TXT", "múltiplas consultas", "acentos", "maiúsculas"],
+          "body": [
+            "No campo Termos para pesquisar, digite uma palavra ou expressão por consulta. Para informar várias consultas, separe-as por ponto e vírgula ou coloque uma consulta por linha. Por exemplo: “Rio de Janeiro; Rio Grande do Norte; João Pessoa”. Termos compostos devem ficar inteiros; vírgula e ponto final não funcionam como separadores de consultas e a tela mostra uma mensagem de correção quando detecta esse uso.",
+            "Arquivo TXT com termos é opcional. Ele aceita uma consulta por linha ou consultas separadas por ponto e vírgula. O conteúdo do TXT é combinado ao que foi digitado, sem duplicar consultas equivalentes. Use o TXT quando a lista é longa ou vem de outro procedimento de pesquisa; ele não cria categorias, códigos ou regras ocultas.",
+            "O comportamento depende do método escolhido. Literal compara a expressão informada sem expandir sua família lexical; Lexical normaliza uma cópia para reconhecer formas relacionadas sem diferença de caixa ou acento; Híbrido mantém essa etapa lexical e acrescenta similaridade semântica. Plural, gênero e derivações reconhecidas pertencem ao Lexical, não ao Literal, e nunca devem substituir a revisão do contexto."
+          ],
+          "items": [
+            {"name": "Termos para pesquisar", "description": "Campo de texto para palavras ou expressões. É obrigatório junto com o TXT: a Base precisa ter pelo menos uma consulta vinda de uma das duas fontes."},
+            {"name": "Arquivo TXT com termos (opcional)", "description": "Arquivo .txt; uma consulta por linha ou separada por ponto e vírgula. Seu conteúdo é combinado ao campo de texto sem duplicatas."},
+            {"name": "Ponto e vírgula / quebra de linha", "description": "São os separadores de múltiplas consultas. Uma vírgula dentro de uma expressão não abre uma segunda consulta."}
+          ]
+        },
+        {
+          "id": "metodo-literal-e-regex",
+          "title": "Método Literal e Literal + Regex",
+          "keywords": ["Literal", "Regex", "expressão regular", "padrão", "caixa", "acentuação", "erro de Regex"],
+          "body": [
+            "Literal localiza a expressão que você escreveu, sem transformá-la automaticamente em plural, flexão ou família lexical. Use-o quando a precisão textual for mais importante do que recuperar formas relacionadas: por exemplo, uma busca por “raça” não adiciona por conta própria “racial”, “racismo” ou “racializado”. Por padrão, a comparação não distingue maiúsculas e minúsculas Unicode, mas preserva a acentuação da expressão; confira o PDF quando essa diferença for metodologicamente relevante.",
+            "Regex é uma caixa de seleção, não um quarto método. Primeiro selecione Literal; então marque Regex para interpretar cada consulta como expressão regular. Por exemplo, “(?i)\\b raças? \\b” — sem os espaços internos — pode delimitar “raça” ou “raças” com fronteiras de palavra. Use padrões pequenos e deliberados: Regex é útil para alternativas, repetições ou limites de palavra que você precisa controlar explicitamente.",
+            "Regex fica desabilitada em Lexical e Híbrido. Se ela estiver marcada e você mudar para um desses modos, a interface a desmarca; o servidor também rejeita combinações incompatíveis. Um padrão inválido ou lento retorna uma mensagem amigável e não produz uma lista parcial de ocorrências."
+          ],
+          "items": [
+            {"name": "Literal", "description": "Localiza o texto conforme informado, sem expansão automática de família lexical."},
+            {"name": "Regex", "description": "Disponível somente com Literal; interpreta a consulta como padrão regular e informa erro controlado se o padrão não for válido."}
+          ]
+        },
+        {
+          "id": "metodo-lexical",
+          "title": "Método Lexical: correspondências textuais e famílias de palavras",
+          "keywords": ["Lexical", "literal", "plural", "flexão", "família lexical", "normalização", "fronteira de palavra"],
+          "body": [
+            "Lexical é o segundo rádio em Método de raspagem. Ele procura cada consulta no texto extraído com o motor compartilhado do Quali-dados: tokeniza palavras, preserva limites de palavra e normaliza caixa e acentos para comparar famílias lexicais, mantendo a forma original no resultado.",
+            "Para palavras, o mecanismo usa limites de palavra e amplia formas flexionais controladas. Ele trata, quando aplicável, singular e plural, algumas alternâncias de gênero e terminações portuguesas; a camada lexical compartilhada também reconhece flexões e derivações da família lexical. Para expressão composta, a expansão concentra-se na última palavra. Espaços flexíveis ajudam a localizar uma expressão quando a quebra do PDF mudou a quantidade de espaços.",
+            "Exemplo: uma consulta como “raça” pode recuperar “raça”, “raças”, “racial”, “raciais”, “racismo”, “racializado” e “racializados” quando essas formas forem reconhecidas pela família lexical. Isso não é uma busca por prefixo: palavras apenas parecidas, como “racional”, não entram por compartilhar letras iniciais. Lexical exige evidência textual da consulta, de uma flexão ou de derivação reconhecida; não usa Regex nem mera proximidade de sentido."
+          ],
+          "items": [
+            {"name": "Quando usar", "description": "Quando você quer começar por formas textuais verificáveis, incluindo as variações morfológicas tratadas pelo mecanismo."},
+            {"name": "O que pode não aparecer", "description": "Sinônimos, paráfrases, abreviações não digitadas e palavras semanticamente próximas sem relação lexical não são garantidos pelo método Lexical."},
+            {"name": "Cuidado", "description": "A ampliação de família lexical reduz alguns falsos negativos, mas ainda pode recuperar uma forma que não responde à pergunta de pesquisa. Leia o bloco e os parágrafos próximos."}
+          ]
+        },
+        {
+          "id": "metodo-hibrido",
+          "title": "Método Híbrido e limiar de similaridade",
+          "keywords": ["Híbrido", "semântica", "embedding", "score", "limiar", "similaridade", "0,50", "0,90"],
+          "body": [
+            "Ao selecionar Híbrido, o Análysis mantém a mesma etapa Lexical compartilhada com o Quali-dados e acrescenta uma etapa semântica. Primeiro são recuperadas as correspondências lexicais; depois o sistema segmenta o texto em trechos e compara representações numéricas das consultas e desses trechos com o modelo multilíngue registrado nos parâmetros da exportação. Um resultado semântico pode não conter a palavra exata pesquisada.",
+            "O controle Limiar de similaridade aparece apenas no Híbrido. Ele aceita valores de 0,50 a 0,90, em passos de 0,01. O valor inicial indicado na interface é mais exploratório: baixar o limiar tende a ampliar a quantidade de candidatos semânticos; aumentá-lo tende a exigir maior proximidade segundo o modelo. Não existe limiar universalmente correto — escolha-o de acordo com o objetivo e registre a decisão na comparação entre Bases.",
+            "Similaridade não é prova de equivalência conceitual, de citação, de posição do autor ou de relevância. A interface avisa que resultados semânticos exigem validação manual. Se uma evidência lexical e uma aproximação semântica forem equivalentes, o resultado pode ser marcado como Lexical + semântica; candidatos exclusivamente semânticos ficam identificados como tal na planilha."
+          ],
+          "items": [
+            {"name": "Híbrido", "description": "Executa Lexical e a etapa semântica; use quando a pergunta admite também passagens de sentido próximo que não repetem literalmente a consulta."},
+            {"name": "Limiar de similaridade", "description": "Disponível somente no Híbrido. Um número menor amplia candidatos; um maior restringe. Ele não altera os termos digitados nem valida resultados."},
+            {"name": "Atenção", "description": "O modelo semântico é carregado para a etapa Híbrida. Se ele não puder ser preparado, a execução informa a falha; não trate uma ausência de resultado como conclusão analítica."}
+          ]
+        },
+        {
+          "id": "ocr-e-extracao",
+          "title": "Como PDFs, OCR e contexto são preparados",
+          "keywords": ["OCR", "Tesseract", "por+eng", "texto extraível", "página", "bloco", "parágrafo", "Diagnostico OCR"],
+          "body": [
+            "A cada página, o sistema tenta extrair texto do próprio PDF. Quando há poucas letras extraíveis, a página precisa de OCR e o reconhecimento é acionado automaticamente; não há caixa para ligar ou desligar OCR no formulário. Se uma página exige OCR mas o Tesseract não está disponível, o processamento informa a limitação em vez de inventar conteúdo.",
+            "Quando o OCR está disponível, o idioma é escolhido conforme os idiomas instalados: português + inglês tem prioridade quando ambos existem, depois português, inglês e, por último, outro idioma disponível. O diagnóstico por arquivo registra páginas com texto extraível, páginas processadas por OCR e o idioma efetivamente usado.",
+            "O resultado lexical é associado a um bloco/parágrafo e inclui o parágrafo anterior e o posterior que o mecanismo encontrou na sequência extraída. Nas extremidades, esses campos podem ficar vazios. Cabeçalhos, colunas, tabelas, hifenização e reconhecimento imperfeito podem alterar o recorte: compare sempre o trecho exportado à página visual do PDF."
+          ],
+          "items": [
+            {"name": "Diagnostico OCR", "description": "Aba da planilha que permite conferir, por arquivo, quanto foi lido diretamente e quanto precisou de reconhecimento óptico."},
+            {"name": "Página", "description": "A planilha registra a página indicada pelo PDF quando disponível; ela serve para orientar a conferência no documento original."},
+            {"name": "Contexto", "description": "Anterior, bloco/parágrafo da ocorrência e posterior são evidências de leitura, não classificação metodológica automática."}
+          ]
+        },
+        {
+          "id": "execucao-e-progresso",
+          "title": "Executar, acompanhar e retomar uma Base",
+          "keywords": ["Processar", "progresso", "Lendo PDFs", "OCR", "busca lexical", "modelo semântico", "erro"],
+          "body": [
+            "Depois de preencher os campos, clique em Processar. O botão inicia um job assíncrono e a tela abre um painel de andamento: ele mostra tempo decorrido, etapa, arquivo/página ou blocos processados quando essa informação está disponível. No Híbrido, a primeira preparação do modelo semântico pode levar mais tempo e é apresentada como etapa própria.",
+            "Ao concluir, a plataforma abre o resultado da Base. Se um PDF falhar, a tela de resultado pode listar os arquivos que não puderam ser analisados; leia essa lista antes de comparar totais. Uma Base concluída preserva os documentos, consultas, método e arquivos exportados. Criar outra Base com novas escolhas não altera retrospectivamente os resultados já salvos.",
+            "Se a tela informar que não foi possível iniciar, salvar ou acompanhar o processamento, confira os arquivos e tente novamente pelo fluxo do projeto. Não presuma que uma execução parcialmente apresentada corresponde a todos os PDFs: use a lista de erros, os indicadores e Diagnostico OCR para saber o que entrou na análise."
+          ],
+          "items": [
+            {"name": "Processar", "description": "Cria a Base e inicia a leitura. A ação não altera outras Bases nem um projeto de modalidade diferente."},
+            {"name": "Tempo decorrido / tempo estimado", "description": "São informações de acompanhamento; a estimativa pode não estar disponível em todas as etapas."},
+            {"name": "Raspagem concluída", "description": "Indica que a interface recebeu conclusão do job e abrirá o resultado. Ainda é necessário revisar os candidatos."}
+          ]
+        },
+        {
+          "id": "tela-de-resultados",
+          "title": "Como ler a tela de resultados",
+          "keywords": ["indicadores", "gráficos", "Ocorrências por termo", "livro", "heatmap", "Plotly", "download planilha"],
+          "body": [
+            "O cabeçalho identifica a Base, quantidade de PDFs e resultados, método, data, documentos e consultas preservadas. A tela é um painel de síntese: os dados detalhados de cada candidato ficam na exportação XLSX, não em uma grade de edição dentro do dashboard. Os arquivos exportados permanecem associados à Base e podem ser baixados pelas ações da Base no histórico e nos painéis que as exibem.",
+            "No Lexical, os indicadores mostram PDFs analisados, termos pesquisados, ocorrências encontradas e páginas com OCR. Os gráficos apresentam ocorrências por termo, por livro e por contexto sociológico, comparação termo × livro, composição de contextos por livro, concentração por termo e fluxos entre termo, contexto e livro. Alguns gráficos permitem trocar a visualização entre barras, pizza, rosca, treemap, heatmap ou barras agrupadas/empilhadas, conforme o cartão.",
+            "No Híbrido, os indicadores separam ocorrências lexicais, correspondências semânticas, resultados recuperados, livros analisados e consultas. Os gráficos separam consulta, tipo de recuperação, média e distribuição de similaridade, livro e fluxos. A câmera da barra do Plotly baixa o gráfico como PNG; esse download é uma imagem de apoio, não substitui a planilha nem cria nova análise."
+          ],
+          "items": [
+            {"name": "Ocorrências por termo / consulta", "description": "Conta registros recuperados pela consulta; use para encontrar onde olhar primeiro, não como medida automática de importância."},
+            {"name": "Ocorrências por livro", "description": "Mostra distribuição entre PDFs processados. Compare somente depois de conferir corpus, método, OCR e extensão dos documentos."},
+            {"name": "Contexto sociológico", "description": "É classificação automática de apoio registrada pelo analisador; não é uma leitura final do pesquisador."},
+            {"name": "Exportação XLSX", "description": "Os arquivos por PDF e o consolidado, quando houver, permanecem associados à Base e disponíveis pelas ações de download; confirme o nome do arquivo antes de trabalhar fora da plataforma."}
+          ]
+        },
+        {
+          "id": "ocorrencias-e-validacao",
+          "title": "Ocorrências, revisão humana e contexto",
+          "keywords": ["ocorrência", "Validação manual", "revisar", "Observações do pesquisador", "parágrafo anterior", "semântica"],
+          "body": [
+            "Em Lexical, uma linha da aba Ocorrencias representa um bloco/parágrafo onde uma consulta, flexão ou derivação tratada foi encontrada; o campo Validação manual começa como “revisar”. Em Híbrido, Resultados pode reunir candidatos Lexical, Morfológica, Semântica ou Lexical + semântica; candidatos semânticos não comprovam que a expressão literal aparece no trecho.",
+            "A validação não é alterada pelo dashboard. A planilha fornece Validação manual e Observações do pesquisador para registrar a decisão de revisão, inclusive com lista de valores de validação no arquivo exportado. Editar a planilha é uma documentação externa da leitura: ela não reimporta a decisão para alterar a Base já salva.",
+            "Antes de classificar uma linha, confira consulta, tipo de correspondência, PDF/livro, página, trecho, bloco anterior e posterior. Se houver descrição ou contexto sociológico, trate-os como metadados gerados pelo processamento, não como argumento pronto. Volte ao PDF sempre que o recorte não bastar."
+          ],
+          "items": [
+            {"name": "Validação manual", "description": "Campo de revisão na exportação. No Lexical começa como revisar; no Híbrido é preparado para preenchimento humano. Não há botão de validação na tela de gráficos."},
+            {"name": "Observações do pesquisador", "description": "Campo vazio na planilha para registrar justificativa, exceção ou decisão metodológica associada ao resultado."},
+            {"name": "Similaridade semântica", "description": "Número usado pelo modelo para recuperar e ordenar candidatos semânticos; não equivale a certeza, frequência ou relevância."}
+          ]
+        },
+        {
+          "id": "planilha-lexical",
+          "title": "Planilha do método Lexical, aba por aba",
+          "keywords": ["Ocorrencias", "Resumo por termo", "Resumo por tipo", "Termos pesquisados", "Diagnostico OCR", "PARAMETROS", "ID resultado"],
+          "body": [
+            "A exportação Lexical contém Ocorrencias, Resumo por termo, Resumo por tipo, Termos pesquisados, Diagnostico OCR e PARAMETROS. A primeira aba é a fonte detalhada; as abas de resumo servem para conferir distribuições e não substituem os recortes textuais. PARAMETROS registra método, abrangência, arquivos, consultas, data, unidade de recuperação, OCR e observações metodológicas.",
+            "Em Ocorrencias, as colunas são: ID resultado, ID livro, Termo, Parágrafo anterior, Parágrafo do termo, Parágrafo posterior, Unidade, Capítulo, Seção, Subseção, Página, Tipo da ocorrência, Contexto sociológico da ocorrência, Descrição da ocorrência, Validação manual e Observações do pesquisador. ID resultado é o identificador exportado para rastrear a linha; ID livro identifica o PDF pelo nome-base usado pela análise.",
+            "Resumo por termo agrupa as contagens por consulta; Resumo por tipo resume os tipos de ocorrência gerados pelo processamento; Termos pesquisados registra a lista de consultas. Diagnostico OCR mostra arquivo, páginas com texto extraível, páginas processadas com OCR e idioma OCR. Campos estruturais como Unidade, Capítulo, Seção ou Subseção podem ficar vazios se o PDF não apresentou padrão que o extrator reconheça."
+          ],
+          "items": [
+            {"name": "Parágrafo anterior / do termo / posterior", "description": "Permitem verificar preparação, ocorrência e continuidade da passagem. Nas bordas do documento, anterior ou posterior pode estar vazio."},
+            {"name": "Tipo da ocorrência", "description": "Caracteriza o bloco recuperado pelo processador; não é avaliação de pertinência para sua pergunta."},
+            {"name": "Descrição da ocorrência", "description": "Texto de apoio produzido pelo processamento. Leia junto ao PDF; não o use como interpretação final."}
+          ]
+        },
+        {
+          "id": "planilha-hibrida",
+          "title": "Planilha do método Híbrido, aba por aba",
+          "keywords": ["Resultados", "Resumo lexical", "Resumo semântico", "Resumo por consulta", "Similaridade semântica", "Página inicial", "Página final", "PARAMETROS"],
+          "body": [
+            "A exportação Híbrida contém Resultados, Resumo lexical, Resumo semântico, Resumo por consulta, Termos pesquisados, Diagnostico OCR e PARAMETROS. Resultados é a aba detalhada e tem: ID resultado, ID livro, Consulta, Termo encontrado, Tipo de correspondência, Similaridade semântica, Página inicial, Página final, Bloco anterior, Trecho da ocorrência, Bloco posterior, Contexto sociológico, Descrição, Validação manual e Observações do pesquisador.",
+            "Consulta é a entrada informada por você. Termo encontrado mostra a evidência textual quando existe; pode ficar vazio em uma correspondência exclusivamente Semântica. Tipo de correspondência diferencia Lexical, Morfológica, Semântica e Lexical + semântica. Similaridade semântica e Página final podem ficar vazias quando não se aplicam; Página final ajuda a registrar um trecho que atravessa mais de uma página.",
+            "Resumo lexical e Resumo semântico separam as duas naturezas de recuperação; Resumo por consulta consolida por entrada. Diagnostico OCR e PARAMETROS devem ser lidos antes de comparar Bases, porque mudanças de PDFs, idioma/OCR, limiar ou método podem explicar diferenças de contagem."
+          ],
+          "items": [
+            {"name": "Resumo semântico", "description": "Resume apenas candidatos semânticos; não representa automaticamente citações ou ocorrências literais."},
+            {"name": "Termo encontrado", "description": "Forma textual recuperada; vazio pode ser esperado em candidato semântico sem evidência lexical direta."},
+            {"name": "Página inicial / final", "description": "Orientam o retorno ao PDF. A página final só é preenchida quando o trecho recuperado precisa de intervalo."}
+          ]
+        },
+        {
+          "id": "analise-da-planilha",
+          "title": "Como analisar os resultados sem confundir frequência com interpretação",
+          "keywords": ["filtro Excel", "comparar documentos", "frequência", "padrões", "exceções", "tabela dinâmica"],
+          "body": [
+            "Comece filtrando uma consulta e um PDF na aba detalhada. Leia o trecho e os blocos vizinhos, marque sua decisão em Validação manual e registre a razão em Observações do pesquisador. Depois compare a distribuição entre consultas e documentos nas abas de resumo, sempre verificando se os mesmos PDFs, método, OCR e parâmetros foram usados.",
+            "Você pode usar filtros, ordenação e tabelas dinâmicas no Excel para organizar a leitura; são recursos do Excel, não ações automáticas do Análysis. Procure padrões e exceções, mas retorne ao PDF quando uma linha estiver ambígua, truncada ou associada a OCR. Uma contagem alta descreve registros localizados sob uma regra; não mede sozinha centralidade, concordância, causalidade ou relevância analítica.",
+            "Para comparar duas Bases, comece por PARAMETROS e Diagnostico OCR. Só então compare resumos. Se corpus, consulta, limiar ou método forem diferentes, trate a diferença como diferença de configuração antes de tratá-la como mudança substantiva nos documentos."
+          ],
+          "items": []
+        },
+        {
+          "id": "exemplo-completo",
+          "title": "Exemplo completo: localizar e revisar um recorte",
+          "keywords": ["exemplo", "Nordeste", "Rio de Janeiro", "análise completa", "passo a passo"],
+          "body": [
+            "Exemplo: você quer investigar como três lugares são mencionados em um conjunto de livros. Crie ou abra o projeto, envie os PDFs em Arquivos PDF e informe “Rio de Janeiro; Rio Grande do Norte; João Pessoa” em Termos para pesquisar. Cada expressão fica inteira; o ponto e vírgula separa as três consultas.",
+            "Comece em Lexical para ver as evidências textuais e as variações tratadas pelo mecanismo. Clique em Processar, acompanhe o progresso e, ao abrir o resultado, confira se todos os PDFs foram analisados e se houve OCR. Na aba Ocorrencias, filtre “Rio Grande do Norte”, leia Parágrafo anterior, Parágrafo do termo e Parágrafo posterior e confronte a Página com o PDF.",
+            "Se a pergunta também admitir passagens de sentido próximo que não repetem a expressão, crie outra Base Híbrida com os mesmos PDFs, escolha e registre o limiar e mantenha os resultados semânticos separados na revisão. Use a planilha para documentar o que a leitura sustenta; o exemplo organiza a investigação, mas não conclui o que os autores querem dizer."
+          ],
+          "items": []
+        },
+        {
+          "id": "problemas-limites-e-glossario",
+          "title": "Problemas comuns, limites e glossário",
+          "keywords": ["nenhum resultado", "resultado demais", "OCR", "glossário", "Base", "consulta", "ocorrência", "Híbrido"],
+          "body": [
+            "Nenhum resultado: confira ortografia, separadores, PDFs enviados, método e Diagnostico OCR. Uma expressão pode não estar no corpus, ter sido reconhecida de modo diferente no OCR ou exigir outra formulação. Resultados demais: refine a consulta, comece pelo Lexical e leia os contextos antes de reduzir o corpus ou tirar conclusões. No Híbrido, experimente um limiar mais alto em uma nova Base e compare a configuração.",
+            "Limites reais: OCR pode errar caracteres; blocos extraídos de tabelas ou colunas podem perder a ordem visual; famílias lexicais não cobrem todos os sinônimos; similaridade semântica produz candidatos, não validação. A tela oferece Literal, Lexical e Híbrido; Regex é disponível apenas ao combinar com Literal. A validação manual da planilha não atualiza automaticamente a Base.",
+            "Glossário: Base é uma execução preservada; consulta é a palavra ou expressão informada; ocorrência/resultado é um candidato localizado; contexto são os blocos ao redor do candidato; Lexical exige evidência textual tratada pelo mecanismo; Híbrido soma a ela candidatos por proximidade de sentido; limiar é o valor que restringe ou amplia candidatos semânticos."
+          ],
+          "items": []
+        }
+      ]
+    },
+    {
+      "key": "term_analysis",
+      "title": "Tutorial: Base de Busca por termos",
+      "summary": "Revise ocorrências, contexto, método e exporte a Base para continuar a análise.",
+      "sections": [
+        {"id": "visao-geral", "title": "O que a Base apresenta", "body": ["A Base preserva os PDFs processados, as consultas, o método utilizado e as ocorrências localizadas. A tela de resultados mostra uma amostra navegável e os detalhes de contexto disponíveis."], "items": []},
+        {"id": "revisao", "title": "Como revisar", "body": ["Leia a ocorrência junto dos blocos anterior e posterior e confira a página indicada. Distingua correspondência textual de candidato semântico antes de concluir que o resultado responde à questão de pesquisa."], "items": []},
+        {"id": "novas-buscas", "title": "Novas buscas", "body": ["Retorne ao projeto para criar outra Base com outros termos, documentos ou método. Uma nova execução não altera a Base já concluída."], "items": []},
+        {"id": "exportacao", "title": "Consulta e exportação", "body": ["Use a exportação XLSX da Base para documentar resultados, filtros e decisões de validação. A aba PARAMETROS registra informações do processamento que ajudam na rastreabilidade."], "items": []}
+      ]
+    },
+    {
+      "key": "structured_search",
+      "title": "Tutorial: Busca estruturada",
+      "summary": "Organize um vocabulário do projeto, processe PDFs por correspondências Literais, Lexicais ou Híbridas e revise as evidências estruturadas antes de interpretá-las.",
+      "sections": [
+        {
+          "id": "modelo-mental",
+          "title": "O que a Busca estruturada faz",
+          "body": [
+            "A Busca estruturada não começa com uma lista livre de palavras em cada execução. Ela consulta o vocabulário ativo do projeto: grupos organizam o recorte, entidades representam os itens pesquisados e variantes definem as formas que podem ser localizadas nos PDFs.",
+            "A cadeia real de trabalho é Grupo → Entidade → Variante ativa → Correspondência em um parágrafo/bloco do PDF → Contexto → Ocorrência estruturada. Uma mesma entidade pode estar em mais de um grupo sem ser duplicada; uma ocorrência registra a entidade e todos os grupos aos quais ela pertence.",
+            "Use-a quando a pergunta exige localizar e comparar um conjunto previamente organizado de referências, por exemplo autores, conceitos, movimentos ou categorias. A Busca por termos é mais adequada quando você quer informar consultas livres para uma Base; a Busca estruturada preserva o vocabulário, sua versão e seu hash como parte do resultado rastreável."
+          ],
+          "items": []
+        },
+        {
+          "id": "fluxo-operacional",
+          "title": "Fluxo completo: do projeto à Base",
+          "body": [
+            "1. Abra um projeto de Busca estruturada. No cartão Vocabulário da pesquisa, confira a versão ativa e as contagens de grupos, entidades e variantes. As bibliotecas mostradas ali são as associadas ao projeto; a execução registra o snapshot do vocabulário efetivamente usado.",
+            "2. Se o recorte precisar de ajuste, selecione Gerenciar vocabulário. Faça as mudanças no rascunho e salve uma nova versão antes de processar. O salvamento não reprocessa Bases anteriores: para comparar resultados, execute novamente os documentos com a nova versão ativa.",
+            "3. Em Busca estruturada por entidades, escolha o Método de raspagem, envie um ou mais Arquivos PDF e selecione Processar. O botão só é habilitado quando há arquivos PDF válidos, salvo uma nova execução aberta a partir da duplicação de uma Base, que pode reutilizar os documentos preservados.",
+            "4. A plataforma cria uma Base, preserva os documentos, lê cada página, localiza candidatos e mostra o progresso por arquivo, página e, no Híbrido, por blocos semânticos. Ao terminar, dê um nome à Base para abrir o dashboard; PDFs, dados e planilha já estão preservados mesmo antes de nomeá-la.",
+            "5. No dashboard, confira resumo, gráficos e as primeiras ocorrências. Abra Contexto em uma linha para ler os trechos anterior, da ocorrência e posterior. Baixe a planilha para revisar o conjunto completo e registrar decisões humanas fora da interface atual."
+          ],
+          "items": []
+        },
+        {
+          "id": "grupos",
+          "title": "Grupos: a organização do recorte",
+          "body": [
+            "Na interface do Análysis, o agrupador que pode cumprir o papel de uma categoria chama-se Grupo. Em Gerenciar grupos e entidades, use + Criar novo grupo para informar Nome do grupo e, opcionalmente, Descrição. O identificador técnico é criado pela interface; você organiza o recorte pelo nome compreensível do grupo.",
+            "Um grupo pode estar Ativo ou Inativo. A busca considera somente entidades ativas que tenham pelo menos um grupo ativo. Desativar é o caminho para retirar um grupo do próximo processamento preservando o histórico; grupos antigos não podem ser apagados de uma versão posterior.",
+            "Uma entidade pode ser associada a um ou mais grupos. Isso permite, por exemplo, reunir uma entidade em dois recortes analíticos sem cadastrá-la duas vezes. Na exportação, Grupo(s) mostra as associações preservadas para a ocorrência."
+          ],
+          "items": [
+            {"name": "Nome", "description": "Rótulo exibido para organizar e reconhecer o recorte; deve ser diferente dos demais nomes de grupo."},
+            {"name": "Descrição", "description": "Campo opcional para registrar o critério de inclusão do grupo; não cria uma regra automática de busca."},
+            {"name": "Grupo ativo", "description": "Controla se o grupo participa da seleção de entidades pesquisáveis da próxima execução."}
+          ]
+        },
+        {
+          "id": "entidades-e-variantes",
+          "title": "Entidades e variantes: o que será procurado",
+          "body": [
+            "Entidade é o registro pesquisável do vocabulário. Para criar uma, use + Adicionar entidade ou o botão de um grupo. Informe Forma canônica, selecione ao menos um Grupo e acrescente Variantes, uma por linha. A forma canônica é incluída entre as variantes quando a entidade é criada, portanto ela também precisa estar presente como forma pesquisável.",
+            "A entidade tem um identificador estável gerado pela interface, mas o usuário trabalha principalmente com a forma canônica. O sistema rejeita forma canônica repetida, identificador repetido e uma variante atribuída a duas entidades diferentes: isso evita que a mesma forma seja silenciosamente associada a itens concorrentes.",
+            "Depois de criar, abra a entidade para alterar sua forma canônica, Tipo, grupos, Tradição intelectual, País/região, Observações, estado ativo e as variantes. Use Ativa em uma variante para mantê-la registrada sem procurá-la nos próximos jobs. Entidades e variantes anteriores não podem ser apagadas de uma nova versão; desative-as para preservar rastreabilidade."
+          ],
+          "items": [
+            {"name": "Forma canônica", "description": "Nome de referência da entidade, exibido nos resultados e usado pelo Híbrido como consulta semântica."},
+            {"name": "Grupo(s)", "description": "Ao menos um grupo é obrigatório; a entidade pode participar de vários grupos ativos."},
+            {"name": "Variantes", "description": "Grafias, abreviações ou formas de referência que a busca lexical pode localizar; informe uma forma por linha ao criar."},
+            {"name": "Tipo", "description": "Classifica a entidade no vocabulário com um dos tipos oferecidos: autor, movimento, conceito, obra, categoria racial, país/região, tradição, termo contextual ou outro."},
+            {"name": "Tradição intelectual", "description": "Metadado opcional selecionado entre as opções configuradas; é exportado quando informado, mas não altera por si só a correspondência."},
+            {"name": "País/região e Observações", "description": "Metadados opcionais para organizar a entidade; País/região pode aparecer na planilha e Observações não é uma regra de busca."},
+            {"name": "Entidade ativa", "description": "Quando desmarcada, preserva o registro na versão, mas exclui a entidade das próximas pesquisas."}
+          ]
+        },
+        {
+          "id": "opcoes-da-tela",
+          "title": "Campos e opções da tela de processamento",
+          "body": [
+            "A tela principal apresenta Literal, Lexical e Híbrido, além da caixa Regex. Não há lista de termos livre nesta ferramenta: o que é procurado vem das entidades e variantes ativas do vocabulário do projeto. Grupo organiza uma categoria do recorte; Entidade é a unidade analítica; Variante é cada forma usada para localizá-la nos PDFs.",
+            "Literal procura cada variante conforme cadastrada, sem expansão de família. Ao marcar Regex com Literal, cada variante ativa é interpretada como padrão regular; use isso apenas quando o vocabulário foi escrito conscientemente como expressão regular. Lexical expande as variantes pelo mesmo motor de família lexical do Quali-dados. Ao alternar de Lexical para Híbrido, o controle Limiar de similaridade aparece e é habilitado. Ele vai de 0,50 a 0,90 em passos de 0,01; o valor inicial é 0,50, mais exploratório. Um limiar maior restringe os candidatos semânticos, mas não torna uma ocorrência automaticamente mais relevante para a pesquisa.",
+            "Regex é habilitada somente com Literal. Ao mudar para Lexical ou Híbrido, a interface a desmarca e desabilita; o servidor valida a mesma regra. Uma Regex inválida é recusada com mensagem amigável antes do processamento, preservando o vocabulário e as Bases anteriores."
+          ],
+          "items": [
+            {"name": "Método de raspagem — Literal", "description": "Localiza cada variante ativa conforme cadastrada, sem ampliar automaticamente a família lexical."},
+            {"name": "Regex", "description": "Caixa disponível somente com Literal. Interpreta cada variante ativa como expressão regular; não pode ser combinada com Lexical ou Híbrido."},
+            {"name": "Método de raspagem — Lexical", "description": "Padrão da tela. Localiza variantes configuradas e suas expansões pelo motor lexical compartilhado; não carrega o motor semântico."},
+            {"name": "Método de raspagem — Híbrido", "description": "Mantém todos os achados lexicais do motor compartilhado e acrescenta candidatos de similaridade semântica; exige revisão adicional."},
+            {"name": "Limiar de similaridade", "description": "Só vale no Híbrido. Menor limiar tende a recuperar mais candidatos; maior limiar tende a exigir maior proximidade segundo o modelo."},
+            {"name": "Arquivos PDF", "description": "Obrigatório em uma execução nova. Aceita um ou vários arquivos com extensão .pdf; PDFs inválidos ou sem texto recuperável são relatados no processamento."},
+            {"name": "Processar", "description": "Cria a Base e inicia o job assíncrono. Não edita o vocabulário nem altera Bases concluídas."}
+          ]
+        },
+        {
+          "id": "localizacao-lexical",
+          "title": "Como o método Lexical localiza ocorrências",
+          "body": [
+            "A plataforma extrai os blocos de texto de cada página e constrói parágrafos na ordem original. No modo Literal, cada variante é procurada conforme foi cadastrada, sem expansão de família. No modo Lexical, a comparação usa o motor compartilhado: tokeniza palavras, normaliza caixa e acentos para identificar formas relacionadas e preserva a grafia original do PDF no resultado.",
+            "No Lexical, as variantes são procuradas com limites de palavra e com expansão morfológica e derivacional controlada. Assim, uma ocorrência dentro de uma palavra maior não deve ser aceita apenas por conter os mesmos caracteres, nem uma palavra apenas parecida entra por prefixo. No Literal + Regex, a própria variante é o padrão controlado pelo vocabulário; revise cuidadosamente padrões que tenham alternativas ou fronteiras de palavra.",
+            "Quando formas sobrepostas pertencem à mesma entidade, o buscador mantém o candidato mais longo naquela região. Entidades diferentes podem continuar produzindo ocorrências distintas no mesmo parágrafo se suas formas forem correspondências válidas. O método é de localização: não infere posição do autor, influência, tema central ou relação conceitual."
+          ],
+          "items": []
+        },
+        {
+          "id": "metodo-hibrido",
+          "title": "O que muda no método Híbrido",
+          "body": [
+            "O Híbrido executa primeiro o mesmo caminho Lexical. Depois cria blocos semânticos a partir do texto extraído e compara esses blocos às formas canônicas das entidades usando o motor semântico registrado na própria Base e na planilha.",
+            "Se um candidato semântico coincide com um achado lexical da mesma entidade no trecho comparável, a ocorrência lexical é preservada e marcada como Lexical + semântica, com a maior similaridade observada. Se não coincide, é criada uma ocorrência Semântica, que pode ter Página PDF inicial e Página PDF final quando o bloco atravessa páginas.",
+            "Para uma ocorrência exclusivamente semântica, Termo encontrado e Forma original no texto podem ficar vazios: não houve uma variante literal identificada. Similaridade semântica é uma medida do modelo para ordenar ou revisar candidatos; não prova equivalência conceitual, citação, posição do autor nem validade analítica."
+          ],
+          "items": []
+        },
+        {
+          "id": "ocr",
+          "title": "PDF textual, PDF digitalizado e OCR",
+          "body": [
+            "Em uma página com texto extraível suficiente, a Busca estruturada usa os blocos textuais do próprio PDF. Quando a página precisa de reconhecimento, o OCR é acionado automaticamente naquela página; não existe uma caixa para escolher OCR manualmente no formulário.",
+            "O idioma é escolhido entre os idiomas instalados no servidor: a prioridade é português + inglês quando ambos estão disponíveis, depois português, depois inglês e, por fim, outro idioma instalado. A aba DOCUMENTOS registra se OCR foi utilizado e o idioma efetivamente usado.",
+            "OCR pode introduzir ou omitir caracteres, quebrar palavras, confundir acentos e ler colunas/tabelas em ordem inesperada. Se uma entidade esperada não aparece ou surge em forma estranha, compare o trecho com o PDF, confira a variante ativa e considere a qualidade da digitalização. Se o OCR necessário não estiver disponível, o job informa o problema em vez de inventar texto."
+          ],
+          "items": []
+        },
+        {
+          "id": "ocorrencias-e-contexto",
+          "title": "O que é uma ocorrência e como ler o contexto",
+          "body": [
+            "Uma ocorrência é uma correspondência candidata produzida pelas regras do método escolhido. Ela liga um documento, uma página, uma entidade canônica, uma forma encontrada quando houver, o tipo de correspondência e os grupos do vocabulário. Por padrão, as ocorrências são registradas com Validação pendente e requerem revisão humana.",
+            "O contexto é formado pelo parágrafo/bloco anterior, pelo trecho onde a ocorrência foi localizada e pelo parágrafo/bloco posterior na sequência extraída. Nas bordas do documento, Anterior ou Posterior pode ficar vazio. O campo Contexto completo reúne as partes disponíveis; ele não é uma interpretação automática.",
+            "Na Base concluída, Primeiras ocorrências mostra até 100 linhas com PDF, Página, Entidade, Forma encontrada, Correspondência, Similaridade, Grupo e o botão Contexto. Os gráficos contam ocorrências por entidade e por tipo de correspondência. Use contagens para orientar a leitura, não como conclusão sobre importância, frequência substantiva ou posição argumentativa."
+          ],
+          "items": []
+        },
+        {
+          "id": "tela-de-resultados",
+          "title": "Como trabalhar com a Base concluída",
+          "body": [
+            "O cabeçalho da Base apresenta projeto, quantidade de PDFs e ocorrências, método, limiar quando houver, data e documentos preservados. O resumo mostra entidades distintas, versão e hash do vocabulário e as bibliotecas associadas ao projeto. Esses metadados ajudam a distinguir Bases que usaram recortes ou versões diferentes.",
+            "Em Gráficos, Ocorrências por entidade agrupa os registros pela forma canônica e Ocorrências por tipo de correspondência separa Lexical, Semântica e Lexical + semântica quando existirem. Gráficos vazios significam que não há ocorrências registradas naquela série.",
+            "A interface atual não possui comando para incluir, excluir ou recodificar uma ocorrência da Busca estruturada. Para revisão manual, leia o contexto e use a exportação; os campos de validação e de nota são disponibilizados na planilha como apoio, sem reimportação automática para a Base."
+          ],
+          "items": []
+        },
+        {
+          "id": "planilha-documentos",
+          "title": "Planilha XLSX — aba DOCUMENTOS",
+          "body": [
+            "A exportação cria sempre quatro abas, nesta ordem: DOCUMENTOS, OCORRENCIAS, CODIFICACAO e COOCORRENCIAS. Todas têm filtro automático, primeira linha congelada e valores textuais tratados como texto, para que conteúdo de PDF não seja executado como fórmula.",
+            "DOCUMENTOS descreve cada PDF processado e os parâmetros que ajudam a reproduzir ou comparar a Base. Campos de metadados bibliográficos que não são preenchidos pelo processamento atual podem ficar vazios; vazio não significa que o PDF não existe."
+          ],
+          "items": [
+            {"name": "ID projeto / ID documento / ID arquivo", "description": "Identificadores técnicos para rastrear a execução, o documento lógico e o arquivo preservado."},
+            {"name": "Arquivo PDF", "description": "Nome original exibido do PDF processado."},
+            {"name": "Página PDF inicial / Página PDF final", "description": "Intervalo de páginas do documento processado."},
+            {"name": "OCR utilizado / Idioma OCR utilizado", "description": "Indicam se alguma página precisou de OCR e qual idioma foi usado quando aplicável."},
+            {"name": "Publicação, Organização, Ano, Autor, Título, Página impressa", "description": "Metadados reservados; o processamento atual não os preenche automaticamente."},
+            {"name": "Método de análise / Limiar semântico / Modelo semântico", "description": "Registram Literal, Literal+Regex, Lexical ou Híbrido; limiar e modelo ficam vazios quando não há etapa semântica."},
+            {"name": "Versão do vocabulário / Hash do vocabulário", "description": "Identificam exatamente o snapshot usado na execução."},
+            {"name": "Bibliotecas de origem / Data do processamento", "description": "Registram as bibliotecas associadas ao projeto e o momento em que a Base foi processada."}
+          ]
+        },
+        {
+          "id": "planilha-ocorrencias",
+          "title": "Planilha XLSX — aba OCORRENCIAS",
+          "body": [
+            "OCORRENCIAS contém uma linha por candidato localizado. Ela é a aba principal para filtrar, comparar e voltar ao contexto textual. Os campos de decisão humana são inicializados pelo processamento, mas não são atualizados pela interface atual depois da exportação.",
+            "Página PDF final normalmente fica vazia em uma correspondência lexical de uma página; pode ser preenchida em candidato semântico que cobre mais de uma página. Termo encontrado e Forma original no texto também podem ficar vazios em correspondências exclusivamente semânticas."
+          ],
+          "items": [
+            {"name": "ID ocorrência / ID documento / Arquivo PDF", "description": "Chaves de rastreabilidade da ocorrência e de seu documento."},
+            {"name": "Página PDF / Página PDF final", "description": "Página inicial e, quando o bloco semântico se estende, página final do candidato."},
+            {"name": "Categoria de busca", "description": "No pipeline atual, o valor registrado é entidades; ele identifica a natureza estruturada da busca, não um grupo criado pelo usuário."},
+            {"name": "Tipo de entidade / Identificador da entidade / Entidade canônica", "description": "Descrevem a classificação do vocabulário, seu ID estável e o nome de referência exibido."},
+            {"name": "Termo encontrado / Forma original no texto", "description": "Variante que motivou o achado lexical e sua grafia recortada do PDF; podem ficar vazios em candidato somente semântico."},
+            {"name": "Grupo(s) / Bibliotecas de origem", "description": "Mostram os grupos da entidade e os identificadores das bibliotecas de que a entidade foi composta, quando houver."},
+            {"name": "Método de análise / Tipo de correspondência / Similaridade semântica", "description": "Diferenciam o método da Base, Lexical, Semântica ou Lexical + semântica e o escore disponível apenas quando houve comparação semântica."},
+            {"name": "Trecho anterior / Trecho da ocorrência / Trecho posterior / Contexto completo", "description": "Preservam o material textual para conferência; cada um pode estar vazio nas bordas do documento."},
+            {"name": "Tradição intelectual / País/região matriz", "description": "Metadados da entidade, quando cadastrados no vocabulário; não são inferidos do PDF."},
+            {"name": "Validação / Forma de referência / Operação de repertório", "description": "Validação começa como pendente; os demais campos começam vazios e são campos de revisão humana na planilha."}
+          ]
+        },
+        {
+          "id": "planilha-codificacao",
+          "title": "Planilha XLSX — aba CODIFICACAO",
+          "body": [
+            "CODIFICACAO é uma folha de trabalho para vincular a decisão humana ao ID ocorrência. Na exportação atual, há uma linha para cada ocorrência e apenas o ID ocorrência vem preenchido; editar essa aba não altera automaticamente a Base salva na plataforma.",
+            "Use-a para registrar sua revisão ao lado da aba OCORRENCIAS, mantendo a ligação estável com o candidato que foi analisado."
+          ],
+          "items": [
+            {"name": "ID ocorrência", "description": "Chave que relaciona a anotação manual à linha correspondente em OCORRENCIAS."},
+            {"name": "Validação manual", "description": "Espaço inicialmente vazio para a decisão do pesquisador; não é preenchido nem reimportado automaticamente."},
+            {"name": "Forma de referência", "description": "Espaço de registro manual para caracterizar a referência após leitura contextual."},
+            {"name": "Operação de repertório", "description": "Espaço de registro manual para uma classificação analítica definida pelo pesquisador."},
+            {"name": "Nota analítica do pesquisador", "description": "Espaço livre para justificar, qualificar ou registrar uma decisão de revisão."}
+          ]
+        },
+        {
+          "id": "planilha-coocorrencias",
+          "title": "Planilha XLSX — aba COOCORRENCIAS",
+          "body": [
+            "COOCORRENCIAS reserva uma estrutura para documentar relações entre duas ocorrências do mesmo documento quando o pesquisador decidir estudá-las; o processamento atual não preenche pares automaticamente: não os calcula nem sugere, por isso a aba sai somente com cabeçalhos.",
+            "Não conclua coocorrência por proximidade numérica, por estar na mesma página ou por aparecer no mesmo gráfico. Qualquer relação deve ser construída e justificada pelo pesquisador a partir dos documentos."
+          ],
+          "items": [
+            {"name": "ID ocorrência A / ID ocorrência B", "description": "Campos para referenciar duas ocorrências já existentes na aba OCORRENCIAS."},
+            {"name": "ID documento", "description": "Documento ao qual o eventual par se refere."},
+            {"name": "Observações do pesquisador", "description": "Campo livre para explicitar o critério e a leitura que sustentam a relação manual."}
+          ]
+        },
+        {
+          "id": "leitura-analitica",
+          "title": "Como explorar os resultados sem confundir frequência com interpretação",
+          "body": [
+            "Comece em OCORRENCIAS filtrando Grupo(s), Entidade canônica, Tipo de correspondência ou Arquivo PDF. Compare onde uma mesma entidade aparece, leia o contexto completo e volte ao PDF quando o recorte extraído não bastar. Depois use DOCUMENTOS para separar diferenças de método, OCR e versão do vocabulário antes de comparar Bases.",
+            "Uma sequência prática é: 1. escolher um grupo; 2. comparar as entidades daquele grupo; 3. separar achados Lexicais e Semânticos; 4. conferir os trechos e seus documentos; 5. registrar a decisão em CODIFICACAO; 6. só então produzir uma interpretação em seu material de pesquisa. Ausência de ocorrência também deve ser considerada à luz das variantes, OCR e dos documentos efetivamente processados.",
+            "Contagens e gráficos descrevem registros localizados sob uma configuração. Eles não demonstram centralidade de um tema, concordância do autor, influência intelectual, causalidade nem relevância substantiva sem leitura, critério metodológico e argumentação do pesquisador."
+          ],
+          "items": []
+        },
+        {
+          "id": "exemplo-completo",
+          "title": "Exemplo operacional: um recorte por autores e conceitos",
+          "body": [
+            "Imagine que você queira acompanhar referências a um conjunto de autores e conceitos em vários PDFs. Crie um grupo com um nome que descreva o recorte, por exemplo Referências do corpus. Em seguida, crie uma entidade para cada item, informe a forma canônica, associe-a ao grupo e acrescente somente variantes que você considera formas legítimas de busca.",
+            "Salve a nova versão do vocabulário, volte à análise, envie os PDFs e comece por Lexical se quiser conferir como as variantes aparecem. No dashboard, abra o Contexto de cada ocorrência antes de registrar uma decisão. Se a pergunta também admitir trechos próximos em sentido, crie outra Base em Híbrido, anote o limiar usado e mantenha Lexical e Semântica separados na revisão.",
+            "Na planilha, filtre o grupo, compare Entidade canônica e Arquivo PDF, examine os contextos e use CODIFICACAO para registrar o que a leitura sustenta. O exemplo organiza a pesquisa; ele não obriga um vocabulário, uma categoria ou uma interpretação específica."
+          ],
+          "items": []
+        },
+        {
+          "id": "problemas-e-limites",
+          "title": "Problemas comuns: nenhuma ocorrência e outros limites",
+          "body": [
+            "Nenhuma ocorrência foi encontrada: confirme se a entidade, o grupo e as variantes estão ativos, se o PDF correto foi enviado e se a forma esperada está realmente coberta pelo vocabulário. Revise também OCR, grafias, abreviações e a possibilidade de o documento não conter o item.",
+            "Resultados demais ou inesperados: leia os trechos, verifique se uma variante é ambígua, desative-a apenas em uma nova versão quando apropriado e reexecute a Base. Um limiar menor no Híbrido tende a ampliar candidatos; subir o limiar pode restringi-los, mas não substitui a revisão contextual.",
+            "Campos vazios ou linhas aparentemente repetidas: em Semântica, forma literal e página final podem não existir como nos achados lexicais; em DOCUMENTOS, metadados bibliográficos não são extraídos automaticamente; em CODIFICACAO, os campos são propositalmente manuais; COOCORRENCIAS fica vazia porque não há cálculo de pares. PDFs escaneados, tabelas, colunas e layouts incomuns podem afetar extração, OCR, ordem de blocos e contexto.",
+            "A Busca estruturada não possui integração automática que envie ocorrências para Quali-dados. Use os identificadores, documentos, páginas e contextos exportados para organizar uma continuidade metodológica quando necessário. O Assistente pode explicar estas regras com a documentação oficial, mas continua precisando de contexto autorizado para fatos do projeto, da Base e dos documentos."
+          ],
+          "items": []
+        },
+        {
+          "id": "quando-usar-e-comparar",
+          "title": "Quando usar a Busca estruturada — e quando outra ferramenta ajuda mais",
+          "keywords": ["quando usar", "diferença Busca por termos", "Quali-dados", "categorias", "entidades", "comparação ferramentas"],
+          "body": [
+            "Use a Busca estruturada quando o recorte precisa ser mantido como vocabulário: grupos organizam uma categoria analítica, entidades são os itens pesquisáveis e variantes são as formas aceitas para localizá-los. Ela é útil para comparar documentos ou Bases sob o mesmo snapshot de grupos, entidades e variantes, com versão e hash registrados na exportação.",
+            "Use Busca por termos quando as consultas podem ser informadas livremente para uma execução, sem criar antes uma estrutura de entidades. Use Quali-dados quando a atividade principal for leitura atenta, seleção de passagens, codificação, memos e comparação qualitativa de trechos. As três ferramentas podem apoiar o mesmo projeto de pesquisa, mas não transferem resultados entre si automaticamente.",
+            "Exemplo comparativo: para investigar menções ao Nordeste, uma Busca por termos pode localizar “Nordeste” e outras expressões escolhidas; a Busca estruturada pode organizar estados ou autores como entidades em grupos; o Quali-dados pode apoiar a leitura e a codificação dos sentidos atribuídos às menções. Nenhuma escolha é hierarquicamente melhor: ela depende da pergunta e do registro metodológico desejado."
+          ],
+          "items": []
+        },
+        {
+          "id": "execucao-e-progresso",
+          "title": "O que acontece depois de Processar",
+          "keywords": ["Processar", "progresso", "Base", "PDF", "página", "blocos semânticos", "erro"],
+          "body": [
+            "Processar cria uma Base e inicia um job assíncrono. O painel de andamento informa as etapas já concluídas: leitura de PDFs, páginas em análise, OCR quando necessário e, no Híbrido, preparação e comparação de blocos semânticos. O progresso não é uma confirmação metodológica; ele apenas mostra o avanço técnico do processamento.",
+            "Quando a Base fica pronta, ela preserva os PDFs, o snapshot do vocabulário, método, limiar quando houver, ocorrências e a exportação. Se um arquivo não puder ser processado, a interface informa a falha controlada. Antes de comparar totais, confira quais documentos entraram de fato, o diagnóstico OCR e a configuração registrada.",
+            "A interface não oferece nesta etapa uma opção para combinar documentos de Bases diferentes nem para editar uma ocorrência já produzida. Ajustar entidades, grupos ou variantes exige criar/salvar a versão apropriada do vocabulário e executar outra Base para preservar a rastreabilidade."
+          ],
+          "items": []
+        },
+        {
+          "id": "exemplo-geografico-e-glossario",
+          "title": "Segundo exemplo e glossário operacional",
+          "keywords": ["Estados do Nordeste", "Bahia", "Pernambuco", "Alagoas", "glossário", "grupo", "entidade", "variante", "ocorrência"],
+          "body": [
+            "Exemplo: crie o Grupo “Estados do Nordeste” e cadastre Bahia, Pernambuco e Alagoas como entidades separadas. A forma canônica é o nome de referência exibido; acrescente variantes apenas quando forem formas que você quer que a busca lexical localize. Ao processar um conjunto de PDFs, cada candidato guarda sua entidade, grupos, documento, página e contexto. O exemplo é uma forma possível de organizar um recorte, não uma taxonomia obrigatória do Análysis.",
+            "Glossário: Grupo é a categoria organizacional do vocabulário; Entidade é o item pesquisável associado a um ou mais grupos; Variante é uma forma textual ativa ou inativa da entidade; ocorrência é um candidato localizado pelo método; Base é a execução preservada; snapshot é a versão do vocabulário usada naquela Base; correspondência Lexical, Semântica ou Lexical + semântica identifica como o candidato foi obtido.",
+            "Dica: escreva nomes de grupos que expressem o critério do recorte e mantenha observações de entidades para documentar decisões de modelagem. Atenção: grupo, entidade e variante organizam a localização; eles não fazem o Análysis interpretar automaticamente a relevância de um trecho."
+          ],
+          "items": []
+        }
+      ]
+    },
+    {
+      "key": "structured_analysis",
+      "title": "Tutorial: Base de Busca estruturada",
+      "summary": "Revise candidatos localizados por um snapshot do vocabulário, confira seus contextos e use a planilha para registrar decisões humanas rastreáveis.",
+      "sections": [
+        {"id": "visao-geral", "title": "O que esta Base preserva", "body": ["A Base concluída preserva os PDFs, o método, o limiar quando Híbrido, o snapshot identificado por versão e hash do vocabulário, a data de processamento e as ocorrências localizadas. Ela não é alterada quando você muda o vocabulário depois; uma nova versão pede reprocessamento para comparação."], "items": []},
+        {"id": "resultados", "title": "Resumo, gráficos e contexto", "body": ["O resumo mostra entidades distintas, bibliotecas associadas ao projeto, versão e hash do vocabulário. Os gráficos agrupam apenas os registros já localizados por entidade e por tipo de correspondência. Em Primeiras ocorrências, Contexto mostra os trechos anterior, da ocorrência e posterior; leia-os antes de tirar conclusões."], "items": []},
+        {"id": "revisao", "title": "O que ainda depende do pesquisador", "body": ["Todas as ocorrências são candidatas e a Validação registrada pelo processamento começa como pendente. A interface atual não inclui controles para validar, excluir, recodificar ou reimportar uma linha; use a planilha para registrar revisão humana e preserve o ID ocorrência que mantém o vínculo com o resultado."], "items": []},
+        {"id": "exportacao", "title": "Quatro abas da exportação", "body": ["DOCUMENTOS registra origem e parâmetros; OCORRENCIAS traz cada candidato e seu contexto; CODIFICACAO é uma folha manual já ligada por ID ocorrência; COOCORRENCIAS é reservada e sai sem pares preenchidos. A planilha tem filtros e cabeçalho congelado para apoiar conferência, não para automatizar interpretação."], "items": []},
+        {"id": "rastreabilidade", "title": "Como comparar Bases", "body": ["Antes de comparar quantidades, confira PDF(s), versão e hash do vocabulário, método, limiar, modelo semântico quando houver e OCR. Uma diferença de configuração, variante ativa ou qualidade de extração pode produzir distribuições diferentes sem que isso seja, por si só, uma diferença substantiva do corpus."], "items": []}
+      ]
+    },
+    {
+      "key": "qualitative",
+      "title": "Tutorial: Análise quali-dados",
+      "summary": "Prepare PDFs em um ambiente qualitativo, leia o corpus, selecione passagens, crie códigos e memos, pesquise, autocodifique com revisão e retorne aos trechos pelo relatório.",
+      "sections": [
+        {"id": "visao-geral", "title": "O que é o Quali-dados e quando usá-lo", "keywords": ["análise qualitativa", "Base", "corpus", "código", "codificação", "memo", "quando usar"], "body": ["Quali-dados é o ambiente de leitura e análise qualitativa da plataforma. Ele prepara um corpus textual por página, mostra o PDF no leitor e permite selecionar uma passagem verificável para associá-la a códigos ou memos. A cadeia de trabalho é: projeto/ambiente → PDFs → corpus preparado → leitura → seleção → trecho → código ou memo → relatório → interpretação do pesquisador.", "No fluxo atual, um projeto Quali-dados tem normalmente um ambiente técnico de análise associado. Esse ambiente guarda documentos, códigos, trechos codificados, memos e rejeições de autocodificação. Projetos históricos com mais de um ambiente são apresentados separados para que documentos e registros antigos não sejam reunidos arbitrariamente.", "Use Quali-dados quando a tarefa exige retornar a passagens, compará-las, atribuir códigos e registrar notas de leitura. Busca por termos serve para localizar consultas livres em PDFs; Busca estruturada serve para localizar um vocabulário organizado em grupos, entidades e variantes. As três ferramentas não transferem resultados entre si automaticamente."], "items": []},
+        {"id": "quando-usar-e-comparar", "title": "Quando o Quali-dados é adequado — e quando outra ferramenta ajuda mais", "keywords": ["quando usar", "diferença Busca por termos", "Busca estruturada", "interpretação", "leitura", "comparação ferramentas"], "body": ["Use Quali-dados quando você precisa acompanhar a leitura de cada passagem: selecionar uma evidência, atribuir um ou mais códigos, explicar seu critério em memo e retornar ao PDF durante a análise. Ele organiza a relação entre trecho, código e documento, mas não transforma frequência ou cor em conclusão interpretativa.", "Use Busca por termos quando a etapa central é localizar expressões ou consultas livres e compará-las em resultados e planilhas. Use Busca estruturada quando o trabalho pede um vocabulário prévio de grupos, entidades e variantes com versão registrada. Os resultados não são transferidos automaticamente: para continuar um procedimento entre ferramentas, registre conscientemente PDFs, páginas, critérios e decisões.", "Exemplo comparativo: para investigar representações do Nordeste, uma Busca por termos pode localizar uma lista de expressões; uma Busca estruturada pode organizar estados ou autores; no Quali-dados você pode selecionar o contexto, codificar “representação regional”, escrever memos sobre o critério e comparar como o código aparece entre documentos."
+        ], "items": []},
+        {"id": "passos", "title": "Como começar: Base, PDFs e corpus", "keywords": ["Adicionar documentos", "PDF", "preparar corpus", "Base qualitativa", "excluir documento"], "body": ["Abra o projeto Quali-dados. Se o ambiente estiver vazio, use Adicionar documentos no cabeçalho local, escolha um ou mais PDFs e clique em Enviar documentos. Os originais são preservados; ao acrescentar arquivos, os documentos já preparados continuam no ambiente. Apenas PDFs válidos são aceitos e a plataforma verifica se o conteúdo pode ser lido antes de preparar o corpus.", "Depois do envio, a tela mostra Preparando corpus textual com documento, página e etapa. “Corpus preparado” significa que o texto técnico está pronto para leitura e busca; não significa que a interpretação está concluída. Se houver falha, os PDFs originais são preservados e a tela informa o erro controlado.", "No Explorador, abra Documentos para trocar o PDF. Para a pessoa proprietária de projeto ativo, cada documento oferece exclusão. Excluir remove aquele PDF e os registros associados a ele; não pode ser desfeito. Se não houver PDF restante, o ambiente volta ao estado vazio."], "items": [{"name": "Adicionar documentos", "description": "Abre o envio de um ou mais PDFs. Documentos já preparados são preservados no acréscimo."}, {"name": "Documentos", "description": "Lista os PDFs da Base atual. Clique no nome para abrir aquele documento no leitor."}, {"name": "Excluir documento", "description": "Disponível à pessoa autorizada. Remove o PDF e trechos, codificações, memos e rejeições ligados a ele."}]},
+        {"id": "explorador", "title": "Explorador: documentos, códigos e memos", "keywords": ["Explorador", "Novo código", "Novo memo", "Relatório", "contador"], "body": ["O Explorador reúne três listas do ambiente atual. Documentos alterna o PDF aberto. Códigos mostra nome, cor e quantidade de trechos associados; permite criar, editar, excluir e abrir o Relatório. Memos mostra notas gerais e notas vinculadas, indicando quando o vínculo é com trecho, documento, código ou permanece geral.", "Criar um código ou memo pelo Explorador não exige selecionar texto. Já os comandos do menu contextual de uma passagem criam registros ligados à seleção. Os contadores são apoios de navegação: o número de trechos por código não é uma medida automática de importância interpretativa."], "items": [{"name": "Novo código", "description": "Pede Nome obrigatório e Descrição opcional. O nome precisa ser único após normalização dentro da Base."}, {"name": "Novo memo", "description": "Cria uma nota geral no ambiente; ela não é ligada automaticamente a uma passagem."}, {"name": "Relatório", "description": "Abre a página que agrupa as codificações atuais por código."}]},
+        {"id": "codificacao", "title": "Selecionar, codificar e anotar", "keywords": ["selecionar trecho", "Aplicar código", "Código in vivo", "Criar memo", "botão direito", "Shift+F10"], "body": ["Abra o PDF, localize a passagem e selecione texto dentro de uma única página. Abra o menu contextual com o botão direito ou pelo teclado com Shift+F10/tecla de menu. O Análysis confere se a seleção corresponde ao texto canônico e se tem até 10.000 caracteres; então oferece Aplicar código, Código in vivo e Criar memo.", "Em Aplicar código, pesquise ou crie um código no diálogo e escolha de um a trinta códigos existentes da Base. Salvar cria ou reaproveita o trecho e associa os códigos selecionados. Uma passagem pode ter vários códigos. Código in vivo usa a expressão selecionada como nome: cria ou reutiliza um código com esse nome; se a passagem for longa demais, reduza ou edite a sugestão.", "Criar memo abre um campo de observação ligado ao trecho. Os highlights e chips da Margem representam associações persistidas. Remover o × de um chip exclui apenas aquela codificação; não apaga o código inteiro nem as outras associações do mesmo trecho."], "items": [{"name": "Aplicar código", "description": "Associa códigos existentes à seleção; códigos e trecho precisam pertencer à Base atual."}, {"name": "Código in vivo", "description": "Cria ou reutiliza um código com o texto selecionado, respeitando nome único e limite de 160 caracteres."}, {"name": "Criar memo", "description": "Salva um memo contextual ligado ao trecho; não cria código automaticamente."}, {"name": "Ajustar limites", "description": "Quando disponível, move início e fim no mesmo texto canônico sem criar uma seleção duplicada."}]},
+        {"id": "leitor-e-margem", "title": "PDF, Margem analítica, cores e Modo foco", "keywords": ["zoom", "75%", "Ajustar", "Margem analítica", "highlight", "chip", "linha", "Modo foco"], "body": ["O PDF usa rolagem contínua e carrega páginas conforme necessário. A barra informa documento e página atual e oferece Zoom de 75%, Ajustar, 125%, 150% e 200%. Zoom muda somente a escala visual; não altera texto, offsets ou codificações. A Margem analítica fica ao lado em telas compatíveis e se adapta em composições estreitas.", "Cada chip colorido representa uma codificação individual. A cor vem de paleta definida, aparece no chip, highlight e linha de conexão e serve apenas para reconhecimento visual: não traz significado metodológico automático. Linhas SVG conectam chip e highlight quando ambos têm geometria válida; não recebem cliques nem bloqueiam scroll, seleção, menus ou scrollbar. Em composição móvel incompatível, elas podem ficar ocultas para não sugerir uma conexão errada.", "Clique em Modo foco para ampliar a leitura. O painel de controles passa a uma janela flutuante que inicia recolhida no canto superior esquerdo; use Expandir para revelar os controles. Em telas largas, arraste Controles da leitura ou use suas setas — Shift+seta move mais. Sair do foco não altera PDF, busca, códigos ou memos."], "items": [{"name": "Alterar cor", "description": "No menu de um chip, muda identificação visual de código, highlights e linhas sem alterar conteúdo ou busca."}, {"name": "Recolher / Expandir", "description": "Controla a janela no Modo foco; o botão continua acessível por teclado."}, {"name": "Zoom", "description": "Altera somente a visualização do PDF; os registros permanecem ancorados no texto canônico."}]},
+        {"id": "busca-e-autocodificacao", "title": "Busca consultiva e autocodificação", "keywords": ["Pesquisar no documento", "Buscar", "Regex", "Maiúsculas", "Autocodificação", "Lexical", "Semântica", "Múltiplos termos", "Rejeição contextual"], "body": ["Com Autocodificação desligada, Buscar consulta somente o documento aberto e não cria registros. O padrão é Literal: o texto é procurado literalmente, ignorando maiúsculas/minúsculas até que você marque Maiúsculas e minúsculas. Marque Regex para interpretar a consulta como expressão regular; o motor usa Unicode e impõe limite de tempo por página. Uma Regex inválida ou custosa falha sem devolver resultados parciais.", "Em Regex, “raç(a|as)” é um exemplo de alternativas para “raça” e “raças”; “\\b” delimita borda de palavra; “?” torna o elemento anterior opcional. Use padrões só quando forem necessários e teste consultas simples primeiro. Anterior, contador e Próximo percorrem resultados do documento aberto, mostram um snippet e destacam a passagem quando a geometria está disponível.", "Com Autocodificação ligada, escolha Literal, Lexical ou Semântica e o Escopo Documento atual ou Todos os documentos do projeto. Literal aceita Regex; Lexical acrescenta flexões e derivações da família lexical em português; Semântica combina evidências literal/lexical a segmentos de significado próximo com embeddings multilíngues e limiar configurado no servidor. Lexical e Semântica não aceitam Regex. Todos os candidatos automáticos precisam de revisão humana."], "items": [{"name": "Maiúsculas e minúsculas", "description": "Quando marcada, diferencia caixa; quando desmarcada, a busca usa comparação Unicode sem distinção de caixa."}, {"name": "Múltiplos termos", "description": "Na autocodificação, aceita consultas separadas por ponto e vírgula e cria/reutiliza um código por termo com ocorrência."}, {"name": "Rejeição contextual", "description": "Evita recriar uma associação automática já removida no mesmo contexto de consulta, código, página, limites e texto."}, {"name": "Escopo", "description": "Define se a autocodificação percorre só o PDF aberto ou todos os documentos da Base. A navegação visual continua no documento aberto."}]},
+        {"id": "busca-literal-e-regex", "title": "Busca Literal e Regex no PDF aberto", "keywords": ["Literal", "Regex", "padrão", "busca consultiva", "Anterior", "Próximo", "snippet", "resultado"], "body": ["Para uma conferência direta, deixe Autocodificação desligada e use Literal. Digite uma palavra ou expressão, escolha se deve diferenciar Maiúsculas e minúsculas e clique em Buscar. A busca percorre o texto canônico do PDF aberto; ela não pesquisa automaticamente os demais documentos e não salva codificação. Para outro arquivo, escolha-o no Explorador e refaça a consulta.", "Regex troca o texto literal por um padrão. “raç(a|as)” combina as duas formas explicitadas; “\\b” pede fronteira de palavra, útil para evitar localizar parte de uma palavra maior; “?” deixa opcional o elemento imediatamente anterior. Não existe uma opção separada para plural, acento ou família de palavras nesta busca consultiva: escreva a alternativa desejada no padrão ou use Lexical na autocodificação quando o objetivo for criar candidatos.", "Depois de Buscar, Anterior e Próximo mudam somente o resultado selecionado no documento aberto, e o contador informa a posição na lista. Leia o snippet e confira a página visual. Se uma Regex for inválida ou ultrapassar o limite de execução de uma página, corrija e tente padrão mais simples: a consulta interrompida não devolve uma lista parcial nem altera seus códigos."], "items": []},
+        {"id": "busca-lexical", "title": "Autocodificação Lexical: formas relacionadas à consulta", "keywords": ["Lexical", "família lexical", "flexões", "derivações", "português", "Regex", "candidato"], "body": ["Lexical aparece depois de ativar Autocodificação. O modo procura a consulta e formas tratadas pela família lexical em português, como flexões e derivações reconhecidas pelo mecanismo. Ele é útil quando uma ideia pode surgir com variações morfológicas e você quer reunir candidatos para revisar, sem escrever manualmente todas as formas previstas.", "Lexical não interpreta Regex. Se sua necessidade for uma estrutura formal — por exemplo, alternativas ou repetição — use Literal com Regex; se a necessidade for aproximação de sentido sem relação de forma, avalie Semântica. O resultado Lexical ainda é uma associação automática candidata: confira página, destaque e contexto antes de mantê-la como parte da análise.", "Exemplo: informe uma forma central da expressão de interesse, selecione Lexical e escolha Documento atual para experimentar o comportamento em um PDF. Depois, se o recorte estiver adequado, use Todos os documentos do projeto. A mudança de escopo aumenta a área de busca, mas não transforma ocorrências em interpretação validada."], "items": []},
+        {"id": "busca-semantica", "title": "Autocodificação Semântica: proximidade de sentido com revisão", "keywords": ["Semântica", "embeddings", "similaridade", "limiar", "score", "segmentos", "aproximação", "revisão humana"], "body": ["Semântica aparece na Autocodificação e compara segmentos elegíveis do corpus com representações de significado (embeddings multilíngues), além das evidências literal e lexical. Ela pode sugerir um trecho que não repete a palavra pesquisada. O limiar dessa comparação é configurado no servidor: a tela não oferece controle para redefini-lo durante a execução.", "O score ou a aproximação semântica não prova que duas passagens dizem a mesma coisa, que compartilham posição argumentativa ou que a associação é relevante. OCR, frases curtas, tabelas, ambiguidade e recortes de segmento podem gerar falsos positivos ou deixar de recuperar uma passagem esperada. Semântica não aceita Regex.", "Use-a quando a pergunta exige explorar formulações de sentido próximo e reserve tempo para revisão. Se o modelo semântico ou seu cache não estiver disponível, a operação falha sem confirmar codificações. Compare cada chip ao PDF e, se uma associação não servir ao seu critério, remova apenas aquela codificação; a Rejeição contextual pode impedir que a mesma combinação automática seja recriada."], "items": []},
+        {"id": "relatorio", "title": "Relatório de codificação e exportação", "keywords": ["Relatório", "Exportar Excel", "Código", "Documento", "Página", "Trecho codificado", "Memo contextual", "XLSX"], "body": ["Abra Relatório pelo Explorador de Códigos. A página agrupa as codificações atuais por código e mostra descrição do código quando houver, documento, página, excerto e quantidade de memos contextuais. Clique em “Documento · p. N” para validar o documento da Base e voltar ao leitor na página persistida do trecho; o link não depende do último PDF ou página vistos.", "Exportar Excel aparece quando há trechos codificados. O arquivo possui uma única aba, Codificação, com Código, Documento, Página, Trecho codificado e Memo contextual. Há uma linha por relação código × trecho; os memos contextuais do trecho são reunidos na mesma célula. A planilha tem filtro, cabeçalho congelado e texto protegido contra fórmulas.", "Para analisar, comece por um código, leia os excertos e memos, compare documentos e volte ao PDF quando o recorte não bastar. No Excel, filtre Código ou Documento e ordene Página; tabelas dinâmicas são recursos do Excel, não mudanças no corpus. Frequência de código orienta a navegação, mas não mede sozinha importância interpretativa."], "items": [{"name": "Código", "description": "Nome atual aplicado ao trecho; no Excel, a célula recebe a cor visual do código."}, {"name": "Trecho codificado", "description": "Texto canônico da seleção, não um resumo da passagem maior."}, {"name": "Memo contextual", "description": "Reúne apenas notas ligadas àquele trecho; memo geral não entra automaticamente na linha."}]},
+        {"id": "assistente", "title": "Assistente Análysis no contexto qualitativo", "keywords": ["Assistente", "sugestões", "pergunta livre", "página atual", "documento", "corpus", "fontes"], "body": ["Abra o robô flutuante para ver sugestões contextuais e usar a pergunta livre. Perguntas funcionais, como “Como marco um trecho?”, usam documentação oficial e contexto autorizado da interface. As sugestões não têm respostas prontas no navegador: a resposta vem do provider configurado após a plataforma consultar as fontes obrigatórias quando a pergunta precisa delas.", "Perguntas sobre página atual, documento ou corpus exigem leitura documental autorizada. O Assistente pode ler página, consultar documento ou corpus, resumir e comparar com evidências; não deve preencher lacunas documentais com conhecimento externo. Verifique fontes e escopo, principalmente em PDFs longos ou perguntas que envolvam vários documentos.", "O Assistente responde e orienta, mas não cria, remove, renomeia ou recolore códigos, não salva memos e não substitui a decisão interpretativa. Mudar de documento, usar foco ou fechar o painel também não concede acesso a outro projeto ou Base."], "items": []},
+        {"id": "leitura", "title": "Exemplo, problemas comuns, limites e glossário", "keywords": ["exemplo", "nenhum resultado", "OCR", "Regex inválida", "glossário", "limitações", "codificação"], "body": ["Exemplo: envie dois PDFs sobre representações do Nordeste e aguarde o corpus. Selecione uma passagem, crie o código “representação regional” e adicione um memo contextual sobre seu critério. Depois faça busca Literal para conferir outra expressão; se quiser organizar candidatos, ative Autocodificação, escolha modo e escopo e revise os chips. No Relatório, compare os trechos do código e exporte a planilha para continuar a leitura.", "Não consigo selecionar: confirme que a camada selecionável está disponível, que a seleção está em uma página e compare o PDF, pois OCR ou layout podem impedir geometria verificável. Busca sem resultado: revise consulta, caixa, Regex e documento aberto. Regex inválida ou lenta é interrompida sem parcial. Semântica indisponível: modelo ou cache não ficaram disponíveis e nenhuma codificação é salva nessa falha.", "Limites e glossário: OCR, tabelas, colunas e layout podem afetar texto, busca e seleção. Trecho é seleção validada do texto canônico; codificação é relação código × trecho; código é categoria criada por você; memo é nota geral ou contextual; highlight é marcação visual; Margem organiza chips; autocodificação cria associações por consulta. A ferramenta organiza evidências, mas não interpreta o corpus pelo pesquisador."], "items": []},
+        {"id": "texto-canonico-e-ocr", "title": "Texto canônico, OCR e confiabilidade da seleção", "keywords": ["texto canônico", "OCR", "hash", "offset", "camada selecionável", "PDF digitalizado"], "body": ["Antes de abrir o leitor, o Análysis salva texto canônico para cada página. Texto nativo legível tem prioridade; quando não há texto ou há muitos caracteres inválidos, OCR é aplicado automaticamente naquela página. Texto e geometria vêm da mesma fonte para que seleção, busca e overlays se refiram ao mesmo conteúdo preparado.", "Cada página tem hash e offsets. Ao salvar uma seleção, o servidor confere documento, página, limites, texto selecionado e hash; por isso uma marcação não é aceita apenas por uma posição visual. Se a geometria não estiver disponível, o texto pode continuar pesquisável, mas a seleção visual pode não ser possível.", "Atenção: páginas digitalizadas, OCR imperfeito, tabelas, colunas ou layout incomum podem modificar ordem e qualidade do texto. Compare a evidência importante ao PDF original."], "items": []},
+        {"id": "codigos-e-cores", "title": "Criar, editar, recolorir e excluir códigos", "keywords": ["Novo código", "Nome", "Descrição", "renomear", "Alterar cor", "excluir código", "paleta"], "body": ["Pelo Explorador, Novo código pede Nome obrigatório e Descrição opcional. O nome é normalizado para impedir duplicatas equivalentes na Base. A escolha do nome, do critério de aplicação e da descrição é uma decisão metodológica sua; criar o registro não classifica automaticamente outros trechos.", "No chip da Margem, use o menu contextual para Renomear código ou Alterar cor. A cor vem de paleta definida e muda chip, highlight e conector, mas não altera texto, busca ou relatório. Excluir um código remove suas codificações e rejeições automáticas; memos contextuais ligados a ele passam a memos gerais e o trecho continua existindo."], "items": [{"name": "Nome", "description": "Obrigatório, até 160 caracteres e único após normalização."}, {"name": "Descrição", "description": "Opcional, até 4.000 caracteres; registra definição de trabalho do código."}, {"name": "Cor", "description": "Recurso visual, não classificação metodológica automática."}]},
+        {"id": "autocodificacao-detalhada", "title": "Como revisar autocodificação", "keywords": ["autocodificação", "idempotente", "rejeição contextual", "Literal", "Lexical", "Semântica", "score"], "body": ["A autocodificação busca antes de escrever: se uma consulta falhar, não confirma códigos ou trechos parciais. Repetir a mesma operação não deve duplicar a mesma associação automática. Literal usa texto ou Regex; Lexical acrescenta formas da família lexical; Semântica trabalha com segmentos elegíveis e embeddings multilíngues. Semântica é aproximação de sentido, não prova de equivalência.", "Revise chips, highlights e trecho no PDF. Remover uma associação automática pode registrar rejeição contextual quando essa opção estava marcada, para não recriá-la sob a mesma consulta, código, página, limites e texto. Alterar qualquer um desses elementos pode produzir outro contexto e outro resultado. Múltiplos termos separa entradas por ponto e vírgula e cria/reutiliza código por termo."], "items": []}
+      ]
+    },
+    {
+      "key": "qualitative_reader",
+      "title": "Tutorial: leitor Quali-dados",
+      "summary": "Leia o PDF continuamente, selecione trechos para codificar, registre memos e use a Margem analítica para acompanhar as marcações.",
+      "sections": [
+        {"id": "visao-geral", "title": "Conheça o leitor", "body": ["O leitor mostra um documento da Base, o Explorador, a pesquisa e a Margem analítica. A barra do PDF informa documento e página, oferece zoom de 75%, ajustar, 125%, 150% e 200% e permite ativar o Modo foco."], "items": []},
+        {"id": "passos", "title": "Codificar um trecho", "body": ["1. Selecione texto verificável no PDF. 2. Abra o menu contextual com o botão direito ou teclado. 3. Escolha Aplicar código e selecione um código existente ou crie um novo. Código in vivo cria ou reutiliza um código com a expressão selecionada. 4. Use Criar memo para registrar uma observação vinculada ao trecho."], "items": []},
+        {"id": "margem", "title": "Margem analítica e ajustes", "body": ["Os chips coloridos na Margem analítica identificam os códigos associados. Linhas visuais conectam cada etiqueta ao highlight correspondente. Clique em uma marcação para ajustar os limites quando o controle estiver disponível; a alteração é salva automaticamente."], "items": []},
+        {"id": "navegacao", "title": "Navegação e foco", "body": ["O PDF usa leitura contínua e carregamento de páginas conforme necessário. O Modo foco amplia o espaço de leitura e mantém recursos do leitor em painel flutuante; seus controles continuam acessíveis por teclado."], "items": []},
+        {"id": "limites", "title": "Limitações e conferência", "body": ["Seleção e busca dependem do texto preparado do PDF. OCR ou layout incomum podem exigir conferência no original. Não use uma etiqueta ou uma ocorrência de busca como interpretação conclusiva sem ler o contexto."], "items": []}
+      ]
+    },
+    {
+      "key": "qualitative_search",
+      "title": "Tutorial: busca no leitor Quali-dados",
+      "summary": "Pesquise o PDF aberto sem alterar dados ou use autocodificação, com modo e escopo explícitos, para criar candidatos que ainda exigem revisão humana.",
+      "sections": [
+        {"id": "visao-geral", "title": "Busca consultiva e autocodificação são fluxos diferentes", "keywords": ["documento atual", "Base", "PDF aberto", "pesquisar", "autocodificar", "escopo"], "body": ["Com Autocodificação desligada, Pesquisar no documento consulta apenas o PDF aberto. Ela não cria código, trecho, memo nem rejeição. Anterior, o contador e Próximo percorrem os resultados daquele documento e mostram um snippet; o destaque é exibido quando a página possui geometria válida.", "Ao ativar Autocodificação, a mesma área passa a procurar candidatos para criar associações código × trecho. Só nessa modalidade existe Escopo Documento atual ou Todos os documentos do projeto. A busca visual comum não se transforma em busca global apenas porque há outros PDFs na Base."], "items": []},
+        {"id": "opcoes", "title": "Entenda os controles, modos e efeitos", "keywords": ["Literal", "Regex", "Maiúsculas e minúsculas", "Lexical", "Semântica", "Autocodificação", "Múltiplos termos", "Rejeição contextual", "Todos os documentos"], "body": ["Comece com uma consulta pequena e leia os trechos encontrados. Em qualquer modo, resultado é evidência para conferência, não decisão analítica automática. A opção selecionada define como localizar candidatos; ela não muda o PDF, o corpus canônico nem o texto já salvo nos trechos."], "items": [{"name": "Literal", "description": "No modo consultivo, procura o texto digitado literalmente no PDF aberto. Na autocodificação, também é o único modo que aceita Regex."}, {"name": "Regex", "description": "Interpreta a consulta como expressão regular Unicode na busca consultiva e na autocodificação Literal. Não se aplica a Lexical ou Semântica; padrão inválido ou custoso falha sem resultados parciais."}, {"name": "Maiúsculas e minúsculas", "description": "Na busca consultiva, quando marcada diferencia caixa; desmarcada, compara sem distinguir caixa em Unicode."}, {"name": "Lexical", "description": "Disponível na autocodificação. Acrescenta flexões e derivações da família lexical em português; não interpreta Regex."}, {"name": "Semântica", "description": "Disponível na autocodificação. Reúne evidências literal/lexical e segmentos de sentido próximo com embeddings multilíngues e limiar do servidor; não interpreta Regex."}, {"name": "Escopo", "description": "Na autocodificação, percorre Documento atual ou Todos os documentos do projeto. O seletor visual e a navegação continuam no PDF aberto."}, {"name": "Múltiplos termos", "description": "Na autocodificação, recebe consultas separadas por ponto e vírgula; cada termo com ocorrência cria ou reutiliza seu próprio código."}, {"name": "Rejeição contextual", "description": "Evita recriar associação automática removida no mesmo contexto de consulta, código, documento, página, limites e texto."}]},
+        {"id": "passos", "title": "Como pesquisar, autocodificar e revisar", "keywords": ["Buscar", "Anterior", "Próximo", "revisar", "código", "resultado", "sem resultado"], "body": ["Para localizar uma passagem, mantenha Autocodificação desligada, digite a consulta, opcionalmente marque Regex ou Maiúsculas e minúsculas e escolha Buscar. Use Anterior e Próximo para ler cada resultado no PDF. A consulta é do documento aberto: para verificar outro PDF, abra-o pelo Explorador e pesquise novamente.", "Para criar candidatos, ative Autocodificação, escolha Literal, Lexical ou Semântica, defina Escopo e as opções adicionais visíveis, então execute a busca. O sistema pesquisa antes de gravar: se a consulta falhar, não salva parte das codificações. Depois, confira highlights, chips, contexto e Relatório; remova apenas a relação inadequada pelo × ou refine sua estratégia."], "items": []},
+        {"id": "cuidados", "title": "Exemplos, limites e glossário", "keywords": ["raç(a|as)", "borda de palavra", "OCR", "ambiguidade", "candidato", "idempotência", "limite"], "body": ["Exemplo Regex: “raç(a|as)” procura “raça” e “raças”; “\\b” marca uma borda de palavra e “?” torna o elemento anterior opcional. Use padrões simples primeiro. Exemplo de múltiplos termos: “raça; racialização; racismo”; o ponto e vírgula separa as consultas, não é procurado como texto.", "OCR, tabelas, colunas, ambiguidade linguística e aproximação semântica podem gerar candidatos incompletos ou inadequados. Semântica pode ficar indisponível se modelo ou cache não estiverem acessíveis; nessa falha nenhuma codificação é confirmada. Repetir a mesma autocodificação não deve duplicar a mesma associação; rejeição contextual protege uma remoção específica, mas não substitui revisão.", "Glossário: consulta é o texto ou padrão que orienta a localização; resultado é uma ocorrência encontrada; candidato automático é resultado proposto para codificação; codificação é a relação persistida entre código e trecho; rejeição contextual é o registro que impede recriar uma associação automática removida no mesmo contexto."], "items": []}
+      ]
+    },
+    {
+      "key": "coding_report",
+      "title": "Tutorial: Relatório de codificação",
+      "summary": "Revise a distribuição de trechos por código, volte ao PDF correspondente e exporte uma tabela de apoio.",
+      "sections": [
+        {"id": "visao-geral", "title": "O que o relatório apresenta", "body": ["O relatório agrupa as codificações ativas por código. Para cada trecho, mostra documento, página, excerto e quantidade de memos contextuais."], "items": []},
+        {"id": "navegacao", "title": "Voltar ao documento", "body": ["Clique no link do documento e página de uma codificação. O leitor valida o documento na Base, seleciona-o e abre a página persistida do trecho; o link não depende do último documento ou da última página vistos."], "items": []},
+        {"id": "uso-analitico", "title": "Como utilizar", "body": ["Compare trechos reunidos por código, leia os memos e retorne ao contexto original antes de interpretar padrões. A contagem ajuda a localizar material, mas não mede sozinha relevância analítica."], "items": []},
+        {"id": "exportacao", "title": "Exportação XLSX", "body": ["O botão Exportar Excel produz a aba Codificação, com as colunas Código, Documento, Página, Trecho codificado e Memo contextual. A exportação está disponível quando há trechos codificados."], "items": []}
+      ]
+    },
+    {
+      "key": "libraries",
+      "title": "Tutorial: bibliotecas de vocabulário",
+      "summary": "Bibliotecas organizam grupos, entidades canônicas e variantes para uso nos projetos estruturados.",
+      "sections": [
+        {"id": "visao-geral", "title": "O que é uma biblioteca", "body": ["Uma biblioteca é um vocabulário estruturado de grupos, entidades e variantes. Bibliotecas oficiais e privadas seguem os fluxos disponíveis à conta e podem ser associadas a projetos estruturados."], "items": []},
+        {"id": "passos", "title": "Criar, importar e editar", "body": ["Use os formulários da área para criar registros ou importar uma planilha XLSX no modelo aceito. A importação exige as abas BIBLIOTECA, GRUPOS, ENTIDADES e VARIANTES com os cabeçalhos esperados."], "items": []},
+        {"id": "organizacao", "title": "Organização", "body": ["Agrupe entidades, mantenha a forma canônica e inclua variantes necessárias à busca. Campos ativos permitem controlar quais itens participam do vocabulário válido."], "items": []},
+        {"id": "cuidados", "title": "Cuidados", "body": ["Uma biblioteca associada ao projeto informa o vocabulário disponível, mas a associação não prova por si só que uma execução específica a utilizou. Consulte os metadados da Base exportada para rastrear versão e hash."], "items": []}
+      ]
+    },
+    {
+      "key": "admin_ai_settings",
+      "title": "Tutorial: configuração de IA",
+      "summary": "Administradores definem a estratégia operacional dos providers usados pelo Assistente Análysis.",
+      "sections": [
+        {"id": "visao-geral", "title": "O que esta tela administra", "body": ["A tela mostra a configuração operacional de providers de IA do Assistente, a estratégia atual e o estado de conexão. Credenciais são mantidas somente no ambiente do servidor e não são exibidas pela interface."], "items": []},
+        {"id": "opcoes", "title": "Provider único e fallback", "body": ["Provider único usa o provider principal configurado. A estratégia de fallback pode encaminhar uma solicitação ao próximo provider configurado quando o principal estiver indisponível ou sem quota, conforme a configuração administrativa."], "items": []},
+        {"id": "passos", "title": "Alterar com segurança", "body": ["Revise provider, modelo e estratégia antes de salvar. Use Testar conexão para verificar a configuração operacional disponível; não use esta tela para revelar, copiar ou registrar credenciais."], "items": []},
+        {"id": "efeito", "title": "Efeito no Assistente", "body": ["A configuração define como o Assistente obtém respostas. As políticas de autorização, ferramentas read-only, contexto e restrições de corpus continuam sendo aplicadas pelo servidor."], "items": []}
+      ]
+    },
+    {
+      "key": "admin",
+      "title": "Tutorial: administração",
+      "summary": "A área administrativa gerencia contas, planos, acessos, projetos e configurações operacionais da plataforma.",
+      "sections": [
+        {"id": "visao-geral", "title": "O que esta área administra", "body": ["Administradores podem consultar usuários, projetos, planos, exceções de ferramentas e configurações disponíveis no menu administrativo."], "items": []},
+        {"id": "acesso", "title": "Planos e permissões", "body": ["O acesso a uma ferramenta depende de conta ativa, ferramenta ativa, override individual quando houver, plano concedido e seus PlanTool; administradores têm o comportamento de bypass definido pela plataforma."], "items": []},
+        {"id": "cuidados", "title": "Uso responsável", "body": ["Alterações de estado, plano, exceção e exclusão afetam pessoas e dados. Confirme o usuário, projeto e consequência antes de salvar; use os fluxos próprios de arquivamento, restauração ou exclusão."], "items": []},
+        {"id": "ia", "title": "Configuração de IA", "body": ["A configuração de IA fica em tela específica. Segredos não devem ser incluídos em campos de texto, relatórios ou registros de auditoria."], "items": []}
+      ]
+    },
+    {
+      "key": "fallback",
+      "title": "Ajuda desta página",
+      "summary": "Use os controles visíveis desta página para continuar o fluxo de trabalho autorizado à sua conta.",
+      "sections": [
+        {"id": "visao-geral", "title": "O que você pode fazer", "body": ["Esta tela faz parte do fluxo da plataforma. Os controles, rótulos e mensagens indicam as ações disponíveis para o contexto atual."], "items": []},
+        {"id": "passos", "title": "Como seguir", "body": ["Leia o título e os campos obrigatórios, conclua a ação indicada e use os links de retorno para voltar ao projeto, à lista ou à Base quando necessário."], "items": []},
+        {"id": "seguranca", "title": "Segurança e limites", "body": ["A disponibilidade de uma ação não substitui a conferência do pesquisador ou do administrador. Dados de outros projetos, documentos e contas não são autorizados por parâmetros copiados no navegador."], "items": []}
+      ]
+    }
+  ]
+}

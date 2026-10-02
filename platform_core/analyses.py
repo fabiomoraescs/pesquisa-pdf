@@ -179,16 +179,77 @@ def load_result(analysis: Analysis) -> dict:
         return json.load(stream)
 
 
-def systematic_chart_data(result: dict) -> dict[str, list[tuple[str, int]]]:
-    """Séries do dashboard sistemático a partir das ocorrências já salvas."""
+def systematic_chart_data(result: dict) -> dict[str, object]:
+    """Séries visuais da análise estruturada a partir das ocorrências já salvas."""
     occurrences = result.get("ocorrencias", [])
     entities = Counter(item.get("entidade_canonica") or "Não informada" for item in occurrences)
     methods = Counter(item.get("tipo_correspondencia") or (
         "Lexical" if item.get("metodo_localizacao") == "lexical" else "Não informado"
     ) for item in occurrences)
+    group_names = {
+        str(identifier): str(name or identifier)
+        for identifier, name in (result.get("grupos") or {}).items()
+    }
+    document_names = [
+        str(document.get("arquivo_pdf"))
+        for document in result.get("documentos", [])
+        if document.get("arquivo_pdf")
+    ]
+    for item in occurrences:
+        document = item.get("arquivo_pdf")
+        if document and document not in document_names:
+            document_names.append(document)
+        for identifier in item.get("grupo") or []:
+            group_names.setdefault(str(identifier), str(identifier))
+
+    group_ids = list(group_names)
+    group_labels = [group_names[identifier] for identifier in group_ids]
+    group_index = {identifier: index for index, identifier in enumerate(group_ids)}
+    document_index = {name: index for index, name in enumerate(document_names)}
+    group_document_matrix = [[0 for _ in document_names] for _ in group_ids]
+    group_entities: dict[str, Counter[str]] = {identifier: Counter() for identifier in group_ids}
+    for item in occurrences:
+        document_index_value = document_index.get(item.get("arquivo_pdf"))
+        entity = item.get("entidade_canonica") or "Não informada"
+        for identifier in item.get("grupo") or []:
+            group_id = str(identifier)
+            if group_id not in group_index:
+                continue
+            if document_index_value is not None:
+                group_document_matrix[group_index[group_id]][document_index_value] += 1
+            group_entities[group_id][entity] += 1
+
+    composition_entities = sorted(
+        {entity for counter in group_entities.values() for entity in counter},
+        key=lambda entity: (-sum(counter.get(entity, 0) for counter in group_entities.values()), entity.casefold()),
+    )
+    composition_counts = [
+        [group_entities[group_id].get(entity, 0) for group_id in group_ids]
+        for entity in composition_entities
+    ]
+    group_totals = [sum(group_entities[group_id].values()) for group_id in group_ids]
+    composition_percentages = [
+        [
+            round(count * 100 / group_totals[index], 4) if group_totals[index] else 0
+            for index, count in enumerate(row)
+        ]
+        for row in composition_counts
+    ]
+
     return {
         "entities": sorted(entities.items(), key=lambda pair: (-pair[1], pair[0])),
         "methods": sorted(methods.items(), key=lambda pair: (-pair[1], pair[0])),
+        "grupos_documentos": {
+            "grupos": group_labels,
+            "documentos": document_names,
+            "matriz": group_document_matrix,
+        },
+        "composicao_grupos": {
+            "grupos": group_labels,
+            "entidades": composition_entities,
+            "contagens": composition_counts,
+            "percentuais": composition_percentages,
+        },
     }
 
 

@@ -56,6 +56,23 @@ def _onboarding_policy(question: str, context_key: str) -> ToolPolicy | None:
     return None
 
 
+def _contextual_platform_help(question: str, context_key: str) -> bool:
+    """Reconhece controles do manual da ferramenta já aberta.
+
+    Não depende de o modelo decidir consultar a documentação. Os padrões são
+    intencionalmente limitados aos termos que a própria interface apresenta,
+    para não transformar perguntas documentais ou de projeto em ajuda geral.
+    """
+    patterns = {
+        "term_search": r"\b(hibrid\w*|metod\w*|limiar|ocr|planilha|ocorrenc\w*|exporta\w*)\b",
+        "term_analysis": r"\b(hibrid\w*|metod\w*|limiar|ocr|planilha|ocorrenc\w*|exporta\w*)\b",
+        "structured_search": r"\b(grupos?|entidades?|variantes?|campos?|criterios?|vocabulario|ocr|planilha|ocorrenc\w*|exporta\w*)\b",
+        "structured_analysis": r"\b(grupos?|entidades?|variantes?|campos?|criterios?|vocabulario|ocr|planilha|ocorrenc\w*|exporta\w*)\b",
+    }
+    pattern = patterns.get(context_key)
+    return bool(pattern and re.search(pattern, question))
+
+
 def _has_current_page(project_context: Mapping[str, object] | None) -> bool:
     if not isinstance(project_context, Mapping):
         return False
@@ -110,6 +127,9 @@ def tool_policy_for_question(
         r"\b(corpus|onde aparece|compare(?:\s+os)?\s+documentos|os documentos dizem|"
         r"restante do documento|demais documentos|outros documentos)\b", text,
     ))
+    is_corpus_count = bool(re.search(
+        r"\b(quantos|quantas|numero|total)\b.*\b(documentos?|paginas?|codigos?|memos?)\b", text,
+    ))
     has_page = _has_current_page(project_context)
     is_current_page_content = bool(re.search(
         r"\b(explique|o que aparece|o autor afirma|o autor diz|trecho|passagem|pagina atual|nesta pagina|esta pagina)\b", text,
@@ -123,6 +143,8 @@ def tool_policy_for_question(
             return _required("current_page", "read_current_page", corpus_only=True)
         if is_document_content or has_page:
             return _required("summary", "summarize_document", corpus_only=True)
+    if is_corpus_count:
+        return _required("corpus", "inspect_corpus", corpus_only=True)
     if is_corpus:
         return _required("corpus", "search_corpus", corpus_only=True)
     if has_page and (is_current_page_content or is_document_content):
@@ -142,7 +164,7 @@ def tool_policy_for_question(
         r"\b(analysis|ferramentas?|plano|permissoes?|acessos?|busca por termos|busca estruturada|"
         r"literal|regex|lexical|semantica|como funciona esta ferramenta)\b", text,
     ))
-    if is_platform_help:
+    if is_platform_help or _contextual_platform_help(text, key):
         return _required("platform_help", "get_platform_help")
     return AUTO_POLICY
 

@@ -493,7 +493,8 @@ class QualitativeContextTests(unittest.TestCase):
         self.assertTrue(all(code["excerpt_count"] == 0 for code in deleted_document.json["records"]["codes"]))
         html = self.client.get(report_url).get_data(as_text=True)
         self.assertIn("Ainda não há trechos codificados", html)
-        self.assertNotIn("Documento", html)
+        report_content = html.split('<dialog class="platform-tutorial-dialog"', 1)[0]
+        self.assertNotIn("Documento", report_content)
 
     def test_reader_exposes_edit_margin_report_and_keeps_search_layer_separate(self):
         html = self.client.get(self.base_url).get_data(as_text=True)

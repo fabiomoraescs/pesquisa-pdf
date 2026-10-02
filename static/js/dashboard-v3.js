@@ -1,194 +1,95 @@
 (() => {
-  const origem = document.getElementById('dados-dashboard');
-  if (!origem || !window.Plotly) return;
-  const dados = JSON.parse(origem.textContent);
-  const plotTheme = window.PesquisaPdfPlotTheme;
-  const configBase = {
-    responsive: true,
-    displaylogo: false,
-    toImageButtonOptions: { format: 'png', filename: 'varredura_v3', scale: 2 },
-  };
+  const source = document.getElementById('dados-dashboard');
+  if (!source || !window.Plotly || !window.PesquisaPdfPlotTheme) return;
+  const dados = JSON.parse(source.textContent);
+  const theme = window.PesquisaPdfPlotTheme;
+  const config = { responsive: true, displaylogo: false };
 
-  const cor = plotTheme.color;
-  const paleta = plotTheme.palette;
-  const layoutBase = () => plotTheme.layout({ l: 56, r: 26, t: 22, b: 82 });
-  const eixo = plotTheme.axis;
-  const legenda = plotTheme.legend;
-
-  function config(nome) {
-    return { ...configBase, toImageButtonOptions: { ...configBase.toImageButtonOptions, filename: nome } };
-  }
-
-  function vazio(id, mensagem = 'Não há dados para exibir neste gráfico.') {
-    const alvo = document.getElementById(id);
-    if (!alvo) return;
-    if (alvo.classList.contains('js-plotly-plot')) Plotly.purge(alvo);
-    alvo.replaceChildren();
-    const paragrafo = document.createElement('p');
-    paragrafo.className = 'empty-chart';
-    paragrafo.textContent = mensagem;
-    alvo.appendChild(paragrafo);
-  }
-
-  function renderizarBarra(id, serie, opcoes) {
-    const alvo = document.getElementById(id);
-    if (!alvo || !serie.rotulos.length) return vazio(id);
-    Plotly.react(alvo, [{
-      type: 'bar',
-      x: serie.rotulos,
-      y: serie.valores,
-      marker: { color: opcoes.cor || paleta()[0] },
-      hovertemplate: `${opcoes.rotulo || '%{x}'}<br><b>%{y}</b>${opcoes.sufixo || ''}<extra></extra>`,
-    }], {
-      ...layoutBase(),
-      xaxis: eixo({ automargin: true }),
-      yaxis: eixo({ title: opcoes.eixoY || 'Quantidade', rangemode: 'tozero' }),
-    }, config(opcoes.arquivo));
-  }
-
-  function indicadores() {
-    const ids = {
-      lexicais: 'indicador-v3-lexicais',
-      semanticos: 'indicador-v3-semanticos',
-      resultados: 'indicador-v3-resultados',
-      livros: 'indicador-v3-livros',
-      consultas: 'indicador-v3-consultas',
-    };
-    Object.entries(ids).forEach(([nome, id]) => {
-      const alvo = document.getElementById(id);
-      if (alvo) alvo.textContent = Number(dados.indicadores[nome] || 0).toLocaleString('pt-BR');
-    });
-  }
-
-  function graficoLexical() {
-    renderizarBarra('grafico-v3-lexical', dados.lexical_por_consulta, {
-      cor: paleta()[0], eixoY: 'Ocorrências', sufixo: ' ocorrência(s)', arquivo: 'v3_ocorrencias_lexicais_por_consulta',
-    });
-  }
-
-  function graficoSemantico() {
-    renderizarBarra('grafico-v3-semantico', dados.semantico_por_consulta, {
-      cor: paleta()[1], eixoY: 'Correspondências', sufixo: ' correspondência(s)', arquivo: 'v3_correspondencias_semanticas_por_consulta',
-    });
-  }
-
-  function graficoMedia() {
-    const serie = dados.similaridade_media_por_consulta;
-    const alvo = document.getElementById('grafico-v3-media');
-    if (!alvo || !serie.rotulos.length) return vazio('grafico-v3-media', 'Não há correspondências semânticas para calcular uma média.');
-    Plotly.react(alvo, [{
-      type: 'bar', x: serie.rotulos, y: serie.valores, marker: { color: paleta()[3] },
-      hovertemplate: 'Consulta: %{x}<br><b>%{y:.4f}</b> de similaridade média<extra></extra>',
-    }], {
-      ...layoutBase(),
-      xaxis: eixo({ automargin: true }),
-      yaxis: eixo({ title: 'Similaridade média', range: [0, 1], tickformat: '.0%' }),
-    }, config('v3_similaridade_media_por_consulta'));
-  }
-
-  function graficoLivros() {
-    renderizarBarra('grafico-v3-livros', dados.resultados_por_livro, {
-      cor: paleta()[5], eixoY: 'Resultados recuperados', sufixo: ' resultado(s)', arquivo: 'v3_resultados_por_livro',
-    });
-  }
-
-  function graficoComparacao() {
-    const comparacao = dados.comparacao;
-    const alvo = document.getElementById('grafico-v3-comparacao');
-    if (!alvo || !comparacao.consultas.length || !comparacao.livros.length) return vazio('grafico-v3-comparacao');
-    Plotly.react(alvo, [{
-      type: 'heatmap',
-      x: comparacao.livros,
-      y: comparacao.consultas,
-      z: comparacao.matriz,
-      colorscale: document.documentElement.dataset.theme === 'dark' ? 'Tealgrn' : 'Blues',
-      colorbar: { title: { text: 'Resultados', font: { color: cor('--plot-text') } }, tickfont: { color: cor('--plot-text') } },
-      hovertemplate: 'Livro: %{x}<br>Consulta: %{y}<br><b>%{z} resultado(s)</b><extra></extra>',
-    }], {
-      ...layoutBase(),
-      xaxis: eixo({ title: 'Livros', automargin: true }),
-      yaxis: eixo({ title: 'Consultas', automargin: true, autorange: 'reversed' }),
-    }, config('v3_consulta_por_livro'));
-  }
-
-  function graficoContextos() {
-    renderizarBarra('grafico-v3-contextos', dados.contextos, {
-      cor: paleta()[2], eixoY: 'Resultados', sufixo: ' resultado(s)', arquivo: 'v3_contextos_sociologicos',
-    });
-  }
-
-  function graficoDistribuicao() {
-    const valores = dados.distribuicao_similaridade || [];
-    const alvo = document.getElementById('grafico-v3-distribuicao');
-    if (!alvo || !valores.length) return vazio('grafico-v3-distribuicao', 'Não há correspondências semânticas para distribuir.');
-    Plotly.react(alvo, [{
-      type: 'histogram', x: valores, nbinsx: 16, marker: { color: paleta()[4] },
-      hovertemplate: 'Faixa: %{x}<br><b>%{y} correspondência(s)</b><extra></extra>',
-    }], {
-      ...layoutBase(),
-      xaxis: eixo({ title: 'Similaridade semântica', range: [0.5, 1], tickformat: '.0%' }),
-      yaxis: eixo({ title: 'Correspondências', rangemode: 'tozero' }),
-    }, config('v3_distribuicao_similaridades'));
-  }
-
-  function graficoSankey() {
-    const serie = dados.sankey;
-    const aviso = document.getElementById('aviso-sankey-v3');
-    if (aviso) {
-      aviso.textContent = serie.aviso || '';
-      aviso.hidden = !serie.aviso;
-    }
-    const alvo = document.getElementById('grafico-v3-sankey');
-    if (!alvo || !serie.labels.length) return vazio('grafico-v3-sankey');
-    const coresNos = serie.labels.map((rotulo) => {
-      if (rotulo.startsWith('Consulta:')) return paleta()[0];
-      if (rotulo.startsWith('Contexto:')) return paleta()[2];
-      return paleta()[5];
-    });
-    Plotly.react(alvo, [{
-      type: 'sankey', arrangement: 'snap',
-      node: {
-        label: serie.labels, color: coresNos, pad: 16, thickness: 18,
-        line: { color: cor('--border'), width: 1 },
-        hovertemplate: '%{label}<br><b>%{value} resultado(s)</b><extra></extra>',
-      },
-      link: {
-        source: serie.sources, target: serie.targets, value: serie.values,
-        color: cor('--sankey-link'),
-        hovertemplate: '%{source.label} → %{target.label}<br><b>%{value} resultado(s)</b><extra></extra>',
-      },
-    }], { ...layoutBase(), margin: { l: 12, r: 12, t: 20, b: 20 } }, config('v3_sankey_consultas_contextos_livros'));
-  }
-
-  function renderizarTudo() {
-    graficoLexical();
-    graficoSemantico();
-    graficoMedia();
-    graficoLivros();
-    graficoComparacao();
-    graficoContextos();
-    graficoDistribuicao();
-    graficoSankey();
-  }
-
-  indicadores();
-  renderizarTudo();
-
-  let quadro;
-  function redimensionar() {
-    document.querySelectorAll('.js-plotly-plot').forEach((grafico) => Plotly.Plots.resize(grafico));
-  }
-  function agendarRedimensionamento() {
-    cancelAnimationFrame(quadro);
-    quadro = requestAnimationFrame(redimensionar);
-  }
-  document.addEventListener('tema-alterado', () => {
-    renderizarTudo();
-    agendarRedimensionamento();
+  Object.entries(dados.indicadores || {}).forEach(([nome, valor]) => {
+    const indicador = document.getElementById(`indicador-v3-${nome}`);
+    if (indicador) indicador.textContent = Number(valor).toLocaleString('pt-BR');
   });
-  document.addEventListener('dashboard-redimensionar', agendarRedimensionamento);
+
+  function vazio(target, mensagem) {
+    if (!target) return;
+    if (target.classList.contains('js-plotly-plot')) Plotly.purge(target);
+    target.replaceChildren();
+    const aviso = document.createElement('p');
+    aviso.className = 'empty-chart';
+    aviso.textContent = mensagem;
+    target.appendChild(aviso);
+  }
+
+  function dimensoes(target, colunas, linhas) {
+    const largura = Math.max(target.parentElement?.clientWidth || 0, 640, colunas * 118);
+    const altura = Math.max(290, linhas * 38 + 145);
+    target.style.minWidth = `${largura}px`;
+    return { largura, altura };
+  }
+
+  function mapaDeCalor() {
+    const alvo = document.getElementById('grafico-termos-documentos');
+    const serie = dados.termos_documentos || {};
+    const termos = serie.termos || [];
+    const documentos = serie.documentos || [];
+    if (!alvo || !termos.length || !documentos.length) return vazio(alvo, 'Não há termos e documentos suficientes para compor a matriz.');
+    const tamanho = dimensoes(alvo, documentos.length, termos.length);
+    Plotly.react(alvo, [{
+      type: 'heatmap', x: documentos, y: termos, z: serie.matriz || [],
+      colorscale: document.documentElement.dataset.theme === 'dark' ? 'Tealgrn' : 'Blues',
+      colorbar: { title: { text: 'Ocorrências', font: { color: theme.color('--plot-text') } }, tickfont: { color: theme.color('--plot-text') } },
+      hovertemplate: 'Documento: %{x}<br>Termo: %{y}<br><b>%{z} ocorrência(s)</b><extra></extra>',
+    }], {
+      ...theme.layout({ l: 145, r: 80, t: 20, b: 120 }), width: tamanho.largura, height: tamanho.altura,
+      xaxis: theme.axis({ title: 'Documentos', automargin: true, tickangle: -35 }),
+      yaxis: theme.axis({ title: 'Termos', automargin: true, autorange: 'reversed' }),
+    }, config);
+  }
+
+  function frequenciaRelativa() {
+    const alvo = document.getElementById('grafico-frequencia-relativa');
+    const serie = dados.frequencia_relativa || {};
+    const documentos = serie.documentos || [];
+    const porMil = serie.por_mil || [];
+    if (!alvo || !documentos.length) return vazio(alvo, 'Não há documentos suficientes para calcular a frequência relativa.');
+    if (!porMil.some(valor => Number.isFinite(valor))) {
+      return vazio(alvo, 'A contagem de palavras não foi registrada nesta execução; não é possível normalizar sem reprocessar os documentos.');
+    }
+    const tamanho = dimensoes(alvo, 1, documentos.length);
+    const ocorrencias = serie.ocorrencias || [];
+    const palavras = serie.palavras || [];
+    const valores = porMil.map(valor => Number.isFinite(valor) ? valor : 0);
+    const detalhes = documentos.map((_, indice) => [
+      ocorrencias[indice] || 0,
+      palavras[indice] || 0,
+      Number.isFinite(porMil[indice]) ? Number(porMil[indice]).toLocaleString('pt-BR', { maximumFractionDigits: 2 }) : 'não disponível',
+    ]);
+    Plotly.react(alvo, [{
+      type: 'bar', orientation: 'h', y: documentos, x: valores, customdata: detalhes,
+      marker: { color: theme.palette()[1] },
+      hovertemplate: 'Documento: %{y}<br>Ocorrências: %{customdata[0]}<br>Palavras consideradas: %{customdata[1]}<br><b>%{customdata[2]} por 1.000 palavras</b><extra></extra>',
+    }], {
+      ...theme.layout({ l: 145, r: 24, t: 20, b: 60 }), width: tamanho.largura, height: tamanho.altura,
+      xaxis: theme.axis({ title: 'Ocorrências por 1.000 palavras', rangemode: 'tozero' }),
+      yaxis: theme.axis({ title: 'Documentos', automargin: true, autorange: 'reversed' }),
+    }, config);
+  }
+
+  function renderizar() {
+    mapaDeCalor();
+    frequenciaRelativa();
+  }
+
+  renderizar();
+  document.addEventListener('tema-alterado', renderizar);
+  let quadro;
+  const redimensionar = () => {
+    cancelAnimationFrame(quadro);
+    quadro = requestAnimationFrame(() => document.querySelectorAll('.analysis-chart-scroll .js-plotly-plot')
+      .forEach(grafico => Plotly.Plots.resize(grafico)));
+  };
   if ('ResizeObserver' in window) {
-    const observador = new ResizeObserver(agendarRedimensionamento);
-    document.querySelectorAll('.chart-card').forEach((cartao) => observador.observe(cartao));
+    const observador = new ResizeObserver(redimensionar);
+    document.querySelectorAll('.analysis-chart-scroll').forEach(container => observador.observe(container));
   }
 })();

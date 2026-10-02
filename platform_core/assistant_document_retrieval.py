@@ -164,8 +164,21 @@ def _evidence_text(analysis: Analysis, item: Mapping[str, Any], cache: dict[tupl
     if page is None:
         page = read_qualitative_page(analysis, key[0], key[1])["text"]
         cache[key] = page
-    start = max(0, int(item["start_offset"]) - EVIDENCE_CONTEXT_CHARS)
-    end = min(len(page), int(item["end_offset"]) + EVIDENCE_CONTEXT_CHARS)
+    start_offset, end_offset = int(item["start_offset"]), int(item["end_offset"])
+    # Quando a extração preserva parágrafos, disponibiliza a unidade atual e
+    # seu entorno imediato. Isso evita interpretar uma frase sem a ressalva
+    # anterior ou a continuação seguinte. PDFs sem separação de parágrafos
+    # mantêm a janela curta e previsível usada até aqui.
+    paragraphs = [match for match in re.finditer(r"[^\n]+(?:\n(?!\s*\n)[^\n]+)*", page)]
+    current = next((index for index, match in enumerate(paragraphs)
+                    if match.start() <= start_offset < match.end()), None)
+    if current is not None and len(paragraphs) > 1:
+        window = paragraphs[max(0, current - 1):min(len(paragraphs), current + 2)]
+        text = "\n\n".join(" ".join(match.group(0).split()) for match in window if match.group(0).strip())
+        if text:
+            return text, len(window) < len(paragraphs)
+    start = max(0, start_offset - EVIDENCE_CONTEXT_CHARS)
+    end = min(len(page), end_offset + EVIDENCE_CONTEXT_CHARS)
     text = " ".join(page[start:end].split())
     return text, start > 0 or end < len(page)
 

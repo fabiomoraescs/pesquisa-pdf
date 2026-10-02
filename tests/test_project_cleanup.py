@@ -57,27 +57,25 @@ class ProjectCleanupTests(unittest.TestCase):
             purge_legacy_deleted([project], self.admin, "incorreto")
         self.assertIsNotNone(db.session.get(Project, project_id))
 
-    def test_project_info_reuses_existing_modal_pattern(self):
+    def test_project_info_uses_the_shared_versioned_tutorial(self):
         project_id = create_project(self.client, name="Pesquisa informativa")
         html = self.client.get(f"/analise-documental/projetos/{project_id}").get_data(as_text=True)
         legacy = self.client.get("/raspagem-livre").get_data(as_text=True)
-        self.assertIn('class="btn btn-outline-primary info-icon-button"', html)
-        self.assertIn('aria-label="Como funciona" title="Como funciona"', html)
-        self.assertIn('data-bs-target="#modal-sobre-historico-racial"', html)
-        self.assertIn('class="modal-dialog modal-dialog-scrollable modal-lg"', html)
-        for term in ("O que é", "Quando utilizar", "Como funciona",
-                     "O que o pesquisador fornece", "O que a plataforma produz",
-                     "Método de raspagem", "Observações e limitações",
-                     "biblioteca de vocabulário", "Lexical", "Híbrido", "limiar",
-                     "CODIFICACAO", "COOCORRENCIAS"):
+        self.assertIn("info-icon-button", html)
+        self.assertIn('aria-label="Abrir tutorial da Busca estruturada"', html)
+        self.assertIn('id="platform-tutorial-dialog"', html)
+        self.assertEqual(html.count('data-platform-tutorial-open'), 1)
+        for term in ("Grupo → Entidade → Variante ativa", "Entidades e variantes",
+                     "Como o método Lexical localiza ocorrências", "OCR é acionado automaticamente",
+                     "Planilha XLSX — aba DOCUMENTOS", "Planilha XLSX — aba CODIFICACAO",
+                     "COOCORRENCIAS", "nenhuma ocorrência"):
             self.assertIn(term, html)
-        self.assertIn('class="modal-body modal-help" id="descricao-modal-sobre-historico-racial"', html)
-        self.assertIn('class="modal-help__methodological-note"', html)
-        self.assertIn('o processamento atual não calcula nem preenche pares automaticamente', html)
-        self.assertIn('data-bs-target="#modal-como-funciona"', legacy)
-        self.assertIn('class="btn btn-outline-primary info-icon-button"', legacy)
+        self.assertIn('platform-tutorial-dialog__toc', html)
+        self.assertIn('o processamento atual não preenche pares automaticamente', html)
+        self.assertIn('id="platform-tutorial-dialog"', legacy)
+        self.assertIn("info-icon-button", legacy)
 
-    def test_results_info_explains_the_same_project_flow(self):
+    def test_results_do_not_duplicate_the_entry_page_tutorial(self):
         project_id = create_project(self.client, name="Pesquisa informativa")
         job_id = str(uuid4())
         with JOBS_LOCK:
@@ -93,11 +91,8 @@ class ProjectCleanupTests(unittest.TestCase):
             response = self.client.get(f"/analise-documental/projetos/{project_id}/resultado/{job_id}")
             self.assertEqual(response.status_code, 200)
             html = response.get_data(as_text=True)
-            self.assertIn('aria-label="Como funciona" title="Como funciona"', html)
-            self.assertIn('class="modal-body modal-help" id="descricao-modal-sobre-historico-racial"', html)
-            for term in ("Como funciona", "bibliotecas", "Método de raspagem",
-                         "COOCORRENCIAS", "Observações e limitações"):
-                self.assertIn(term, html)
+            self.assertNotIn('data-platform-tutorial-open', html)
+            self.assertNotIn('id="platform-tutorial-dialog"', html)
         finally:
             with JOBS_LOCK:
                 RESULTADOS_HR.pop(job_id, None)

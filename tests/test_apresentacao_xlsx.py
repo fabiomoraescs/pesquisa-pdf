@@ -111,8 +111,14 @@ class TesteApresentacaoXlsx(unittest.TestCase):
             self._verificar_planilha_compacta(caminho_v2, "Ocorrencias")
             self._verificar_planilha_compacta(caminho_v3, "Resultados")
 
+            ocorrencias_v1 = load_workbook(caminho_v1)["Ocorrencias"]
+            colunas_v1 = {
+                celula.value: celula.column
+                for celula in ocorrencias_v1[1]
+                if celula.value
+            }
             self.assertEqual(
-                load_workbook(caminho_v1)["Ocorrencias"]["E2"].value,
+                ocorrencias_v1.cell(2, colunas_v1["Parágrafo do termo"]).value,
                 "São Paulo aparece neste trecho longo.\nO texto permanece integral.",
             )
             self.assertEqual(load_workbook(caminho_v2)["Ocorrencias"]["B2"].value, "livro")

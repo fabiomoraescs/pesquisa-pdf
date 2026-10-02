@@ -126,7 +126,7 @@ class TesteProcessamentoHistoricoRacial(unittest.TestCase):
         self.assertIn("Du Bois participou", du_bois["trecho_ocorrencia"])
         self.assertIn("Os movimentos discutiam", du_bois["trecho_posterior"])
         self.assertEqual(du_bois["validar"], "pendente")
-        self.assertEqual(du_bois["metodo_localizacao"], "lexical")
+        self.assertEqual(du_bois["metodo_localizacao"], "literal")
         percentuais = [evento["percentual"] for evento in eventos if evento.get("percentual") is not None]
         self.assertEqual(percentuais, sorted(percentuais))
         self.assertLessEqual(max(percentuais), 99)
@@ -209,8 +209,9 @@ class TesteProcessamentoHistoricoRacial(unittest.TestCase):
             }, follow_redirects=True)
             conteudo = pagina.get_data(as_text=True)
             self.assertIn("Du Bois", conteudo)
-            self.assertIn("Primeiras ocorrências", conteudo)
-            self.assertIn("Contexto", conteudo)
+            self.assertIn('id="grafico-grupos-documentos"', conteudo)
+            self.assertIn('id="grafico-composicao-grupos"', conteudo)
+            self.assertNotIn("Primeiras ocorrências", conteudo)
 
     def test_upload_ausente_ou_extensao_invalida_e_rejeitado(self):
         with client_with_project() as (cliente, path, token):

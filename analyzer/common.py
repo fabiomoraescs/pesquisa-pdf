@@ -14,9 +14,10 @@ import pandas as pd
 import pymupdf
 
 from . import v1, v2, v3
+from .dashboard_metrics import frequencia_relativa_por_documento
 
 
-ANALISADORES = {"v1": v1, "v2": v2, "v3": v3}
+ANALISADORES = {"literal": v1, "v1": v1, "v2": v2, "v3": v3}
 
 
 def obter_analisador(versao: str):
@@ -124,7 +125,7 @@ def executar_analises(
     pdfs: list[Path],
     termos: list[dict[str, str]],
     pasta_saida: Path,
-    versao: str = "v1",
+    versao: str = "literal",
     configuracoes: dict | None = None,
     progress_callback=None,
 ) -> dict:
@@ -134,6 +135,13 @@ def executar_analises(
     metadados de etapas já executadas. Com ``None`` o fluxo analítico e as
     chamadas originais permanecem os mesmos.
     """
+    # A fronteira compartilhada das ferramentas usa Literal quando o método
+    # não foi informado. A API ``v1`` permanece lexical para compatibilidade
+    # de chamadas legadas diretas.
+    if versao == "literal":
+        configuracoes = dict(configuracoes or {})
+        configuracoes.setdefault("metodo_busca", "literal")
+        configuracoes.setdefault("usar_regex", False)
     analisador = obter_analisador(versao)
     pasta_saida.mkdir(parents=True, exist_ok=True)
     df_termos = pd.DataFrame(termos).rename(
@@ -195,13 +203,13 @@ def executar_analises(
                 }
             )
         try:
-            if progress_callback is None and versao == "v3":
+            if progress_callback is None and versao in {"v3", "literal"}:
                 ocorrencias, diagnostico = analisador.analisar_pdf(
                     pdf, termos, configuracoes
                 )
             elif progress_callback is None:
                 ocorrencias, diagnostico = analisador.analisar_pdf(pdf, termos)
-            elif versao == "v3":
+            elif versao in {"v3", "literal"}:
                 ocorrencias, diagnostico = analisador.analisar_pdf(
                     pdf,
                     termos,
@@ -544,6 +552,10 @@ def criar_dashboard(resultado: dict) -> dict:
         "por_livro": por_livro,
         "por_contexto": por_contexto,
         "comparacao": {"termos": termos, "livros": livros, "matriz": matriz},
+        "termos_documentos": {"termos": termos, "documentos": livros, "matriz": matriz},
+        "frequencia_relativa": frequencia_relativa_por_documento(
+            livros, matriz, resultado["diagnosticos"],
+        ),
         "contextos_por_livro": _dados_contextos_por_livro(base, livros),
         "pareto": _dados_pareto(base, termos),
         "sankey": _dados_sankey(base, livros),

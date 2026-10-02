@@ -77,9 +77,11 @@ def analysis_method(analysis: object) -> str:
     tool_id = getattr(analysis, "tool_id", "")
     version = getattr(analysis, "tool_version", "")
     return {
+        ("pdf_scraper", "literal"): "Literal",
         ("pdf_scraper", "v1"): "Lexical",
         ("pdf_scraper", "v2"): "Método legado",
         ("pdf_scraper", "v3"): "Híbrido",
+        ("document_analysis", "literal"): "Literal",
         ("document_analysis", "lexical"): "Lexical",
         ("document_analysis", "hibrido"): "Híbrido",
         ("qualitative_analysis", "manual-v1"): "Leitura manual",

@@ -1,9 +1,13 @@
+{% from 'platform/_tutorial_info.html' import tutorial_button, tutorial_dialog with context %}
+{% set qualitative_tutorial = platform_help_for('qualitative') %}
 <div class="platform-qualitative-page-intro">
   <h1 class="h4">{{ project.name }}</h1>
   <div class="platform-qualitative-page-actions">
     {% if analysis and project.status == 'active' and project.owner_user_id == current_user.id %}
     <details class="platform-qualitative-upload" data-temporary-popover><summary class="btn btn-outline-primary btn-sm" aria-expanded="false" aria-controls="qualitative-upload-panel">Adicionar documentos</summary><div class="platform-panel platform-qualitative-upload-content" id="qualitative-upload-panel">{% include 'platform/_qualitative_upload_form.html' %}</div></details>
     {% endif %}
-    <button class="btn btn-outline-primary info-icon-button" type="button" data-qualitative-info-open aria-label="Como funciona a Análise quali-dados" title="Como funciona a Análise quali-dados"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 10v6M12 7h.01"></path></svg></button>
+    {{ tutorial_button(qualitative_tutorial, label='Como funciona a Análise quali-dados', extra_class='platform-qualitative-info-open') }}
   </div>
 </div>
+{{ tutorial_dialog(qualitative_tutorial) }}
+<script defer src="{{ url_for('static', filename='js/platform_tutorial.js') }}"></script>

@@ -13,6 +13,7 @@ from .qualitative_corpus import load_qualitative_manifest, read_qualitative_page
 from .qualitative_search import MAX_QUERY_LENGTH, QualitativeSearchError, search_qualitative_document
 from .qualitative_expanded_search import search_lexical, search_semantic
 from .term_input import MULTIPLE_SEPARATOR_MESSAGE, has_invalid_term_separator
+from analyzer.lexical_family import lexical_code_name
 
 
 def prepare_automatic_query(query: str, *, multiple_terms=False, grep=False, case_sensitive=False):
@@ -68,7 +69,10 @@ def _code_from_provenance(analysis, term, matches, *, code_name, grep, case_sens
     identifiers = {code_id for code_id, stored in (*source_rows, *rejection_rows) if same_query(stored)}
     direct_identifiers = {code_id for code_id, stored in (*source_rows, *rejection_rows)
                           if stored != legacy_query and same_query(stored)}
-    if len(direct_identifiers) == 1 and not grep:
+    # No modo lexical, uma mesma consulta pode criar um código para cada
+    # forma localizada. Só a consulta não identifica inequivocamente o código.
+    preserves_match_identity = not grep and mode == "lexical"
+    if len(direct_identifiers) == 1 and not grep and not preserves_match_identity:
         return db.session.get(QualitativeCode, next(iter(direct_identifiers)))
     if not identifiers:
         return None
@@ -149,7 +153,14 @@ def automatic_coding(analysis: Analysis, document_id: str | None, query: str,
             raise
         groups = {}
         for match in found["results"]:
-            name = match["match_text"].strip() if grep else term
+            # Regex já usava a forma capturada. A expansão lexical passa a
+            # fazer o mesmo, preservando source_query como termo-base.
+            name = (
+                match["match_text"].strip() if grep
+                else lexical_code_name(match["match_text"])
+                if mode == "lexical"
+                else term
+            )
             identity = normalized_qualitative_code_name(name)
             if (name and match["end_offset"] - match["start_offset"] <= MAX_SELECTION_LENGTH
                     and (len(name) > 160 or len(identity) > 160)):
@@ -194,7 +205,8 @@ def automatic_coding(analysis: Analysis, document_id: str | None, query: str,
             if code is not None:
                 codes.append({"code_id": code.id, "code_name": code.name})
             for match in matches:
-                match.update(term=term, code_id=code.id if code else None)
+                match.update(term=term, code_id=code.id if code else None,
+                             code_name=code.name if code else None)
         for key in ("created", "existing", "rejected", "invalid"):
             totals[key] += summary[key]
         summary["documents"] = len(term_documents)

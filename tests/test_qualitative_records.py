@@ -52,7 +52,11 @@ class QualitativeRecordTests(unittest.TestCase):
         self.assertIn("Adicione para começar a análise quali-dados.", html)
         self.assertNotIn("Códigos (0)", html)
         self.assertNotIn("Memos (0)", html)
-        self.assertNotIn("Novo código", html)
+        # O manual central também ensina "Novo código", mas o controle de
+        # registros continua oculto enquanto o ambiente está sem documentos.
+        page_after_tutorial = html.split("</dialog>", 1)[1]
+        self.assertNotIn("Novo código", page_after_tutorial)
+        self.assertIn("data-platform-tutorial-open", html)
         self.assertNotIn("data-qualitative-records", html)
         url = f"/analise-qualitativa/bases/{analysis.id}/codigos"
         self.assertEqual(self.api("POST", url, {"name": " ", "description": ""}).status_code, 400)
@@ -172,11 +176,11 @@ class QualitativeRecordTests(unittest.TestCase):
         self.assertEqual(self.api("POST", codes_url, {"name": "Teste"}).status_code, 404)
         page = self.client.get(f"/analise-qualitativa/bases/{analysis.id}")
         html = page.get_data(as_text=True)
-        self.assertIn("criar códigos", html)
-        self.assertIn("registrar memos", html)
+        self.assertIn("crie códigos e memos", html)
+        self.assertIn("memo contextual", html)
         self.assertNotIn("Códigos e memos ainda não podem ser criados", html)
         self.assertNotIn("Bases", html)
-        self.assertIn("interpretação permanece responsabilidade", html)
+        self.assertIn("não substitui a decisão interpretativa", html)
 
     def test_revoked_tool_cannot_mutate_records(self):
         _, analysis = self.workspace()

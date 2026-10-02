@@ -22,6 +22,7 @@ SUMMARY_MAX_CHUNKS = 12
 SUMMARY_INTERMEDIATE_MAX_CHARS = 1_800
 MAX_CORPUS_SUMMARY_DOCUMENTS = 8
 MAX_SUMMARY_SOURCE_PAGES = 120
+MAX_NATIVE_SUMMARY_EXCERPTS = 8
 
 
 def _mapping(value: object) -> Mapping[str, Any]:
@@ -155,6 +156,35 @@ def summarize_document_with_provider(provider: object, pack: Mapping[str, Any], 
     }
 
 
+def summarize_document_extractive(pack: Mapping[str, Any]) -> dict[str, Any]:
+    """Síntese estrutural local, sem inferência generativa ou provider externo."""
+    if pack.get("status") != "ok":
+        return dict(pack)
+    excerpts: list[str] = []
+    for section in pack.get("sections", []):
+        if not isinstance(section, Mapping):
+            continue
+        pages = section.get("pages") if isinstance(section.get("pages"), list) else []
+        text = " ".join(str(section.get("text") or "").split())
+        if not text:
+            continue
+        label = f"Páginas {pages[0]}–{pages[-1]}" if pages else "Trecho"
+        excerpts.append(f"{label}: {text[:SUMMARY_INTERMEDIATE_MAX_CHARS].rstrip()}")
+        if len(excerpts) >= MAX_NATIVE_SUMMARY_EXCERPTS:
+            break
+    if not excerpts:
+        return {**dict(pack), "status": "error", "limitations": ["Não há texto documental para a síntese local."]}
+    coverage = f"Cobertura estrutural: {pack['pages_processed']} de {pack['pages_total']} páginas."
+    return {
+        "status": "ok", "document_id": pack["document_id"], "document_name": pack["document_name"],
+        "pages_total": pack["pages_total"], "pages_processed": pack["pages_processed"],
+        "complete": pack["complete"], "summary": coverage + "\n\n" + "\n\n".join(excerpts),
+        "source_pages": pack["source_pages"],
+        "limitations": [*pack.get("limitations", []), "Síntese local extrativa: apresenta trechos estruturais e não uma interpretação generativa."],
+        "read_only": True, "document_content_untrusted": True,
+    }
+
+
 def build_corpus_summary_packs(user: object, project_context: Mapping[str, Any]) -> dict[str, Any]:
     """Prepara os documentos do corpus sem concatenar seus textos."""
     analysis = _authorized_analysis(user, project_context)
@@ -184,8 +214,31 @@ def build_corpus_summary_packs(user: object, project_context: Mapping[str, Any])
     }
 
 
+def summarize_corpus_extractive(plan: Mapping[str, Any]) -> dict[str, Any]:
+    """Combina somente resumos extrativos autorizados e declara a cobertura."""
+    if plan.get("status") != "ok":
+        return dict(plan)
+    entries: list[str] = []
+    source_pages: list[dict[str, Any]] = []
+    for pack in plan.get("packs", []):
+        summary = summarize_document_extractive(_mapping(pack))
+        if summary.get("status") != "ok":
+            continue
+        entries.append(f"{summary['document_name']}: {summary['summary']}")
+        source_pages.extend(summary.get("source_pages", []))
+    if not entries:
+        return {**dict(plan), "status": "error", "limitations": ["Não há texto documental para a síntese local."]}
+    return {
+        "status": "ok", "documents_total": plan["documents_total"], "documents_processed": plan["documents_processed"],
+        "pages_total": plan["pages_total"], "pages_processed": plan["pages_processed"], "complete": plan["complete"],
+        "summary": "\n\n".join(entries), "source_pages": source_pages[:MAX_SUMMARY_SOURCE_PAGES],
+        "limitations": [*plan.get("limitations", []), "Síntese local extrativa: apresenta trechos estruturais e não uma interpretação generativa."],
+        "read_only": True, "document_content_untrusted": True,
+    }
+
+
 __all__ = [
-    "MAX_CORPUS_SUMMARY_DOCUMENTS", "SUMMARY_CHUNK_MAX_CHARS", "SUMMARY_INTERMEDIATE_MAX_CHARS",
+    "MAX_CORPUS_SUMMARY_DOCUMENTS", "MAX_NATIVE_SUMMARY_EXCERPTS", "SUMMARY_CHUNK_MAX_CHARS", "SUMMARY_INTERMEDIATE_MAX_CHARS",
     "SUMMARY_MAX_CHUNKS", "build_corpus_summary_packs", "build_document_summary_pack",
-    "summarize_document_with_provider",
+    "summarize_corpus_extractive", "summarize_document_extractive", "summarize_document_with_provider",
 ]

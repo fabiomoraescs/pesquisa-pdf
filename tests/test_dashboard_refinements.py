@@ -67,37 +67,121 @@ class DashboardRefinementsTests(unittest.TestCase):
                 self.assertEqual(positions, sorted(positions))
                 self.assertEqual(toolbar.count('btn btn-outline-primary btn-sm'), 2)
 
+    def test_dashboard_keeps_the_platform_authentication_policy(self):
+        response = self.client.get("/", follow_redirects=False)
+        self.assertIn(response.status_code, (301, 302, 303, 307, 308))
+        self.assertIn("/login", response.headers["Location"])
+
     def test_recent_analysis_labels_distinguish_all_three_tools_including_qualitative(self):
         owner = create_user()
+        db.session.add_all((
+            UserToolOverride(user_id=owner.id, tool_id="document_analysis", decision="allow"),
+            UserToolOverride(user_id=owner.id, tool_id=QUALITATIVE_TOOL, decision="allow"),
+        ))
+        db.session.commit()
         project = self._project(owner, "Projeto qualitativo", "qualitative")
         qualitative = create_analysis(user_id=owner.id, project_id=project.id,
             tool_id=QUALITATIVE_TOOL, tool_version="manual-v1", parameters={}, name="Leitura qualitativa")
-        expected = [
+        systematic_project = self._project(owner, "Projeto estruturado", "systematic")
+        expected = (
             (self._base(owner, "Busca de termos", "pdf_scraper", status="processando"), "Busca por termos"),
-            (self._base(owner, "Busca de entidades", "document_analysis", status="processando"), "Busca estruturada"),
+            (self._base(owner, "Busca de entidades", "document_analysis", project=systematic_project,
+                        status="processando"), "Busca estruturada"),
             (qualitative, "Análise quali-dados"),
-        ]
+        )
         login(self.client)
-        render = legacy.render_template
-
-        def render_with_all_modalities(template, **context):
-            # Exercita a apresentação caso a lista receba uma análise qualitativa,
-            # sem ampliar o escopo/autorização da consulta real do Dashboard.
-            context["recent_bases"] = [(base, None) for base, _ in expected]
-            return render(template, **context)
-
-        with patch.object(legacy, "render_template", side_effect=render_with_all_modalities):
-            response = self.client.get("/")
+        response = self.client.get("/")
         self.assertEqual(response.status_code, 200)
         html = response.get_data(as_text=True)
-        recent = re.search(r'<ul class="platform-dashboard-records">(.*?)</ul>', html, re.DOTALL)[1]
-        items = re.findall(r'<li>(.*?)</li>', recent, re.DOTALL)
+        recent = re.search(r'<section[^>]+aria-labelledby="continue-working-heading">(.*?)</section>', html, re.DOTALL)[1]
+        items = re.findall(r'<li[^>]*>(.*?)</li>', recent, re.DOTALL)
         self.assertEqual(len(items), 3)
-        for item, (base, label) in zip(items, expected):
+        for base, label in expected:
+            item = next(item for item in items if base.display_name in item)
             self.assertIn(base.display_name, item)
-            self.assertIn(f'<small>{label} · ', item)
-        self.assertNotIn("Busca estruturada", items[2])
-        self.assertNotIn("Busca por termos", items[2])
+            self.assertIn(label, item)
+            self.assertIn(
+                f'/analise-qualitativa/bases/{base.id}' if base.tool_id == QUALITATIVE_TOOL
+                else f'/analises/{base.id}',
+                item,
+            )
+        self.assertIn(f'/analise-qualitativa/bases/{qualitative.id}', recent)
+
+    def test_recent_work_is_limited_to_five_newest_accessible_bases(self):
+        owner = create_user()
+        analyses = []
+        for index in range(6):
+            analysis = self._base(owner, f"Base {index}", "pdf_scraper", status="processando")
+            analysis.created_at = datetime.now(timezone.utc) - timedelta(days=6 - index)
+            analyses.append(analysis)
+        db.session.commit()
+        login(self.client)
+
+        html = self.client.get("/").get_data(as_text=True)
+        continuation = re.search(
+            r'<section[^>]+aria-labelledby="continue-working-heading">(.*?)</section>', html, re.DOTALL
+        )[1]
+        self.assertEqual(continuation.count('platform-workspace-work-item'), 5)
+        self.assertNotIn(analyses[0].display_name, continuation)
+        self.assertLess(continuation.index(analyses[-1].display_name), continuation.index(analyses[1].display_name))
+
+    def test_continuation_uses_an_accessible_open_icon_without_status_or_date(self):
+        owner = create_user()
+        analysis = self._base(owner, "Base concluída", "pdf_scraper", status="concluida")
+        analysis.document_count = 8
+        db.session.commit()
+        login(self.client)
+
+        html = self.client.get("/").get_data(as_text=True)
+        continuation = re.search(
+            r'<section[^>]+aria-labelledby="continue-working-heading">(.*?)</section>', html, re.DOTALL
+        )[1]
+        self.assertIn("Base concluída", continuation)
+        self.assertIn("Busca por termos", continuation)
+        self.assertIn("8 documento(s)", continuation)
+        self.assertNotIn(">Continuar<", continuation)
+        self.assertNotIn("Concluída · Concluída em", continuation)
+        self.assertNotIn("Concluída em", continuation)
+        self.assertIn('platform-action-button platform-workspace-open-action', continuation)
+        self.assertIn(f'href="/analises/{analysis.id}"', continuation)
+        self.assertIn('title="Abrir Base concluída" aria-label="Abrir Base concluída"', continuation)
+        self.assertIn('<svg class="platform-icon"', continuation)
+
+    def test_dashboard_has_only_summary_and_continuation_for_regular_users(self):
+        create_user()
+        login(self.client)
+
+        html = self.client.get("/").get_data(as_text=True)
+        body = html.split("<main ", 1)[1].split("</main>", 1)[0]
+        self.assertIn("Resumo da área de trabalho", body)
+        self.assertIn("Continuar trabalhando", body)
+        self.assertLess(body.index("Resumo da área de trabalho"), body.index("Continuar trabalhando"))
+        self.assertNotIn("workspace-heading", body)
+        self.assertNotIn("quick-actions-heading", body)
+        self.assertNotIn("Ações rápidas", body)
+        self.assertNotIn("Atividade recente", body)
+        self.assertNotIn("dashboard-workspace-chart-data", body)
+        self.assertNotIn("Bases concluídas por ferramenta", body)
+        self.assertNotIn("dashboard-admin-chart-data", body)
+
+    def test_workspace_metrics_use_only_accessible_analysis_metadata(self):
+        owner = create_user()
+        stranger = create_user("Outro", "metricas-alheias@example.org")
+        own_project = self._project(owner, "Projeto próprio", "free")
+        foreign_project = self._project(stranger, "Projeto alheio", "free")
+        own = self._base(owner, "Base própria", "pdf_scraper", project=own_project, status="processando")
+        own.document_count = 7
+        foreign = self._base(stranger, "Base alheia", "pdf_scraper", project=foreign_project, status="processando")
+        foreign.document_count = 91
+        db.session.commit()
+        login(self.client)
+
+        html = self.client.get("/").get_data(as_text=True)
+        self.assertRegex(html, r'<strong>1</strong>\s*<span>Projetos</span>')
+        self.assertRegex(html, r'<strong>1</strong>\s*<span>Bases</span>')
+        self.assertRegex(html, r'<strong>7</strong>\s*<span>Documentos nas Bases</span>')
+        self.assertNotIn("Projeto alheio", html)
+        self.assertNotIn("Base alheia", html)
 
     def test_latest_qualitative_analysis_empty_one_and_most_recent_workspace(self):
         owner = create_user()
@@ -105,129 +189,69 @@ class DashboardRefinementsTests(unittest.TestCase):
         db.session.commit()
         login(self.client)
 
-        def card():
+        def continuation():
             html = self.client.get("/").get_data(as_text=True)
-            return re.search(r'<section class="platform-panel" aria-labelledby="dashboard-latest-qualitative">(.*?)</section>', html, re.DOTALL)[1]
+            return re.search(r'<section[^>]+aria-labelledby="continue-working-heading">(.*?)</section>', html, re.DOTALL)[1]
 
-        self.assertIn("Nenhuma análise quali-dados ainda.", card())
+        self.assertIn("Você ainda não possui análises para continuar.", continuation())
         first_project = self._project(owner, "Primeira leitura", "qualitative")
         first = self._base(owner, "Nome técnico", QUALITATIVE_TOOL, project=first_project, status="processando")
         first.created_at = datetime.now(timezone.utc) - timedelta(days=2)
         db.session.commit()
-        self.assertIn("Primeira leitura", card())
-        self.assertIn(f'/analise-qualitativa/bases/{first.id}', card())
+        self.assertIn("Nome técnico", continuation())
+        self.assertIn(f'/analise-qualitativa/bases/{first.id}', continuation())
         second_project = self._project(owner, "Leitura mais recente", "qualitative")
         second = self._base(owner, "Outro nome técnico", QUALITATIVE_TOOL, project=second_project, status="processando")
-        with patch.object(legacy, "load_result", side_effect=AssertionError("Não carregar corpus/resultados")):
-            current = card()
-        self.assertIn("Última análise quali-dados", current)
-        self.assertIn("Leitura mais recente", current)
+        current = continuation()
+        self.assertIn("Outro nome técnico", current)
         self.assertIn(f'/analise-qualitativa/bases/{second.id}', current)
-        self.assertNotIn("Primeira leitura", current)
-        self.assertNotIn("nome técnico", current)
+        self.assertLess(current.index("Outro nome técnico"), current.index("Nome técnico"))
         # O ambiente vazio continua sendo destino funcional; não exige preparo.
         self.assertEqual(self.client.get(f'/analise-qualitativa/bases/{second.id}', follow_redirects=True).status_code, 200)
 
-    def test_three_latest_summaries_share_responsive_grid_without_changing_admin_grid(self):
+    def test_workspace_layout_is_compact_responsive_and_uses_metric_icons(self):
         create_user(role="admin")
         login(self.client)
 
-        class GridParser(HTMLParser):
-            def __init__(self):
-                super().__init__()
-                self.divs = []
-                self.cards = {}
-
-            def handle_starttag(self, tag, attrs):
-                attrs = dict(attrs)
-                if tag == "div":
-                    self.divs.append(attrs.get("class", "").split())
-                if tag == "section" and attrs.get("aria-labelledby", "").startswith("dashboard-latest-"):
-                    self.cards[attrs["aria-labelledby"]] = self.divs[-1]
-
-            def handle_endtag(self, tag):
-                if tag == "div":
-                    self.divs.pop()
-
         html = self.client.get("/").get_data(as_text=True)
-        parser = GridParser()
-        parser.feed(html)
-        self.assertEqual(set(parser.cards), {
-            "dashboard-latest-free", "dashboard-latest-systematic", "dashboard-latest-qualitative"})
-        for classes in parser.cards.values():
-            self.assertEqual(classes, ["platform-dashboard-charts", "platform-dashboard-latest"])
-        self.assertEqual(html.count('class="platform-dashboard-charts platform-dashboard-latest"'), 1)
-        self.assertIn('class="platform-dashboard-charts"', html)  # grade administrativa preservada
+        for heading in ("workspace-summary-heading", "continue-working-heading"):
+            self.assertIn(f'aria-labelledby="{heading}"', html)
+        self.assertLess(html.index("Resumo da área de trabalho"), html.index("Continuar trabalhando"))
+        summary = re.search(
+            r'<section[^>]+aria-labelledby="workspace-summary-heading">(.*?)</section>', html, re.DOTALL
+        )[1]
+        self.assertEqual(summary.count('platform-workspace-metric-card'), 4)
+        self.assertEqual(summary.count('<svg class="platform-icon"'), 4)
+        self.assertRegex(summary, r'(?s)<svg class="platform-icon".*?</svg>\s*<strong>0</strong>\s*<span>Projetos</span>')
         css = (Path(__file__).resolve().parents[1] / "static/css/platform.css").read_text(encoding="utf-8")
-        self.assertRegex(css, r"\.platform-dashboard-charts\.platform-dashboard-latest\s*\{\s*grid-template-columns: minmax\(0, 1fr\)")
-        self.assertNotRegex(css, r"\.platform-dashboard-latest[^}]*repeat\([23],")
-        self.assertRegex(css, r"\.platform-dashboard-charts\s*\{[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)[^}]*gap: 1rem")
-        self.assertRegex(css, r"(?s)@media \(max-width: 640px\).*?\.platform-dashboard-charts \{ grid-template-columns: minmax\(0, 1fr\);")
+        self.assertIn('.platform-workspace-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));', css)
+        self.assertIn('.platform-workspace-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }', css)
+        self.assertIn('flex-direction: row;', css)
+        self.assertIn('min-height: 0; padding: .7rem .8rem;', css)
+        self.assertIn('width: 1.65rem; height: 1.65rem;', css)
+        self.assertIn('font-size: clamp(1.55rem, 2.8vw, 1.9rem);', css)
+        self.assertIn('text-overflow: ellipsis; white-space: nowrap;', css)
+        self.assertIn('grid-template-columns: minmax(12rem, 1fr) minmax(0, auto) auto;', css)
 
-    def test_qualitative_chart_counts_distinct_excerpts_per_code_from_latest_accessible_analysis(self):
-        from platform_core.qualitative_routes import _records_payload
-
+    def test_qualitative_work_is_textual_and_does_not_load_coding_chart_data(self):
         owner = create_user()
-        other = create_user("Outro", "other-chart@example.org")
         grant = UserToolOverride(user_id=owner.id, tool_id=QUALITATIVE_TOOL, decision="allow")
         db.session.add(grant)
         db.session.commit()
-        old = self._base(owner, "Anterior", QUALITATIVE_TOOL,
-                         project=self._project(owner, "Anterior", "qualitative"), status="processando")
-        old.created_at = datetime.now(timezone.utc) - timedelta(days=1)
         current = self._base(owner, "Atual", QUALITATIVE_TOOL,
                              project=self._project(owner, "Atual", "qualitative"), status="processando")
-        # Projetos inelegíveis não podem contribuir com códigos ou contagens.
-        for author, name, state, deleted in (
-            (other, "Sigiloso", "active", False), (owner, "Arquivado", "archived", False),
-            (owner, "Excluído", "active", True),
-        ):
-            project = self._project(author, name, "qualitative")
-            analysis = self._base(author, name, QUALITATIVE_TOOL, project=project, status="processando")
-            project.status = state
-            if deleted:
-                project.deleted_at = datetime.now(timezone.utc)
-            db.session.add(QualitativeCode(analysis_id=analysis.id, name=name, created_by_user_id=author.id))
-        db.session.add(QualitativeCode(analysis_id=old.id, name="Código antigo", created_by_user_id=owner.id))
-        codes = [QualitativeCode(analysis_id=current.id, name=name, created_by_user_id=owner.id)
-                 for name in ("Racismo", "Educação", "Sem trechos")]
-        document = AnalysisDocument(analysis_id=current.id, original_name="teste.pdf", stored_name="teste.pdf")
-        db.session.add_all([*codes, document])
-        db.session.flush()
-        excerpts = [QualitativeExcerpt(analysis_id=current.id, document_id=document.id,
-            page_number=page, start_offset=0, end_offset=6, quoted_text="trecho", page_text_hash="a" * 64,
-            created_by_user_id=owner.id) for page in (1, 2)]
-        db.session.add_all(excerpts)
-        db.session.flush()
-        codings = [QualitativeCoding(analysis_id=current.id, excerpt_id=excerpt.id,
-            code_id=code.id, created_by_user_id=owner.id)
-            for code, excerpt in ((codes[0], excerpts[0]), (codes[0], excerpts[1]), (codes[1], excerpts[0]))]
-        db.session.add_all(codings)
         db.session.commit()
         login(self.client)
-
-        def check(expected):
-            with patch.object(legacy, "load_result", side_effect=AssertionError("Não ler/reprocessar corpus")):
-                html = self.client.get("/").text
-            series = chart_data(html, "dashboard-chart-data")["qualitative"]
-            self.assertEqual(series["title"], "Trechos por código")
-            self.assertEqual(series["unit"], "trecho(s)")
-            self.assertEqual(dict(zip(series["labels"], series["values"])), expected)
-            self.assertEqual(expected, {code["name"]: code["excerpt_count"]
-                                       for code in _records_payload(current)["codes"]})
-            self.assertIn('id="dashboard-chart-qualitative" class="chart" role="img"', html)
-            self.assert_recent_records_have_no_chart(html)
-
-        # O primeiro trecho conta nos dois códigos, sem contar duas vezes no mesmo.
-        check({"Racismo": 2, "Educação": 1, "Sem trechos": 0})
-        db.session.delete(codings[0])
-        db.session.commit()
-        check({"Racismo": 1, "Educação": 1, "Sem trechos": 0})
+        html = self.client.get("/").text
+        self.assertIn("Continuar trabalhando", html)
+        self.assertIn("Atual", html)
+        self.assertIn(f'/analise-qualitativa/bases/{current.id}', html)
+        self.assertNotIn('dashboard-chart-qualitative', html)
+        self.assertNotIn('Trechos por código', html)
         grant.decision = "deny"
         db.session.commit()
         html = self.client.get("/").text
-        self.assertNotIn("qualitative", chart_data(html, "dashboard-chart-data"))
-        self.assertNotIn('id="dashboard-chart-qualitative"', html)
+        self.assertIn("Você ainda não possui análises para continuar.", html)
 
     def test_latest_qualitative_analysis_respects_project_ownership_state_and_tool(self):
         owner = create_user()
@@ -254,15 +278,15 @@ class DashboardRefinementsTests(unittest.TestCase):
         db.session.commit()
         login(self.client)
         html = self.client.get("/").get_data(as_text=True)
-        self.assertIn("Leitura acessível", html)
+        self.assertIn("Técnico próprio", html)
         self.assertIn(f'/analise-qualitativa/bases/{own.id}', html)
         for forbidden in ("Arquivado sigiloso", "Bloqueado sigiloso", "Excluído sigiloso", "Projeto de outro usuário", foreign.id):
             self.assertNotIn(forbidden, html)
         permission.decision = "deny"
         db.session.commit()
         html = self.client.get("/").get_data(as_text=True)
-        self.assertNotIn("Leitura acessível", html)
-        self.assertIn("Nenhuma análise quali-dados ainda.", html)
+        self.assertNotIn("Técnico próprio", html)
+        self.assertIn("Você ainda não possui análises para continuar.", html)
 
     def test_free_empty_state_has_no_legacy_shortcut_and_library_form_has_no_body_title(self):
         create_user(role="admin")
@@ -311,27 +335,26 @@ class DashboardRefinementsTests(unittest.TestCase):
         }, foreign_project)
         db.session.commit()
         login(self.client)
-        with patch.object(legacy, "executar_analises", side_effect=AssertionError("reprocessou PDF")), \
-             patch.object(legacy, "criar_dashboard", side_effect=AssertionError("reprocessou séries")):
+        with patch.object(legacy, "executar_analises", side_effect=AssertionError("reprocessou PDF")):
             html = self.client.get("/").get_data(as_text=True)
-        self.assertIn("Visão geral dos seus projetos e das suas Bases de análise</p>", html)
-        self.assertNotIn("Olá,", html)
-        self.assertNotIn("Projetos recentes", html)
-        self.assertIn("Projeto: Projeto livre próprio", html)
-        self.assertIn("Projeto: Projeto sistemático próprio", html)
+        self.assertIn("Continuar trabalhando", html)
+        self.assertIn("Resumo da área de trabalho", html)
+        self.assertNotIn("Ações rápidas", html)
+        self.assertNotIn("Atividade recente", html)
+        self.assertNotIn("Bases concluídas por ferramenta", html)
+        self.assertIn("Busca por termos", html)
+        self.assertIn("Busca estruturada", html)
         self.assertNotIn("Projeto sigiloso alheio", html)
         self.assertNotIn("Base em projeto alheio", html)
         self.assertNotIn("Base secreta", html)
         self.assertIn('>Base livre recente</a>', html)
         self.assertIn('>Base sistemática recente</a>', html)
         self.assert_recent_records_have_no_chart(html)
-        charts = chart_data(html, "dashboard-chart-data")
-        self.assertEqual(charts["free"], {"title": "Ocorrências por livro", "unit": "ocorrência(s)",
-                                        "labels": ["Livro atual"], "values": [4]})
-        self.assertEqual(charts["systematic"]["labels"], ["Movimento negro"])
-        self.assertEqual(charts["systematic"]["values"], [2])
-        for kind in ("free", "systematic"):
-            self.assertIn(f'id="dashboard-chart-{kind}" class="chart" role="img"', html)
+        self.assertRegex(html, r'<strong>2</strong>\s*<span>Projetos</span>')
+        self.assertRegex(html, r'<strong>4</strong>\s*<span>Bases</span>')
+        self.assertRegex(html, r'<strong>3</strong>\s*<span>Bases concluídas</span>')
+        self.assertNotIn("dashboard-workspace-chart-data", html)
+        self.assertNotIn('dashboard-chart-workspace', html)
         self.assertNotIn("dashboard-admin-chart-data", html)
 
     def test_project_lists_keep_global_header_without_duplicate_body_heading(self):
@@ -378,11 +401,8 @@ class DashboardRefinementsTests(unittest.TestCase):
 
         def check(qualitative, total):
             html = self.client.get("/").get_data(as_text=True)
-            self.assertIn(f"<span>Análise quali-dados</span><strong>{qualitative}</strong>", html)
-            self.assertIn(f"<span>Projetos ativos</span><strong>{total}</strong>", html)
-            for label in ("Busca por termos", "Busca estruturada"):
-                self.assertIn(f"<span>{label}</span><strong>1</strong>", html)
-            self.assertIn("<span>Bases de análise</span><strong>0</strong>", html)
+            self.assertRegex(html, rf'<strong>{total}</strong>\s*<span>Projetos</span>')
+            self.assertRegex(html, r'<strong>0</strong>\s*<span>Bases</span>')
             self.assertNotIn("dashboard-admin-chart-data", html)
 
         check(0, 2)
@@ -401,9 +421,12 @@ class DashboardRefinementsTests(unittest.TestCase):
         self._project(admin, "Projeto do administrador", "qualitative")
         login(self.client, admin.email)
         html = self.client.get("/").get_data(as_text=True)
-        self.assertIn("<span>Análise quali-dados</span><strong>1</strong>", html)
-        self.assertIn("<span>Projetos ativos</span><strong>1</strong>", html)
+        self.assertRegex(html, r'<strong>1</strong>\s*<span>Projetos</span>')
+        self.assertNotIn("Projeto de outro usuário", html)
         self.assertIn("dashboard-admin-chart-data", html)
+        self.assertEqual(html.count('id="dashboard-chart-users"'), 1)
+        self.assertEqual(html.count('id="dashboard-chart-usage"'), 1)
+        self.assertNotIn("dashboard-workspace-chart-data", html)
 
     def test_project_owner_sees_bases_created_by_another_user_but_not_foreign_projects(self):
         owner = create_user()
@@ -432,19 +455,14 @@ class DashboardRefinementsTests(unittest.TestCase):
         self.assertIn("Base sistemática do projeto", self.client.get("/analises/sistematicas").get_data(as_text=True))
         with patch.object(legacy, "executar_analises", side_effect=AssertionError("reprocessou PDF")):
             html = self.client.get("/").get_data(as_text=True)
-        self.assertIn("<span>Bases de análise</span><strong>3</strong>", html)
+        self.assertRegex(html, r'<strong>2</strong>\s*<span>Projetos</span>')
+        self.assertRegex(html, r'<strong>3</strong>\s*<span>Bases</span>')
+        self.assertNotIn("dashboard-workspace-chart-data", html)
         self.assertIn("Base livre do projeto", html)
         self.assertIn("Base sistemática do projeto", html)
-        self.assertIn("Projeto: Projeto livre próprio", html)
-        self.assertIn("Projeto: Projeto sistemático próprio", html)
         self.assertNotIn("Base livre alheia", html)
         self.assertNotIn("Base em projeto alheio", html)
         self.assertNotIn("Projeto alheio sigiloso", html)
-        charts = chart_data(html, "dashboard-chart-data")
-        self.assertEqual(charts["free"]["labels"], ["Livro compartilhado"])
-        self.assertEqual(charts["free"]["values"], [5])
-        self.assertEqual(charts["systematic"]["labels"], ["Entidade compartilhada"])
-        self.assertEqual(charts["systematic"]["values"], [1])
         self.assert_recent_records_have_no_chart(html)
         self.assertNotIn("dashboard-admin-chart-data", html)
 
@@ -453,8 +471,10 @@ class DashboardRefinementsTests(unittest.TestCase):
         self._base(owner, "Base sem projeto", "pdf_scraper", status="processando")
         login(self.client)
         html = self.client.get("/").get_data(as_text=True)
-        self.assertIn("Projeto: Sem projeto", html)
-        self.assertEqual(html.count("Nenhuma Base concluída ainda."), 2)
+        self.assertIn("Base sem projeto", html)
+        self.assertNotIn("Projeto: Sem projeto", html)
+        self.assertNotIn("Atividade analítica", html)
+        self.assertNotIn("dashboard-chart-workspace", html)
 
     def test_v3_uses_its_persisted_book_series_and_revoked_tool_is_not_exposed(self):
         owner = create_user()
@@ -467,22 +487,21 @@ class DashboardRefinementsTests(unittest.TestCase):
         login(self.client)
         first = self.client.get("/").get_data(as_text=True)
         self.assertIn("Base V3", first)
-        self.assertEqual(chart_data(first, "dashboard-chart-data")["free"], {
-            "title": "Resultados recuperados por livro", "unit": "resultado(s)",
-            "labels": ["Livro híbrido"], "values": [7]})
+        self.assertRegex(first, r'<strong>1</strong>\s*<span>Projetos</span>')
+        self.assertRegex(first, r'<strong>1</strong>\s*<span>Bases</span>')
+        self.assertNotIn("dashboard-workspace-chart-data", first)
         db.session.delete(db.session.get(PlanTool, ("student", "pdf_scraper")))
         db.session.commit()
         restricted = self.client.get("/").get_data(as_text=True)
         self.assertNotIn("Base V3", restricted)
         self.assertNotIn("Projeto V3", restricted)
         self.assertNotIn("Livro híbrido", restricted)
-        self.assertNotIn("free", chart_data(restricted, "dashboard-chart-data"))
+        self.assertIn("Você ainda não possui análises para continuar.", restricted)
+        self.assertNotIn("dashboard-workspace-chart-data", restricted)
 
-    def test_admin_monthly_registrations_and_completed_usage_are_aggregated_only_for_admin(self):
+    def test_admin_receives_historical_global_charts_while_continuation_stays_personal(self):
         admin = create_user("Admin", "admin@example.org", "admin", "institutional")
         regular = create_user()
-        previous_month = (datetime.now(timezone.utc).replace(day=1) - timedelta(days=1)).replace(day=1)
-        regular.created_at = previous_month
         self._base(regular, "Livre pronta", "pdf_scraper", {
             "versao": "v1", "dashboard": {"por_livro": {"rotulos": [], "valores": []}},
         })
@@ -494,36 +513,38 @@ class DashboardRefinementsTests(unittest.TestCase):
         login(self.client)
         self.assertEqual(self.client.get("/raspagem-livre").status_code, 200)
         regular_html = self.client.get("/").get_data(as_text=True)
-        self.assertNotIn("Visão geral da plataforma", regular_html)
+        self.assertIn("Livre pronta", regular_html)
         self.assertNotIn("dashboard-admin-chart-data", regular_html)
         self.client.post("/logout", data={"csrf_token": self._csrf(regular_html)})
         login(self.client, admin.email)
         admin_html = self.client.get("/").get_data(as_text=True)
+        self.assertNotIn("Livre pronta", admin_html)
+        self.assertNotIn("Sistemática pronta", admin_html)
+        self.assertIn("Você ainda não possui análises para continuar.", admin_html)
         self.assertIn("Visão geral da plataforma", admin_html)
-        self.assertEqual(chart_data(admin_html, "dashboard-chart-data"), {})
-        self.assert_recent_records_have_no_chart(admin_html)
-        aggregates = chart_data(admin_html, "dashboard-admin-chart-data")
-        self.assertEqual(aggregates["usage"], {
-            "labels": ["Busca por termos", "Busca estruturada", "Análise quali-dados", "Análise quantitativa", "ChatDoc"],
-            "values": [1, 1, 0, 0, 0]})
-        self.assertEqual(aggregates["registrations"]["values"][-2:], [1, 1])
+        self.assertEqual(admin_html.count('id="dashboard-chart-users"'), 1)
+        self.assertEqual(admin_html.count('id="dashboard-chart-usage"'), 1)
+        self.assertNotIn("dashboard-chart-workspace", admin_html)
+        self.assertEqual(chart_data(admin_html, "dashboard-admin-chart-data")["usage"], {
+            "labels": ["Busca por termos", "Busca estruturada", "Análise quali-dados",
+                       "Análise quantitativa", "ChatDoc"],
+            "values": [1, 1, 0, 0, 0],
+        })
 
     def assert_recent_records_have_no_chart(self, html):
-        section = re.search(r'<section[^>]+aria-labelledby="dashboard-bases-title">(.*?)</section>', html, re.DOTALL)[1]
-        self.assertNotRegex(section, r'<(?:canvas|svg)|class="(?:chart|empty-chart)|role="img"|skeleton|Plotly')
+        section = re.search(r'<section[^>]+aria-labelledby="continue-working-heading">(.*?)</section>', html, re.DOTALL)[1]
+        self.assertNotRegex(section, r'<canvas|class="(?:chart|empty-chart)|role="img"|skeleton|Plotly')
 
     def test_empty_summaries_have_no_chart_placeholders_and_chatdoc_is_visual_only(self):
         create_user()
         login(self.client)
         html = self.client.get("/").text
         self.assert_recent_records_have_no_chart(html)
-        self.assertEqual(chart_data(html, "dashboard-chart-data"), {})
-        for kind in ("free", "systematic", "qualitative"):
-            self.assertNotIn(f'id="dashboard-chart-{kind}"', html)
-        self.assertIn("Nenhuma Base de análise disponível.", html)
-        self.assertEqual(html.count("Nenhuma Base concluída ainda."), 2)
-        self.assertIn("Nenhuma análise quali-dados ainda.", html)
-        self.assertIn('src="https://cdn.plot.ly/plotly-2.35.2.min.js"', html)
+        self.assertIn("Você ainda não possui análises para continuar.", html)
+        self.assertNotIn('dashboard-chart-workspace', html)
+        self.assertNotIn('cdn.plot.ly', html)
+        for label in ("Projetos", "Bases", "Documentos nas Bases", "Bases concluídas"):
+            self.assertRegex(html, rf'<strong>0</strong>\s*<span>{re.escape(label)}</span>')
         for name in ("Análise quantitativa", "ChatDoc"):
             self.assertRegex(html, r'(?s)<span class="platform-nav-unavailable" aria-disabled="true">\s*<svg[^>]*>.*?</svg>\s*<span>' + name + r'</span></span>')
         self.assertFalse(any("chatdoc" in rule.rule.lower() for rule in self.app.url_map.iter_rules()))
@@ -533,7 +554,7 @@ class DashboardRefinementsTests(unittest.TestCase):
     def _csrf(html):
         return re.search(r'<meta name="csrf-token" content="([^"]+)"', html).group(1)
 
-    def test_systematic_context_uses_accessible_icon_without_changing_details(self):
+    def test_systematic_dashboard_replaces_first_occurrences_with_analytic_charts(self):
         owner = create_user()
         project = self._project(owner, "Projeto sistemático", "systematic")
         analysis = self._base(owner, "Base contextual", "document_analysis", {
@@ -548,10 +569,11 @@ class DashboardRefinementsTests(unittest.TestCase):
         }, project)
         login(self.client)
         html = self.client.get(f"/analises/{analysis.id}").get_data(as_text=True)
-        self.assertIn('title="Ver trechos" aria-label="Ver trechos"', html)
-        self.assertIn('<summary class="btn btn-outline-primary btn-sm platform-action-button"', html)
-        self.assertNotIn('<summary>Ver trechos</summary>', html)
-        self.assertIn('Ocorrência:</strong> termo', html)
+        self.assertIn('id="grafico-grupos-documentos"', html)
+        self.assertIn('id="grafico-composicao-grupos"', html)
+        self.assertIn('id="structured-analysis-chart-data"', html)
+        self.assertNotIn("Primeiras ocorrências", html)
+        self.assertNotIn('title="Ver trechos" aria-label="Ver trechos"', html)
         self.assertIn("© 2026 Análysis. Todos os direitos reservados.", html)
 
     def test_shared_footer_has_exact_wording_and_external_link_safety(self):
@@ -574,87 +596,70 @@ class DashboardRefinementsTests(unittest.TestCase):
 
 
 class DashboardChartFrontendTests(unittest.TestCase):
-    def test_usage_keeps_zero_categories_even_when_all_counts_are_zero(self):
+    def test_historical_admin_charts_render_their_two_aggregate_series(self):
         node = shutil.which("node")
         if not node:
             self.skipTest("Node não disponível")
         source = (Path(__file__).resolve().parents[1] / "static/js/platform_dashboard.js").read_text(encoding="utf-8")
         script = r"""
 const assert=require('node:assert/strict');
-const labels=['Busca por termos','Busca estruturada','Análise quali-dados','Análise quantitativa','ChatDoc'];
-for(const values of [[2,1,3,0,0],[0,0,0,0,0]]) {
-  const calls=[],target={classList:{contains:()=>false,add(){},remove(){}}};
-  const document={getElementById:id=>id==='dashboard-chart-data'?{textContent:'{}'}:
-    id==='dashboard-admin-chart-data'?{textContent:JSON.stringify({registrations:{labels:[],values:[]},usage:{labels,values}})}:
-    id==='dashboard-chart-usage'?target:null,addEventListener(){},querySelectorAll:()=>[]};
-  const Plotly={react:(...args)=>calls.push(args),purge:()=>{throw Error('Não omitir ferramentas zeradas');}};
-  const window={Plotly,PesquisaPdfPlotTheme:{palette:()=>['a','b','c','d'],layout:margin=>({margin}),axis:x=>x}};
+const calls=[], handlers={};
+const chart=()=>({classList:{remove(){}},closest:()=>null});
+const charts={
+  'dashboard-chart-users':chart(),
+  'dashboard-chart-usage':chart(),
+};
+const admin={registrations:{labels:['2026-09','2026-10'],values:[1,2]},usage:{labels:['Busca por termos','Busca estruturada'],values:[2,1]}};
+const document={getElementById:id=>id==='dashboard-admin-chart-data'?{textContent:JSON.stringify(admin)}:charts[id]||null,
+  addEventListener:(name,fn)=>handlers[name]=fn,querySelectorAll:()=>[]};
+const Plotly={react:(...args)=>calls.push(args),Plots:{resize(){}}};
+const window={Plotly,PesquisaPdfPlotTheme:{palette:()=>['a','b','c','d','e'],layout:margin=>({margin}),axis:x=>x}};
 """ + source + r"""
-  assert.equal(calls.length,1);assert.deepEqual(calls[0][1][0].x,values);assert.deepEqual(calls[0][1][0].y,labels);
-  assert.equal(calls[0][1][0].marker.color,'d');assert.equal(calls[0][1][0].orientation,'h');
-  assert.match(calls[0][1][0].hovertemplate,/Base\(s\) concluída\(s\)/);assert.equal(calls[0][3].responsive,true);
-}
+assert.equal(calls.length,2);
+assert.deepEqual(calls[0][1][0].x,['09/2026','10/2026']);
+assert.deepEqual(calls[0][1][0].y,[1,2]);
+assert.equal(calls[0][1][0].orientation,'v');
+assert.deepEqual(calls[1][1][0].x,[2,1]);
+assert.deepEqual(calls[1][1][0].y,['Busca por termos','Busca estruturada']);
+assert.equal(calls[1][1][0].orientation,'h');
+assert.match(calls[1][1][0].hovertemplate,/Base\(s\) concluída\(s\)/);
+assert.equal(calls[1][3].responsive,true);
 """
         result = subprocess.run([node, "-e", script], capture_output=True, text=True, encoding="utf-8")
         self.assertEqual(result.returncode, 0, result.stderr)
 
-    def test_preserved_series_theme_resize_and_empty_chart(self):
+    def test_admin_charts_react_to_theme_and_resize(self):
         node = shutil.which("node")
         if not node:
             self.skipTest("Node não disponível")
         source = (Path(__file__).resolve().parents[1] / "static/js/platform_dashboard.js").read_text(encoding="utf-8")
         script = r"""
 const assert = require('node:assert/strict');
-const charts = new Map(), cards = [{}, {}, {}], handlers = {}, calls = [], resized = [], frames = new Map();
-const personal = {
-  free:{labels:['Livro A','Livro B'],values:[4,2],unit:'resultado(s)'},
-  systematic:{labels:['Entidade'],values:[3]},
-  qualitative:{labels:['Racismo','Educação'],values:[2,1]},
-};
-for(const kind of ['free','systematic','qualitative']) {
-  const classes = new Set(['js-plotly-plot']);
-  charts.set('dashboard-chart-'+kind,{id:kind,classList:{contains:x=>classes.has(x),add:x=>classes.add(x),remove:x=>classes.delete(x)}});
-}
-let observe, serial=0;
+const handlers = {}, calls = [], resized = [], frames = new Map();
+const classes = new Set(['js-plotly-plot']);
+const cards=[{}, {}]; let observed=[], serial=0;
+const chart=()=>({classList:{contains:x=>classes.has(x),add:x=>classes.add(x),remove:x=>classes.delete(x)}});
+const charts=[chart(), chart()];
 const document = {
-  getElementById:id=>id==='dashboard-chart-data'?{textContent:JSON.stringify(personal)}:charts.get(id),
-  querySelectorAll:selector=>selector.endsWith('.chart-card')?cards:[...charts.values()],
+  getElementById:id=>id==='dashboard-admin-chart-data'?{textContent:JSON.stringify({registrations:{labels:['2026-10'],values:[1]},usage:{labels:['Busca por termos'],values:[1]}})}:
+    id==='dashboard-chart-users'?charts[0]:id==='dashboard-chart-usage'?charts[1]:null,
   addEventListener:(name,fn)=>handlers[name]=fn,
+  querySelectorAll:selector=>selector.endsWith('.js-plotly-plot')?charts:selector.endsWith('.platform-panel')?cards:[],
 };
-const ResizeObserver = class {constructor(fn){observe=fn;} observe(card){assert.ok(cards.includes(card));}};
+const ResizeObserver = class {constructor(fn){this.fn=fn;} observe(target){observed.push(target);}};
 const requestAnimationFrame=fn=>{frames.set(++serial,fn);return serial;}, cancelAnimationFrame=id=>frames.delete(id);
-const Plotly={react:(...args)=>calls.push(args),purge:target=>target.purged=true,Plots:{resize:target=>resized.push(target)}};
+const Plotly={react:(...args)=>calls.push(args),Plots:{resize:target=>resized.push(target)}};
 const window={Plotly,ResizeObserver,PesquisaPdfPlotTheme:{palette:()=>['red','blue','green'],layout:margin=>({margin}),axis:x=>x}};
 """ + source + r"""
-assert.equal(calls.length,3);
-for(const [target, data, layout, config] of calls) {
-  assert.deepEqual(data[0].x,personal[target.id].values);
-  assert.deepEqual(data[0].y,personal[target.id].labels);
-  assert.equal(data[0].type,'bar');assert.equal(data[0].orientation,'h');
-  assert.equal(layout.autosize,true);assert.equal(config.responsive,true);
-  assert.match(data[0].hovertemplate,/%\{y\}/);
-}
-assert.match(calls[2][1][0].hovertemplate,/trecho\(s\)/);
-handlers['tema-alterado']();assert.equal(calls.length,6);
-observe(cards.map(target=>({target,contentRect:{width:900}})));
-observe(cards.map(target=>({target,contentRect:{width:600}})));
+assert.equal(calls.length,2);
+assert.deepEqual(observed,cards);
+handlers['tema-alterado']();assert.equal(calls.length,4);
+handlers['dashboard-redimensionar']();
 assert.equal(frames.size,1);for(const fn of frames.values())fn();frames.clear();
-assert.equal(resized.length,3);
-observe(cards.map(target=>({target,contentRect:{width:600}})));assert.equal(frames.size,0);
+assert.deepEqual(resized,charts);
 handlers['dashboard-redimensionar']();assert.equal(frames.size,1);
-personal.qualitative.values=[0,0];
-// O JSON é uma cópia própria do componente; simula novo carregamento sem códigos aplicados.
 """
         result = subprocess.run([node, "-e", script], capture_output=True, text=True, encoding="utf-8")
-        self.assertEqual(result.returncode, 0, result.stderr)
-        # Novo carregamento com todas as contagens zeradas usa o estado vazio.
-        empty = script.split(source, 1)[0].replace("values:[2,1]", "values:[0,0]") + source + r"""
-assert.equal(calls.length,2);
-const target=charts.get('dashboard-chart-qualitative');
-assert.equal(target.purged,true);assert.equal(target.classList.contains('empty-chart'),true);
-assert.equal(target.textContent,'Ainda não há dados para exibir neste gráfico.');
-"""
-        result = subprocess.run([node, "-e", empty], capture_output=True, text=True, encoding="utf-8")
         self.assertEqual(result.returncode, 0, result.stderr)
 
 

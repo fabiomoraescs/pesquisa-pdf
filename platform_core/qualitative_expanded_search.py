@@ -15,10 +15,10 @@ import numpy as np
 import regex
 
 from analyzer import v3
-from analyzer.lexical_family import WORDS, find_lexical_spans
+from analyzer.lexical_family import WORDS, find_lexical_matches
 
 from .qualitative_corpus import load_qualitative_manifest, qualitative_corpus_dir, read_qualitative_page
-from .qualitative_search import QualitativeSearchError, search_qualitative_document
+from .qualitative_search import QualitativeSearchError
 
 
 SEGMENTATION_VERSION = "sentence-word-eligible-v2"
@@ -27,7 +27,6 @@ SEGMENT_TARGET = 400  # comprimento textual, jamais limite de resultados
 EMBEDDING_BATCH = 32
 DEFAULT_SEMANTIC_THRESHOLD = 0.50
 _MODEL_LOCK = RLock()  # inicialização e inferência seguras entre threads Gunicorn
-_WORD_CHAR = regex.compile(r"[\p{L}\p{M}\p{N}_]")
 _ALPHABETIC_WORD = regex.compile(r"\p{L}[\p{L}\p{M}]*")
 _EDITORIAL_LINE = regex.compile(
     r"(?i)^(?:cap[ií]tulo|figura|tabela|quadro|p[aá]gina|editora)\s+"
@@ -81,33 +80,26 @@ def _match(document_id, number, page, start, end, kind, *, semantic_score=None):
 
 def search_lexical(analysis, document_id, query, *, case_sensitive=False, progress_callback=None):
     """Literal, flexões e família derivacional, sempre com offsets originais."""
-    literal = search_qualitative_document(analysis, document_id, query,
-                                          case_sensitive=case_sensitive,
-                                          progress_callback=progress_callback)
-    if not WORDS.search(query):
-        return literal
     manifest = load_qualitative_manifest(analysis)
-    literal_by_page = {}
-    for item in literal["results"]:
-        literal_by_page.setdefault((item["document_id"], item["page_number"]), []).append(item)
     matches = {}
     order = {item["document_id"]: index for index, item in enumerate(manifest["documents"])}
     total_pages = sum(doc["page_count"] for doc in manifest["documents"]
                       if document_id is None or doc["document_id"] == document_id)
+    has_words = bool(WORDS.search(query))
     completed = 0
     for current_document_id, number, page in _pages(analysis, document_id, manifest):
         text = page["text"]
-        for item in literal_by_page.get((current_document_id, number), ()):
-            start, end = item["start_offset"], item["end_offset"]
-            if ((start and _WORD_CHAR.fullmatch(text[start - 1]))
-                    or (end < len(text) and _WORD_CHAR.fullmatch(text[end]))):
-                continue  # Subcadeia de outra palavra não é um lexema completo.
-            matches[_key(item)] = {**item, "match_type": "literal", "match_text": text[start:end]}
-        for start, end, _kind in find_lexical_spans(text, query, case_sensitive=case_sensitive):
-            item = _match(current_document_id, number, page, start, end, "lexical")
+        for start, end, kind in find_lexical_matches(text, query, case_sensitive=case_sensitive):
+            item = _match(current_document_id, number, page, start, end,
+                          "literal" if kind == "literal" else "lexical")
             matches.setdefault(_key(item), item)
         completed += 1
         if progress_callback:
+            # A busca lexical mantém a etapa literal visível para o cliente,
+            # como antes da centralização do motor de matching.
+            progress_callback({"stage": "literal", "completed": completed, "total": total_pages,
+                               "document_id": current_document_id, "page_number": number})
+        if progress_callback and has_words:
             progress_callback({"stage": "lexical", "completed": completed, "total": total_pages,
                                "document_id": current_document_id, "page_number": number})
     results = sorted(matches.values(), key=lambda item: (order[item["document_id"]],

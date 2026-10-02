@@ -22,7 +22,7 @@ DOCUMENT_HEADERS = (
 OCCURRENCE_HEADERS = (
     "ID ocorrência", "ID documento", "Arquivo PDF", "Página PDF", "Página PDF final",
     "Categoria de busca", "Tipo de entidade", "Identificador da entidade", "Entidade canônica",
-    "Termo encontrado", "Forma original no texto", "Grupo(s)", "Bibliotecas de origem",
+    "Variante configurada", "Termo encontrado", "Forma original no texto", "Grupo(s)", "Bibliotecas de origem",
     "Método de análise", "Tipo de correspondência", "Similaridade semântica",
     "Trecho anterior", "Trecho da ocorrência", "Trecho posterior", "Contexto completo",
     "Tradição intelectual", "País/região matriz", "Validação", "Forma de referência",
@@ -59,7 +59,11 @@ def gerar_xlsx(resultado: dict[str, Any]) -> BytesIO:
         (CODIFICACAO, CODING_HEADERS), (COOCORRENCIAS, COOCCURRENCE_HEADERS),
     ):
         _append(sheets[name], headers)
-    metodo = "Híbrido" if resultado.get("metodo_analise") == "hibrido" else "Lexical"
+    metodo = {
+        "literal": "Literal + Regex" if resultado.get("usar_regex") else "Literal",
+        "lexical": "Lexical",
+        "hibrido": "Híbrido",
+    }.get(resultado.get("metodo_analise"), "Lexical")
     for document in resultado["documentos"]:
         _append(sheets[DOCUMENTOS], (
             document.get("id_project"), document["id_documento"], document["arquivo_pdf"],
@@ -75,8 +79,9 @@ def gerar_xlsx(resultado: dict[str, Any]) -> BytesIO:
         _append(sheets[OCORRENCIAS], (
             item["id_ocorrencia"], item["id_documento"], item["arquivo_pdf"], item["pagina_pdf"],
             item.get("pagina_pdf_final"), item["categoria_busca"], item["tipo_entidade"],
-            item["id_entidade"], item["entidade_canonica"], item["termo_encontrado"],
-            item["forma_original_no_texto"], item["grupo"], item.get("bibliotecas_origem", []),
+            item["id_entidade"], item["entidade_canonica"], item.get("variante_configurada", ""),
+            item["termo_encontrado"], item["forma_original_no_texto"], item["grupo"],
+            item.get("bibliotecas_origem", []),
             metodo, item.get("tipo_correspondencia", "Lexical"), item.get("similaridade_semantica"),
             item["trecho_anterior"], item["trecho_ocorrencia"], item["trecho_posterior"],
             item["contexto_completo"], item.get("tradicao_intelectual"), item.get("pais_regiao_matriz"),

@@ -1,9 +1,12 @@
 """Regressão da navegação por tipo de raspagem e bases persistentes."""
 
 import unittest
+from io import BytesIO
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
+from unittest.mock import patch
 
+from app import PROGRESSOS, PROGRESSOS_LOCK
 from platform_helpers import create_project, create_user, csrf_from, isolated_platform, login
 from platform_core.analyses import create_analysis
 from platform_core.extensions import db
@@ -56,13 +59,18 @@ class AnalysisBaseTests(unittest.TestCase):
     def test_version_radios_and_project_navigation_keep_existing_values(self):
         page = self.client.get("/raspagem-livre").get_data(as_text=True)
         self.assertNotIn('<select class="form-select" id="versao"', page)
-        for version in ("v1", "v3"):
+        for version in ("literal", "v1", "v3"):
             self.assertIn(f'type="radio" name="versao" value="{version}"', page)
         self.assertNotIn('type="radio" name="versao" value="v2"', page)
+        self.assertIn('> Literal</label>', page)
         self.assertIn('> Lexical</label>', page)
         self.assertIn('> Híbrido</label>', page)
+        self.assertIn('id="usar-regex" name="usar_regex" type="checkbox"', page)
         self.assertIn('Método de raspagem', page)
-        self.assertIn('Escolha o método de raspagem conforme o objetivo', page)
+        self.assertIn(
+            'Regex interpreta o texto como expressão regular somente no modo Literal.',
+            page,
+        )
         for path, new_path, archived_path in (
             ("/projetos/livres", "/projetos/livres/novo", "/projetos/livres/arquivados"),
             ("/projetos", "/projetos/novo", "/projetos/arquivados"),
@@ -74,6 +82,36 @@ class AnalysisBaseTests(unittest.TestCase):
             self.assertIn(f'href="{archived_path}">Projetos arquivados</a>', html)
             self.assertIn('btn btn-outline-primary btn-sm', html)
             self.assertNotIn('Criar projeto', html)
+
+    def test_term_search_backend_rejects_regex_outside_literal_and_invalid_patterns(self):
+        token = csrf_from(self.client.get("/raspagem-livre"))
+        incompatible = self.client.post("/raspagem-livre", data={
+            "csrf_token": token, "versao": "v1", "usar_regex": "1", "termos": "raça",
+        })
+        self.assertEqual(incompatible.status_code, 200)
+        self.assertIn("Regex só pode ser usada com o método Literal", incompatible.get_data(as_text=True))
+        token = csrf_from(self.client.get("/raspagem-livre"))
+        invalid = self.client.post("/raspagem-livre", data={
+            "csrf_token": token, "versao": "literal", "usar_regex": "1", "termos": "(",
+            "pdfs": (BytesIO(b"%PDF-teste"), "teste.pdf"),
+        }, content_type="multipart/form-data")
+        self.assertEqual(invalid.status_code, 200)
+        self.assertIn("Expressão Regex inválida", invalid.get_data(as_text=True))
+
+    def test_term_search_missing_method_defaults_to_literal(self):
+        token = csrf_from(self.client.get("/raspagem-livre"))
+        with patch("app.EXECUTOR_ANALISES.submit") as submit:
+            response = self.client.post("/raspagem-livre", data={
+                "csrf_token": token, "termos": "raça",
+                "pdfs": (BytesIO(b"%PDF-teste"), "teste.pdf"),
+            }, content_type="multipart/form-data", headers={"X-Requested-With": "XMLHttpRequest"})
+        self.assertEqual(response.status_code, 202)
+        analysis = db.session.get(Analysis, response.json["job_id"])
+        self.assertEqual(analysis.tool_version, "literal")
+        self.assertEqual(analysis.parameters_json["metodo_busca"], "literal")
+        self.assertEqual(submit.call_args.args[5], "literal")
+        with PROGRESSOS_LOCK:
+            PROGRESSOS.pop(response.json["job_id"], None)
 
     def test_shared_compact_typography_for_internal_headings_and_scraping_sections(self):
         root = Path(__file__).resolve().parents[1]
@@ -114,8 +152,8 @@ class AnalysisBaseTests(unittest.TestCase):
         intro, content = free_tool.text.split('<section class="hero-card">', 1)
         self.assertIn('class="app-content-container platform-toolbar mb-4" data-base-intro', intro)
         self.assertIn('Livre direto</p>', intro)
-        self.assertIn('data-bs-target="#modal-como-funciona"', intro)
-        self.assertNotIn('data-bs-target="#modal-como-funciona"', content)
+        self.assertIn('data-platform-tutorial-open', intro)
+        self.assertNotIn('data-platform-tutorial-open', content)
         self.assertNotIn('Livre direto</p>', content)
         for control in ('id="pdfs"', 'id="termos"', 'name="versao"', 'name="project_id"'):
             self.assertIn(control, content)
