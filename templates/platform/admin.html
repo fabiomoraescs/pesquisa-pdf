@@ -67,18 +67,17 @@
     <div class="platform-ai-provider-grid" aria-label="Providers disponíveis">
       {% for status in provider_statuses %}
       <article class="platform-ai-provider-card" data-ai-provider-card="{{ status.id }}">
-        <div class="platform-ai-provider-card-heading"><h3 class="h5">{{ status.display_name }}</h3><div class="d-flex flex-wrap gap-1 justify-content-end"><span class="platform-badge">{% if status.provider_type == 'native' %}Nativo · sem credencial{% elif not status.implemented %}Integração futura{% elif status.credential_configured %}Credencial configurada{% else %}Credencial não configurada{% endif %}</span><span class="platform-badge" data-ai-enabled-badge="{{ status.id }}">{{ 'Habilitado' if status.enabled else 'Desabilitado' }}</span><span class="platform-badge" data-ai-primary-badge="{{ status.id }}" {% if not status.is_primary %}hidden{% endif %}>PRIMÁRIO</span></div></div>
+        <div class="platform-ai-provider-card-heading"><h3 class="h5">{% if status.id == 'analysis_native' %}Análysis{% elif status.id == 'anthropic' %}Claude{% else %}{{ status.display_name }}{% endif %}</h3><div class="d-flex flex-wrap gap-1 justify-content-end"><span class="platform-badge">{% if status.provider_type == 'native' %}Nativo · sem credencial{% elif not status.implemented %}Integração futura{% elif status.credential_configured %}Credencial configurada{% else %}Credencial não configurada{% endif %}</span><span class="platform-badge" data-ai-enabled-badge="{{ status.id }}">{{ 'Habilitado' if status.enabled else 'Desabilitado' }}</span><span class="platform-badge" data-ai-primary-badge="{{ status.id }}" {% if not status.is_primary %}hidden{% endif %}>PRIMÁRIO</span></div></div>
         <label class="form-check form-switch"><input class="form-check-input" type="checkbox" name="enabled_providers" value="{{ status.id }}" {% if status.enabled %}checked{% endif %} {% if not status.implemented %}disabled aria-disabled="true"{% endif %} data-ai-enabled="{{ status.id }}"><span class="form-check-label">Ativar provider</span></label>
         <label class="form-label" for="ai-model-{{ status.id }}">Modelo
           <input class="form-control" id="ai-model-{{ status.id }}" name="{{ status.id }}_model" value="{{ status.selected_model }}" maxlength="160" {% if not status.implemented or status.provider_type == 'native' %}readonly aria-readonly="true"{% endif %}>
         </label>
-        <p class="platform-muted mb-0">{% if status.provider_type == 'native' %}Tipo: Native · Credencial: Não necessária. Capacidades: {{ status.capabilities | join(', ') }}. {% endif %}Status de conexão: <span data-ai-connection-status="{{ status.id }}" data-ai-connection-state="{{ status.connection_state }}" aria-live="polite">{{ status.connection_status }}</span></p>
+        <p class="platform-muted mb-0">Status de conexão: <span data-ai-connection-status="{{ status.id }}" data-ai-connection-state="{{ status.connection_state }}" aria-live="polite">{{ status.connection_status }}</span></p>
         {% if status.implemented %}<button class="btn btn-outline-primary btn-sm" type="submit" formmethod="post" formaction="{{ url_for('admin.test_assistant_ai_connection', provider_id=status.id) }}" data-ai-connection-test="{{ status.id }}">Testar conexão</button>{% else %}<span class="platform-muted" aria-disabled="true">Provider preparado para fase futura.</span>{% endif %}
       </article>
       {% endfor %}
       <article class="platform-ai-provider-card platform-ai-docchat" aria-labelledby="docchat-settings-title">
-        <div class="platform-ai-provider-card-heading"><h3 class="h5" id="docchat-settings-title">DocChat (em breve)</h3><span class="platform-badge">Preparação futura</span></div>
-        <p class="platform-muted mb-0">Esta configuração prepara o provider/modelo da futura ferramenta DocChat. O DocChat ainda não está disponível.</p>
+        <div class="platform-ai-provider-card-heading"><h3 class="h5" id="docchat-settings-title">DocChat</h3><span class="platform-badge">Preparação futura</span></div>
         <label class="form-label" for="docchat-provider">Provider
           <select class="form-select" id="docchat-provider" name="docchat_provider" form="docchat-settings-form">
             <option value="">Não configurado</option>
