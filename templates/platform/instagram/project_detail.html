@@ -7,6 +7,7 @@
   <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
     <h1 id="instagram-project-title" class="h4 mb-0">{{ project.name }}</h1>
     <div class="d-flex flex-wrap align-items-center gap-2">
+      <a class="btn btn-outline-primary btn-sm" href="{{ url_for('instagram.dashboard', project_id=project.id) }}">Dashboard</a>
       {% if project.status == 'active' %}
       <a class="btn btn-outline-primary btn-sm" href="{{ url_for('instagram.new_import', project_id=project.id) }}">Importar dados</a>
       <form method="post" action="{{ url_for('instagram.archive_project', project_id=project.id) }}" onsubmit="return confirm('Arquivar este projeto? Os dados serão preservados.')"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="confirm" value="yes"><button class="btn btn-outline-primary btn-sm platform-action-button" type="submit" title="Arquivar projeto" aria-label="Arquivar projeto">{{ icon('arquivar') }}</button></form>

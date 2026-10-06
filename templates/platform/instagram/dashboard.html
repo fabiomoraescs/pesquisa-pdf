@@ -1,0 +1,69 @@
+{% extends 'platform/base.html' %}
+{% block title %}Dashboard — {{ project.name }} — Análysis Instagram{% endblock %}
+{% macro number(value) %}{{ '{:,}'.format(value).replace(',', '.') if value is not none else '—' }}{% endmacro %}
+{% block body %}
+<section class="platform-panel mb-3" aria-labelledby="instagram-dashboard-title">
+  <div class="d-flex flex-wrap align-items-start justify-content-between gap-2">
+    <div><h1 id="instagram-dashboard-title" class="h4 mb-1">Dashboard</h1><p class="platform-muted mb-1">{{ project.name }}{% if account %} · @{{ account.username.lstrip('@') }}{% endif %}</p></div>
+    <a class="btn btn-outline-primary btn-sm" href="{{ url_for('instagram.project_detail', project_id=project.id) }}">Voltar ao projeto</a>
+  </div>
+  {% if dashboard.reference_at %}<p class="platform-muted mb-1"><strong>Dados atualizados até</strong> {{ dashboard.reference_at | data_hora_local }}</p>{% endif %}
+  <p class="platform-muted mb-0">O período filtra publicações pela data em que foram publicadas, tomando a observação mais recente do projeto como referência. Seguidores refletem os snapshots da conta.</p>
+</section>
+<nav class="platform-panel mb-3 d-flex flex-wrap align-items-center gap-2" aria-label="Período das publicações">
+  <span class="platform-muted me-1">Período:</span>
+  {% for key, label in period_options %}
+  <a class="btn btn-sm btn-outline-primary{% if dashboard.period == key %} active{% endif %}" href="{{ url_for('instagram.dashboard', project_id=project.id, period=key) }}"{% if dashboard.period == key %} aria-current="page"{% endif %}>{{ label }}</a>
+  {% endfor %}
+</nav>
+{% if not dashboard.has_data %}
+<div class="platform-empty-state"><h2 class="h5">Ainda não há dados para exibir.</h2><p>Importe um arquivo para iniciar o histórico deste projeto.</p>{% if project.status == 'active' %}<a class="btn btn-primary btn-sm" href="{{ url_for('instagram.new_import', project_id=project.id) }}">Importar dados</a>{% endif %}</div>
+{% else %}
+  {% if dashboard.rows %}
+  <section class="mb-3" aria-label="Métricas das publicações">
+    <div class="row g-3">
+      <div class="col-12 col-sm-6 col-xl-3"><div class="metric-card"><span>Publicações</span><strong>{{ number(dashboard.publication_count) }}</strong><small class="platform-muted">Uma contagem por publicação</small></div></div>
+      {% for metric in dashboard.metrics %}
+      <div class="col-12 col-sm-6 col-xl-3"><div class="metric-card"><span>{{ metric.label }}</span><strong>{{ metric.display }}</strong><small class="platform-muted">{{ metric.known }} de {{ metric.publications }} publicações{% if metric.partial %} · Dados parciais{% endif %}</small></div></div>
+      {% endfor %}
+    </div>
+  </section>
+  {% else %}
+  <div class="platform-empty-state mb-3"><h2 class="h5">Nenhuma publicação encontrada neste período.</h2><p>Selecione outro período para consultar as publicações importadas.</p></div>
+  {% endif %}
+  <section class="platform-panel mb-3" aria-labelledby="instagram-followers-title">
+    <h2 id="instagram-followers-title" class="h5">Seguidores da conta</h2>
+    <p class="mb-1"><strong class="fs-4">{{ dashboard.followers_display }}</strong></p>
+    <p class="platform-muted mb-0">Última coleta: {{ dashboard.followers_observed_at | data_hora_local if dashboard.followers_observed_at else 'Não informado' }}. Esta métrica não varia com o filtro de publicações.</p>
+  </section>
+  <section class="row g-4 dashboard-grid mb-3" aria-label="Gráficos do Instagram">
+    <div class="col-12"><div class="chart-card"><div class="chart-header"><h2>Evolução de seguidores</h2><span class="chart-subtitle">Contagem registrada em cada snapshot da conta</span></div><div id="instagram-chart-followers" class="chart" role="img" aria-label="Evolução de seguidores da conta"></div></div></div>
+    {% if dashboard.rows %}
+    <div class="col-12"><div class="chart-card"><div class="chart-header"><h2>Alcance por publicação</h2><span class="chart-subtitle">Última observação de cada publicação com alcance conhecido</span></div><div id="instagram-chart-reach" class="chart" role="img" aria-label="Alcance por publicação"></div></div></div>
+    <div class="col-12"><div class="chart-card"><div class="chart-header"><h2>Interações por publicação</h2><span class="chart-subtitle">Valor registrado de interações na última observação</span></div><div id="instagram-chart-interactions" class="chart" role="img" aria-label="Interações por publicação"></div></div></div>
+    {% endif %}
+  </section>
+  {% if dashboard.rows %}
+  <section class="platform-panel mb-3" aria-labelledby="instagram-ranking-title">
+    <h2 id="instagram-ranking-title" class="h5">Publicações com maior alcance</h2>
+    {% if dashboard.ranking %}<ol class="mb-0">{% for row in dashboard.ranking %}<li class="mb-2"><span title="{{ row.caption }}">{{ row.short_caption }}</span> · {{ row.media.media_type_raw or 'Tipo não informado' }} · {{ row.media.published_at | data_local }} · <strong>{{ number(row.observation.reach) }}</strong>{% if row.permalink %} · <a href="{{ row.permalink }}" target="_blank" rel="noopener noreferrer">Abrir publicação</a>{% endif %}</li>{% endfor %}</ol>{% else %}<p class="platform-muted mb-0">Nenhuma publicação possui alcance informado.</p>{% endif %}
+  </section>
+  <section class="platform-panel" aria-labelledby="instagram-media-table-title">
+    <h2 id="instagram-media-table-title" class="h5">Publicações</h2>
+    <div class="table-responsive"><table class="table table-sm align-middle text-nowrap">
+      <thead><tr><th scope="col">Publicação</th><th scope="col">Tipo</th><th scope="col">Publicada em</th><th scope="col">Alcance</th><th scope="col">Impressões</th><th scope="col">Reproduções</th><th scope="col">Curtidas</th><th scope="col">Comentários</th><th scope="col">Compartilhamentos</th><th scope="col">Salvamentos</th><th scope="col">Interações</th><th scope="col">Observada em</th><th scope="col">Ação</th></tr></thead>
+      <tbody>{% for row in dashboard.rows %}<tr>
+        <td><span class="d-inline-block text-truncate align-middle" style="max-width: 14rem" title="{{ row.caption }}">{{ row.short_caption }}</span></td>
+        <td>{{ row.media.media_type_raw or '—' }}</td><td>{{ row.media.published_at | data_hora_local if row.media.published_at else '—' }}</td>
+        <td>{{ number(row.observation.reach) if row.observation else '—' }}</td><td>{{ number(row.observation.impressions) if row.observation else '—' }}</td><td>{{ number(row.observation.plays) if row.observation else '—' }}</td><td>{{ number(row.observation.likes) if row.observation else '—' }}</td><td>{{ number(row.observation.comments_count) if row.observation else '—' }}</td><td>{{ number(row.observation.shares) if row.observation else '—' }}</td><td>{{ number(row.observation.saves) if row.observation else '—' }}</td><td>{{ number(row.observation.interactions) if row.observation else '—' }}</td>
+        <td>{{ row.observation.observed_at | data_hora_local if row.observation else '—' }}</td><td>{% if row.permalink %}<a href="{{ row.permalink }}" target="_blank" rel="noopener noreferrer" aria-label="Abrir publicação {{ row.media.external_id or row.ordinal }}">Abrir</a>{% else %}—{% endif %}</td>
+      </tr>{% endfor %}</tbody>
+    </table></div>
+  </section>
+  {% endif %}
+  <script id="instagram-dashboard-chart-data" type="application/json">{{ dashboard.chart_data | tojson }}</script>
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+  <script src="{{ url_for('static', filename='js/plot_theme.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/instagram_dashboard.js') }}"></script>
+{% endif %}
+{% endblock %}
