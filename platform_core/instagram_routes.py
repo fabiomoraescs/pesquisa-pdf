@@ -24,7 +24,7 @@ from .instagram_import import (
     parse_instagram_import,
 )
 from .instagram_previews import InstagramPreviewExpired, previews
-from .instagram_dashboard import PERIOD_DAYS, build_instagram_dashboard
+from .instagram_dashboard import PERIOD_DAYS, TABLE_SORTS, build_instagram_dashboard
 from .instagram_storage import (
     InstagramImportPersistenceError,
     account_conflict,
@@ -171,14 +171,20 @@ def project_detail(project_id: UUID):
 def dashboard(project_id: UUID):
     project = _project_for_current_user(project_id)
     period = request.args.get("period", "30d")
-    if period not in PERIOD_DAYS:
+    sort = request.args.get("sort", "recent")
+    if period not in PERIOD_DAYS or sort not in TABLE_SORTS:
         abort(400)
-    summary = build_instagram_dashboard(project, period, current_app.config["PRESENTATION_TIMEZONE"])
+    summary = build_instagram_dashboard(
+        project, period, current_app.config["PRESENTATION_TIMEZONE"], sort=sort
+    )
     return render_template(
         "platform/instagram/dashboard.html", project=project, account=project.instagram_account,
         dashboard=summary,
         period_options=(("7d", "7 dias"), ("30d", "30 dias"), ("90d", "90 dias"),
                         ("all", "Todo o histórico")),
+        sort_options=(("recent", "Mais recentes"), ("reach", "Maior alcance"),
+                      ("interactions", "Mais interações"),
+                      ("interaction_rate", "Maior taxa de interação por alcance")),
     )
 
 

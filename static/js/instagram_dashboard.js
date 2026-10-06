@@ -40,12 +40,33 @@
     }, config);
   }
 
+  function drawTypeRate(series, color) {
+    const target = document.getElementById('instagram-chart-type-interaction-rate');
+    if (!target) return;
+    if (!series?.values?.length) return empty(target, 'Não há taxas de interação por alcance conhecidas para este gráfico.');
+    if (!window.Plotly || !theme) return empty(target, 'O gráfico está indisponível neste momento. Os dados continuam na tabela.');
+    Plotly.react(target, [{
+      type: 'bar',
+      x: series.labels,
+      y: series.values,
+      marker: { color },
+      hovertemplate: '%{x}<br><b>%{y:.2f}% taxa mediana de interação por alcance</b><extra></extra>',
+    }], {
+      ...theme.layout({ l: 70, r: 24, t: 20, b: 105 }),
+      height: 340,
+      xaxis: theme.axis({ title: 'Tipo de conteúdo', type: 'category', automargin: true, tickangle: -25 }),
+      yaxis: theme.axis({ title: 'Taxa mediana de interação por alcance (%)', automargin: true, ticksuffix: '%' }),
+      showlegend: false,
+    }, config);
+  }
+
   function render() {
     if (!theme) return;
     const palette = theme.palette();
     draw('instagram-chart-followers', charts.followers, 'Seguidores', palette[0], true);
     draw('instagram-chart-reach', charts.reach, 'Alcance', palette[1]);
     draw('instagram-chart-interactions', charts.interactions, 'Interações', palette[2]);
+    drawTypeRate(charts.type_interaction_rate, palette[3]);
   }
 
   render();

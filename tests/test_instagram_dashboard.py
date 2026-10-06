@@ -52,12 +52,13 @@ class InstagramDashboardTests(unittest.TestCase):
         db.session.flush()
         return run
 
-    def media(self, external_id: str, *, days_before: int = 1, caption: str = "Publicação de teste") -> InstagramMedia:
+    def media(self, external_id: str, *, days_before: int = 1, caption: str = "Publicação de teste",
+              media_type: str = "REEL") -> InstagramMedia:
         media = InstagramMedia(
             instagram_account_id=self.account.id, external_id=external_id,
             published_at=REFERENCE - timedelta(days=days_before),
             caption_original=caption,
-            media_type_raw="REEL", permalink=f"https://instagram.example/p/{external_id}/",
+            media_type_raw=media_type, permalink=f"https://instagram.example/p/{external_id}/",
         )
         db.session.add(media)
         db.session.flush()
@@ -65,10 +66,11 @@ class InstagramDashboardTests(unittest.TestCase):
 
     def observe(self, run: AnalyticsRun, media: InstagramMedia, *, when: datetime,
                 reach: int | None = None, interactions: int | None = None,
-                plays: int | None = None, observation_id: str | None = None):
+                plays: int | None = None, observation_id: str | None = None, **metrics):
         observation = InstagramMediaObservation(
             instagram_media_id=media.id, analytics_run_id=run.id, observed_at=when,
             reach=reach, interactions=interactions, plays=plays,
+            **metrics,
         )
         if observation_id is not None:
             observation.id = observation_id
@@ -76,9 +78,9 @@ class InstagramDashboardTests(unittest.TestCase):
         db.session.flush()
         return observation
 
-    def summary(self, period="all"):
+    def summary(self, period="all", *, sort="recent"):
         db.session.commit()
-        return build_instagram_dashboard(self.project, period, "America/Maceio")
+        return build_instagram_dashboard(self.project, period, "America/Maceio", sort=sort)
 
     @staticmethod
     def metric(summary, field):
@@ -168,6 +170,40 @@ class InstagramDashboardTests(unittest.TestCase):
         self.assertEqual([point.value for point in summary.followers_series], [8450, 8675])
         self.assertEqual(summary.chart_data["followers"]["values"], [8450, 8675])
         self.assertEqual(summary.chart_data["followers"]["labels"][-1], "09/10/2026 10:00")
+        self.assertEqual(summary.followers_variation.absolute, 225)
+        self.assertAlmostEqual(summary.followers_variation.percentage, 2.662721893491124)
+
+    def test_derived_metrics_use_latest_observation_and_compare_content_types(self):
+        old_run = self.run_at(REFERENCE - timedelta(days=7))
+        new_run = self.run_at()
+        reel = self.media("reel", media_type="REEL")
+        carousel = self.media("carousel", media_type="CAROUSEL_ALBUM")
+        image = self.media("image", media_type="IMAGE")
+        self.observe(old_run, reel, when=REFERENCE - timedelta(days=7), reach=1000, interactions=10)
+        self.observe(new_run, reel, when=REFERENCE, reach=1500, interactions=180,
+                     impressions=1800, likes=90, comments_count=30, shares=20, saves=40)
+        self.observe(new_run, carousel, when=REFERENCE, reach=1000, impressions=1300, interactions=100)
+        self.observe(new_run, image, when=REFERENCE, reach=0, impressions=0, interactions=0)
+        summary = self.summary()
+        self.assertEqual(self.metric(summary, "reach").value, 2500)  # Fase 4: não soma a coleta antiga.
+        rate = summary.performance_statistics["interaction_rate_by_reach"]
+        self.assertEqual((rate.known, rate.publications), (2, 3))
+        self.assertEqual(rate.median_value, 11.0)
+        self.assertEqual(rate.mean_value, 11.0)
+        self.assertEqual(summary.performance_statistics["reach"].median_value, 1000)
+        self.assertAlmostEqual(summary.performance_statistics["reach"].mean_value, 2500 / 3)
+        self.assertEqual(summary.performance_statistics["impressions"].median_value, 1300)
+        self.assertEqual(summary.performance_statistics["interactions"].median_value, 100)
+        reel_row = next(row for row in summary.rows if row.media.id == reel.id)
+        self.assertEqual(reel_row.derived_metrics["interaction_rate_by_reach"], 12.0)
+        self.assertEqual(reel_row.derived_metrics["saves_rate_by_reach"], 40 / 1500 * 100)
+        by_type = {item.key: item for item in summary.type_comparisons}
+        self.assertEqual((by_type["reel"].publications, by_type["reel"].reach.median_value), (1, 1500))
+        self.assertEqual(by_type["carousel"].interaction_rate_by_reach.median_value, 10.0)
+        self.assertEqual(by_type["image"].interaction_rate_by_reach.known, 0)
+        self.assertEqual(summary.chart_data["type_interaction_rate"]["values"], [10.0, 12.0])
+        self.assertEqual([row.media.id for row in self.summary(sort="interaction_rate").table_rows][:2],
+                         [reel.id, carousel.id])
 
     def test_timestamp_tie_and_unfinished_run_do_not_change_latest(self):
         run = self.run_at()
@@ -203,7 +239,10 @@ class InstagramDashboardTests(unittest.TestCase):
         for text in ("Dashboard", "Dados atualizados até", "09/10/2026 10:00", "7 dias", "30 dias",
                      "90 dias", "Todo o histórico", "Publicações", "Alcance", "Dados parciais",
                      "Evolução de seguidores", "Alcance por publicação", "Interações por publicação",
-                     "Publicações com maior alcance", "Legenda visível"):
+                     "Publicações com maior alcance", "Legenda visível", "Indicadores de desempenho",
+                     "Taxa mediana de interação por alcance", "Desempenho por tipo de conteúdo",
+                     "Taxa de interação por alcance", "Curtidas por alcance",
+                     "instagram-chart-type-interaction-rate"):
             self.assertIn(text, html)
         self.assertIn('aria-current="page"', html)
         self.assertNotIn('class="display-', html)
@@ -211,6 +250,8 @@ class InstagramDashboardTests(unittest.TestCase):
         self.assertIsNotNone(match)
         self.assertEqual(json.loads(match.group(1))["reach"]["values"], [1500])
         self.assertEqual(self.client.get(path + "?period=invalid").status_code, 400)
+        self.assertEqual(self.client.get(path + "?sort=invalid").status_code, 400)
+        self.assertEqual(self.client.get(path + "?sort=interaction_rate").status_code, 200)
         self.project.status = "archived"
         self.project.archived_at = REFERENCE
         db.session.commit()

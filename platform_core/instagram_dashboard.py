@@ -4,11 +4,23 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from typing import Mapping
 from urllib.parse import urlsplit
 
 from sqlalchemy import and_, func, select
 
 from .extensions import db
+from .instagram_metrics import (
+    DERIVED_METRICS_VERSION,
+    ContentTypeComparison,
+    ContentTypeInput,
+    FollowerVariation,
+    MetricStatistics,
+    calculate_derived_metrics,
+    compare_content_types,
+    follower_variation,
+    summarize_values,
+)
 from .models import (
     AnalyticsProject,
     AnalyticsRun,
@@ -21,6 +33,7 @@ from .presentation import format_local_datetime, to_local_datetime
 
 
 PERIOD_DAYS = {"7d": 7, "30d": 30, "90d": 90, "all": None}
+TABLE_SORTS = ("recent", "reach", "interactions", "interaction_rate")
 METRICS = (
     ("reach", "Alcance"),
     ("impressions", "Impressões"),
@@ -60,6 +73,7 @@ class MediaRow:
     media: InstagramMedia
     observation: InstagramMediaObservation | None
     ordinal: int
+    derived_metrics: Mapping[str, float | None]
 
     @property
     def caption(self) -> str:
@@ -98,6 +112,12 @@ class InstagramDashboard:
     followers_count: int | None
     followers_observed_at: datetime | None
     followers_series: tuple[FollowerPoint, ...]
+    followers_variation: FollowerVariation
+    performance_statistics: Mapping[str, MetricStatistics]
+    type_comparisons: tuple[ContentTypeComparison, ...]
+    table_rows: tuple[MediaRow, ...]
+    sort: str
+    derived_metrics_version: str
     has_data: bool
     chart_data: dict
 
@@ -164,7 +184,7 @@ def _media_rows(project_id: str, period: str, reference_at: datetime | None,
             InstagramMedia.published_at <= reference_at,
         )
     return tuple(
-        MediaRow(media, observation, ordinal)
+        MediaRow(media, observation, ordinal, {})
         for ordinal, (media, observation) in enumerate(db.session.execute(query), start=1)
     )
 
@@ -189,12 +209,73 @@ def _followers(project_id: str) -> tuple[int | None, datetime | None, tuple[Foll
     return latest.followers_count, latest.observed_at, series
 
 
-def build_instagram_dashboard(project: AnalyticsProject, period: str, timezone_name: str) -> InstagramDashboard:
+def _raw_values(observation: InstagramMediaObservation | None) -> dict[str, int | None]:
+    return {field: getattr(observation, field) if observation is not None else None for field, _label in METRICS}
+
+
+def _with_derived_metrics(rows: tuple[MediaRow, ...]) -> tuple[MediaRow, ...]:
+    return tuple(
+        MediaRow(
+            media=row.media,
+            observation=row.observation,
+            ordinal=row.ordinal,
+            derived_metrics=calculate_derived_metrics(_raw_values(row.observation)),
+        )
+        for row in rows
+    )
+
+
+def _performance_statistics(rows: tuple[MediaRow, ...]) -> dict[str, MetricStatistics]:
+    definitions = (
+        ("reach", "Alcance", lambda row: _raw_values(row.observation)["reach"]),
+        ("impressions", "Impressões", lambda row: _raw_values(row.observation)["impressions"]),
+        ("interactions", "Interações", lambda row: _raw_values(row.observation)["interactions"]),
+        ("interaction_rate_by_reach", "Taxa de interação por alcance",
+         lambda row: row.derived_metrics["interaction_rate_by_reach"]),
+    )
+    return {
+        identifier: summarize_values(identifier, label, (getter(row) for row in rows), len(rows))
+        for identifier, label, getter in definitions
+    }
+
+
+def _type_comparisons(rows: tuple[MediaRow, ...]) -> tuple[ContentTypeComparison, ...]:
+    return compare_content_types(
+        ContentTypeInput(
+            media_id=row.media.id,
+            media_type_raw=row.media.media_type_raw,
+            raw_values=_raw_values(row.observation),
+            derived_values=row.derived_metrics,
+        )
+        for row in rows
+    )
+
+
+def _table_rows(rows: tuple[MediaRow, ...], sort: str) -> tuple[MediaRow, ...]:
+    if sort == "recent":
+        return rows
+    if sort == "reach":
+        value_for = lambda row: _raw_values(row.observation)["reach"]
+    elif sort == "interactions":
+        value_for = lambda row: _raw_values(row.observation)["interactions"]
+    else:
+        value_for = lambda row: row.derived_metrics["interaction_rate_by_reach"]
+    # ``rows`` já oferece desempate determinístico por publicação e ID.
+    return tuple(sorted(rows, key=lambda row: (
+        value_for(row) is None,
+        -(value_for(row) if value_for(row) is not None else 0),
+    )))
+
+
+def build_instagram_dashboard(project: AnalyticsProject, period: str, timezone_name: str,
+                              *, sort: str = "recent") -> InstagramDashboard:
     """Carrega agregados sem N+1 e nunca soma observações de uma mesma mídia."""
     if period not in PERIOD_DAYS:
         raise ValueError("Período inválido")
+    if sort not in TABLE_SORTS:
+        raise ValueError("Ordenação inválida")
     reference_at = _latest_project_observation(project.id)
-    rows = _media_rows(project.id, period, reference_at, timezone_name)
+    rows = _with_derived_metrics(_media_rows(project.id, period, reference_at, timezone_name))
     metrics = []
     for field, label in METRICS:
         values = [getattr(row.observation, field) for row in rows if row.observation is not None]
@@ -210,6 +291,9 @@ def build_instagram_dashboard(project: AnalyticsProject, period: str, timezone_n
         key=lambda row: row.observation.reach, reverse=True,
     )[:5])
     followers_count, followers_at, followers_series = _followers(project.id)
+    followers_delta = follower_variation(point.value for point in followers_series)
+    performance_statistics = _performance_statistics(rows)
+    type_comparisons = _type_comparisons(rows)
     reach_rows = [row for row in rows if row.observation is not None and row.observation.reach is not None]
     interaction_rows = [row for row in rows if row.observation is not None
                         and row.observation.interactions is not None]
@@ -228,10 +312,19 @@ def build_instagram_dashboard(project: AnalyticsProject, period: str, timezone_n
             "dates": [format_local_datetime(row.media.published_at, timezone_name) for row in interaction_rows],
             "values": [row.observation.interactions for row in interaction_rows],
         },
+        "type_interaction_rate": {
+            "labels": [f"{comparison.label} (n = {comparison.publications})" for comparison in type_comparisons
+                       if comparison.interaction_rate_by_reach.median_value is not None],
+            "values": [comparison.interaction_rate_by_reach.median_value for comparison in type_comparisons
+                       if comparison.interaction_rate_by_reach.median_value is not None],
+        },
     }
     return InstagramDashboard(
         reference_at=reference_at, period=period, rows=rows, metrics=tuple(metrics), ranking=ranking,
         followers_count=followers_count, followers_observed_at=followers_at,
-        followers_series=followers_series, has_data=reference_at is not None,
+        followers_series=followers_series, followers_variation=followers_delta,
+        performance_statistics=performance_statistics, type_comparisons=type_comparisons,
+        table_rows=_table_rows(rows, sort), sort=sort,
+        derived_metrics_version=DERIVED_METRICS_VERSION, has_data=reference_at is not None,
         chart_data=chart_data,
     )

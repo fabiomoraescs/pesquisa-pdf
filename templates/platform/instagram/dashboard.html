@@ -1,6 +1,9 @@
 {% extends 'platform/base.html' %}
 {% block title %}Dashboard — {{ project.name }} — Análysis Instagram{% endblock %}
-{% macro number(value) %}{{ '{:,}'.format(value).replace(',', '.') if value is not none else '—' }}{% endmacro %}
+{% macro number(value) %}{% if value is none %}—{% elif value == value|int %}{{ '{:,}'.format(value|int).replace(',', '.') }}{% else %}{{ '{:,.2f}'.format(value).replace(',', '@').replace('.', ',').replace('@', '.') }}{% endif %}{% endmacro %}
+{% macro percentage(value) %}{{ '{:,.2f}'.format(value).replace(',', '@').replace('.', ',').replace('@', '.') if value is not none else '—' }}{% if value is not none %}%{% endif %}{% endmacro %}
+{% macro signed_number(value) %}{% if value is not none %}{{ '+' if value > 0 else '' }}{{ number(value) }}{% else %}—{% endif %}{% endmacro %}
+{% macro signed_percentage(value) %}{% if value is not none %}{{ '+' if value > 0 else '' }}{{ percentage(value) }}{% else %}—{% endif %}{% endmacro %}
 {% block body %}
 <section class="platform-panel mb-3" aria-labelledby="instagram-dashboard-title">
   <div class="d-flex flex-wrap align-items-start justify-content-between gap-2">
@@ -13,7 +16,7 @@
 <nav class="platform-panel mb-3 d-flex flex-wrap align-items-center gap-2" aria-label="Período das publicações">
   <span class="platform-muted me-1">Período:</span>
   {% for key, label in period_options %}
-  <a class="btn btn-sm btn-outline-primary{% if dashboard.period == key %} active{% endif %}" href="{{ url_for('instagram.dashboard', project_id=project.id, period=key) }}"{% if dashboard.period == key %} aria-current="page"{% endif %}>{{ label }}</a>
+  <a class="btn btn-sm btn-outline-primary{% if dashboard.period == key %} active{% endif %}" href="{{ url_for('instagram.dashboard', project_id=project.id, period=key, sort=dashboard.sort) }}"{% if dashboard.period == key %} aria-current="page"{% endif %}>{{ label }}</a>
   {% endfor %}
 </nav>
 {% if not dashboard.has_data %}
@@ -36,11 +39,42 @@
     <p class="mb-1"><strong class="fs-4">{{ dashboard.followers_display }}</strong></p>
     <p class="platform-muted mb-0">Última coleta: {{ dashboard.followers_observed_at | data_hora_local if dashboard.followers_observed_at else 'Não informado' }}. Esta métrica não varia com o filtro de publicações.</p>
   </section>
+  {% if dashboard.rows %}
+  {% set median_rate = dashboard.performance_statistics['interaction_rate_by_reach'] %}
+  {% set mean_rate = dashboard.performance_statistics['interaction_rate_by_reach'] %}
+  <section class="platform-panel mb-3" aria-labelledby="instagram-performance-title" data-derived-metrics-version="{{ dashboard.derived_metrics_version }}">
+    <div class="d-flex flex-wrap align-items-start justify-content-between gap-2 mb-3">
+      <div><h2 id="instagram-performance-title" class="h5 mb-1">Indicadores de desempenho</h2><p class="platform-muted mb-0">Taxas calculadas por publicação a partir da última observação disponível.</p></div>
+      <span class="platform-muted small" title="Interações ÷ alcance × 100">Interações ÷ alcance × 100</span>
+    </div>
+    <div class="row g-3">
+      <div class="col-12 col-md-4"><div class="metric-card"><span>Taxa mediana de interação por alcance</span><strong>{{ percentage(median_rate.median_value) }}</strong><small class="platform-muted">{{ median_rate.known }} de {{ median_rate.publications }} publicações</small></div></div>
+      <div class="col-12 col-md-4"><div class="metric-card"><span>Taxa média de interação por alcance</span><strong>{{ percentage(mean_rate.mean_value) }}</strong><small class="platform-muted">{{ mean_rate.known }} de {{ mean_rate.publications }} publicações</small></div></div>
+      <div class="col-12 col-md-4"><div class="metric-card"><span>Variação de seguidores desde a coleta anterior</span><strong>{{ signed_number(dashboard.followers_variation.absolute) }}</strong><small class="platform-muted">{% if dashboard.followers_variation.absolute is none %}São necessários dois snapshots válidos.{% elif dashboard.followers_variation.percentage is none %}Percentual indisponível: snapshot anterior igual a zero.{% else %}{{ signed_percentage(dashboard.followers_variation.percentage) }}{% endif %}</small></div></div>
+    </div>
+    {% set statistic_rows = (('reach', 'Alcance', false), ('impressions', 'Impressões', false), ('interactions', 'Interações', false), ('interaction_rate_by_reach', 'Taxa de interação por alcance', true)) %}
+    <div class="table-responsive mt-3"><table class="table table-sm align-middle text-nowrap mb-0"><thead><tr><th scope="col">Métrica</th><th scope="col">Valores conhecidos</th><th scope="col">Média por publicação</th><th scope="col">Mediana por publicação</th></tr></thead><tbody>{% for identifier, label, is_percentage in statistic_rows %}{% set statistic = dashboard.performance_statistics[identifier] %}<tr><td>{{ label }}</td><td>{{ statistic.known }} de {{ statistic.publications }}</td><td>{{ percentage(statistic.mean_value) if is_percentage else number(statistic.mean_value) }}</td><td>{{ percentage(statistic.median_value) if is_percentage else number(statistic.median_value) }}</td></tr>{% endfor %}</tbody></table></div>
+  </section>
+  <section class="platform-panel mb-3" aria-labelledby="instagram-types-title">
+    <h2 id="instagram-types-title" class="h5">Desempenho por tipo de conteúdo</h2>
+    <p class="platform-muted">Valores descritivos por publicação; não representam recomendação automática.</p>
+    <div class="table-responsive"><table class="table table-sm align-middle text-nowrap mb-0">
+      <thead><tr><th scope="col">Tipo</th><th scope="col">Publicações</th><th scope="col">Alcance mediano</th><th scope="col">Alcance médio</th><th scope="col">Interações medianas</th><th scope="col" title="Interações ÷ alcance × 100">Taxa mediana de interação por alcance</th><th scope="col" title="Interações ÷ alcance × 100">Taxa média de interação por alcance</th></tr></thead>
+      <tbody>{% for comparison in dashboard.type_comparisons %}<tr>
+        <td>{{ comparison.label }}{% if comparison.raw_types %}<small class="platform-muted"> · {{ comparison.raw_types | join(', ') }}</small>{% endif %}</td><td>{{ comparison.publications }}</td>
+        <td>{{ number(comparison.reach.median_value) }} <small class="platform-muted">({{ comparison.reach.known }}/{{ comparison.publications }})</small></td><td>{{ number(comparison.reach.mean_value) }} <small class="platform-muted">({{ comparison.reach.known }}/{{ comparison.publications }})</small></td>
+        <td>{{ number(comparison.interactions.median_value) }} <small class="platform-muted">({{ comparison.interactions.known }}/{{ comparison.publications }})</small></td>
+        <td>{{ percentage(comparison.interaction_rate_by_reach.median_value) }} <small class="platform-muted">({{ comparison.interaction_rate_by_reach.known }}/{{ comparison.publications }})</small></td><td>{{ percentage(comparison.interaction_rate_by_reach.mean_value) }} <small class="platform-muted">({{ comparison.interaction_rate_by_reach.known }}/{{ comparison.publications }})</small></td>
+      </tr>{% endfor %}</tbody>
+    </table></div>
+  </section>
+  {% endif %}
   <section class="row g-4 dashboard-grid mb-3" aria-label="Gráficos do Instagram">
     <div class="col-12"><div class="chart-card"><div class="chart-header"><h2>Evolução de seguidores</h2><span class="chart-subtitle">Contagem registrada em cada snapshot da conta</span></div><div id="instagram-chart-followers" class="chart" role="img" aria-label="Evolução de seguidores da conta"></div></div></div>
     {% if dashboard.rows %}
     <div class="col-12"><div class="chart-card"><div class="chart-header"><h2>Alcance por publicação</h2><span class="chart-subtitle">Última observação de cada publicação com alcance conhecido</span></div><div id="instagram-chart-reach" class="chart" role="img" aria-label="Alcance por publicação"></div></div></div>
     <div class="col-12"><div class="chart-card"><div class="chart-header"><h2>Interações por publicação</h2><span class="chart-subtitle">Valor registrado de interações na última observação</span></div><div id="instagram-chart-interactions" class="chart" role="img" aria-label="Interações por publicação"></div></div></div>
+    <div class="col-12"><div class="chart-card"><div class="chart-header"><h2>Taxa mediana de interação por alcance por tipo de conteúdo</h2><span class="chart-subtitle">Interações ÷ alcance × 100, calculada por publicação</span></div><div id="instagram-chart-type-interaction-rate" class="chart" role="img" aria-label="Taxa mediana de interação por alcance por tipo de conteúdo"></div></div></div>
     {% endif %}
   </section>
   {% if dashboard.rows %}
@@ -49,13 +83,14 @@
     {% if dashboard.ranking %}<ol class="mb-0">{% for row in dashboard.ranking %}<li class="mb-2"><span title="{{ row.caption }}">{{ row.short_caption }}</span> · {{ row.media.media_type_raw or 'Tipo não informado' }} · {{ row.media.published_at | data_local }} · <strong>{{ number(row.observation.reach) }}</strong>{% if row.permalink %} · <a href="{{ row.permalink }}" target="_blank" rel="noopener noreferrer">Abrir publicação</a>{% endif %}</li>{% endfor %}</ol>{% else %}<p class="platform-muted mb-0">Nenhuma publicação possui alcance informado.</p>{% endif %}
   </section>
   <section class="platform-panel" aria-labelledby="instagram-media-table-title">
-    <h2 id="instagram-media-table-title" class="h5">Publicações</h2>
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2"><h2 id="instagram-media-table-title" class="h5 mb-0">Publicações</h2><nav class="d-flex flex-wrap gap-1" aria-label="Ordenação das publicações"><span class="platform-muted small align-self-center me-1">Ordenar:</span>{% for key, label in sort_options %}<a class="btn btn-sm btn-outline-primary{% if dashboard.sort == key %} active{% endif %}" href="{{ url_for('instagram.dashboard', project_id=project.id, period=dashboard.period, sort=key) }}"{% if dashboard.sort == key %} aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}</nav></div>
     <div class="table-responsive"><table class="table table-sm align-middle text-nowrap">
-      <thead><tr><th scope="col">Publicação</th><th scope="col">Tipo</th><th scope="col">Publicada em</th><th scope="col">Alcance</th><th scope="col">Impressões</th><th scope="col">Reproduções</th><th scope="col">Curtidas</th><th scope="col">Comentários</th><th scope="col">Compartilhamentos</th><th scope="col">Salvamentos</th><th scope="col">Interações</th><th scope="col">Observada em</th><th scope="col">Ação</th></tr></thead>
-      <tbody>{% for row in dashboard.rows %}<tr>
+      <thead><tr><th scope="col">Publicação</th><th scope="col">Tipo</th><th scope="col">Publicada em</th><th scope="col">Alcance</th><th scope="col">Impressões</th><th scope="col">Reproduções</th><th scope="col">Curtidas</th><th scope="col">Comentários</th><th scope="col">Compartilhamentos</th><th scope="col">Salvamentos</th><th scope="col">Interações</th><th scope="col" title="Interações ÷ alcance × 100">Taxa de interação por alcance</th><th scope="col" title="Curtidas ÷ alcance × 100">Curtidas por alcance</th><th scope="col" title="Comentários ÷ alcance × 100">Comentários por alcance</th><th scope="col" title="Compartilhamentos ÷ alcance × 100">Compartilhamentos por alcance</th><th scope="col" title="Salvamentos ÷ alcance × 100">Salvamentos por alcance</th><th scope="col">Observada em</th><th scope="col">Ação</th></tr></thead>
+      <tbody>{% for row in dashboard.table_rows %}<tr>
         <td><span class="d-inline-block text-truncate align-middle" style="max-width: 14rem" title="{{ row.caption }}">{{ row.short_caption }}</span></td>
         <td>{{ row.media.media_type_raw or '—' }}</td><td>{{ row.media.published_at | data_hora_local if row.media.published_at else '—' }}</td>
         <td>{{ number(row.observation.reach) if row.observation else '—' }}</td><td>{{ number(row.observation.impressions) if row.observation else '—' }}</td><td>{{ number(row.observation.plays) if row.observation else '—' }}</td><td>{{ number(row.observation.likes) if row.observation else '—' }}</td><td>{{ number(row.observation.comments_count) if row.observation else '—' }}</td><td>{{ number(row.observation.shares) if row.observation else '—' }}</td><td>{{ number(row.observation.saves) if row.observation else '—' }}</td><td>{{ number(row.observation.interactions) if row.observation else '—' }}</td>
+        <td>{{ percentage(row.derived_metrics['interaction_rate_by_reach']) }}</td><td>{{ percentage(row.derived_metrics['likes_rate_by_reach']) }}</td><td>{{ percentage(row.derived_metrics['comments_rate_by_reach']) }}</td><td>{{ percentage(row.derived_metrics['shares_rate_by_reach']) }}</td><td>{{ percentage(row.derived_metrics['saves_rate_by_reach']) }}</td>
         <td>{{ row.observation.observed_at | data_hora_local if row.observation else '—' }}</td><td>{% if row.permalink %}<a href="{{ row.permalink }}" target="_blank" rel="noopener noreferrer" aria-label="Abrir publicação {{ row.media.external_id or row.ordinal }}">Abrir</a>{% else %}—{% endif %}</td>
       </tr>{% endfor %}</tbody>
     </table></div>
