@@ -38,6 +38,7 @@ from .instagram_comment_storage import (
     persist_instagram_comment_import,
 )
 from .instagram_comments import (
+    ASSESSMENT_SOURCE_LABELS,
     INTENSITY_LABELS,
     INTENT_LABELS,
     RISK_LABELS,
@@ -48,6 +49,15 @@ from .instagram_comments import (
     current_comment_observation,
     current_text_version,
     effective_assessment,
+)
+from .instagram_comment_classification import (
+    COMMENT_CLASSIFIER_LABELS,
+    CommentClassificationError,
+    CommentClassificationPersistenceError,
+    LOCAL_COMMENT_CLASSIFIER_LABEL,
+    classify_project_comments,
+    get_comment_classifier,
+    plan_comment_classification,
 )
 from .instagram_lifecycle import (
     InstagramProjectDeletionError,
@@ -531,6 +541,61 @@ def comments(project_id: UUID):
     )
 
 
+@instagram_bp.get("/projects/<uuid:project_id>/comments/classify")
+@login_required
+def preview_comment_classification(project_id: UUID):
+    project = _project_for_current_user(project_id, active=True)
+    classifier = get_comment_classifier()
+    try:
+        summary = plan_comment_classification(project, classifier)
+    except CommentClassificationError as error:
+        flash(str(error), "danger")
+        return redirect(url_for("instagram.comments", project_id=project.id, _anchor="instagram-comments-content"))
+    return render_template(
+        "platform/instagram/comment_classification_preview.html",
+        project=project,
+        classifier=classifier,
+        classifier_label=LOCAL_COMMENT_CLASSIFIER_LABEL,
+        summary=summary,
+    )
+
+
+@instagram_bp.post("/projects/<uuid:project_id>/comments/classify")
+@login_required
+def confirm_comment_classification(project_id: UUID):
+    project = _project_for_current_user(project_id, active=True)
+    reprocess = request.form.get("reprocess") == "yes"
+    try:
+        summary = classify_project_comments(project, reprocess=reprocess)
+    except CommentClassificationError as error:
+        flash(str(error), "danger")
+    except CommentClassificationPersistenceError:
+        current_app.logger.exception("Falha ao persistir classificação automática de comentários")
+        flash("Não foi possível concluir a classificação automática. Nenhuma avaliação foi gravada.", "danger")
+    else:
+        if summary.classified:
+            flash(
+                "Classificação automática concluída: "
+                f"{summary.eligible} elegível(is), {summary.classified} classificado(s), "
+                f"{summary.skipped} ignorado(s), {summary.already_classified} já classificado(s), "
+                f"{summary.human_reviewed} com revisão humana e {summary.errors} erro(s).",
+                "success",
+            )
+        elif summary.already_classified:
+            flash("Nenhum comentário novo para classificar; os elegíveis já possuem esta versão do classificador.", "info")
+        elif summary.skipped or summary.errors:
+            flash(
+                "Nenhuma avaliação foi criada: "
+                f"{summary.skipped} comentário(s) ignorado(s) e {summary.errors} erro(s).",
+                "info",
+            )
+        else:
+            flash("Nenhum comentário disponível para classificação automática.", "info")
+        for message in summary.error_messages[:3]:
+            flash(message, "warning")
+    return redirect(url_for("instagram.comments", project_id=project.id, _anchor="instagram-comments-content"))
+
+
 @instagram_bp.route("/projects/<uuid:project_id>/comments/<uuid:comment_id>", methods=("GET", "POST"))
 @login_required
 def comment_detail(project_id: UUID, comment_id: UUID):
@@ -573,6 +638,8 @@ def comment_detail(project_id: UUID, comment_id: UUID):
         intensity_labels=INTENSITY_LABELS,
         intent_labels=INTENT_LABELS,
         risk_labels=RISK_LABELS,
+        assessment_source_labels=ASSESSMENT_SOURCE_LABELS,
+        classifier_labels=COMMENT_CLASSIFIER_LABELS,
         can_mutate=project.status == "active" and project.archived_at is None,
     )
 

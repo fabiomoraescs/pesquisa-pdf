@@ -1,0 +1,38 @@
+{% extends "platform/base.html" %}
+{% from 'platform/instagram/_project_tabs.html' import project_tabs %}
+
+{% block title %}Confirmar classificação automática — {{ project.name }} — Análysis Instagram{% endblock %}
+{% block body %}
+<section class="platform-panel mb-3" aria-labelledby="instagram-comment-classification-preview-title">
+  <div class="d-flex flex-wrap align-items-start justify-content-between gap-2">
+    <div>
+      <h1 id="instagram-comment-classification-preview-title" class="platform-page-title">Confirmar classificação automática</h1>
+      <p class="platform-muted mb-0">{{ project.name }} · execução local, determinística e baseada em regras.</p>
+    </div>
+    <a class="btn btn-outline-primary btn-sm" href="{{ url_for('instagram.comments', project_id=project.id, _anchor='instagram-comments-content') }}">Voltar aos comentários</a>
+  </div>
+</section>
+{{ project_tabs(project, 'comments') }}
+<section class="platform-panel" aria-labelledby="instagram-comment-classification-summary-title">
+  <h2 id="instagram-comment-classification-summary-title" class="h5">Prévia da execução</h2>
+  <dl class="row mb-3">
+    <dt class="col-sm-4">Classificador</dt><dd class="col-sm-8">{{ classifier_label }}</dd>
+    <dt class="col-sm-4">Versão</dt><dd class="col-sm-8"><code>{{ classifier.classifier_version }}</code></dd>
+    <dt class="col-sm-4">Comentários elegíveis</dt><dd class="col-sm-8">{{ summary.eligible }}</dd>
+    <dt class="col-sm-4">Já classificados nesta versão</dt><dd class="col-sm-8">{{ summary.already_classified }}</dd>
+    <dt class="col-sm-4">Ignorados</dt><dd class="col-sm-8">{{ summary.skipped }}</dd>
+    <dt class="col-sm-4">Com revisão humana efetiva</dt><dd class="col-sm-8">{{ summary.human_reviewed }}</dd>
+    <dt class="col-sm-4">Erros de validação previstos</dt><dd class="col-sm-8">{{ summary.errors }}</dd>
+  </dl>
+  {% if summary.total_comments == 0 %}
+    <div class="platform-empty-state"><h3 class="h6">Nenhum comentário disponível para classificação.</h3><p class="mb-0">Importe comentários antes de executar o classificador local.</p></div>
+  {% else %}
+    <p class="platform-muted">Avaliações anteriores são preservadas. Revisões humanas efetivas não serão apagadas nem substituídas silenciosamente por esta execução.</p>
+    <form method="post" action="{{ url_for('instagram.confirm_comment_classification', project_id=project.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="form-check mb-3"><input class="form-check-input" type="checkbox" value="yes" id="comment-reprocess" name="reprocess"><label class="form-check-label" for="comment-reprocess">Reprocessar comentários mesmo quando esta versão do classificador já foi registrada</label></div>
+      <div class="d-flex flex-wrap gap-2"><button class="btn btn-primary" type="submit">Executar classificação</button><a class="btn btn-outline-primary" href="{{ url_for('instagram.comments', project_id=project.id, _anchor='instagram-comments-content') }}">Cancelar</a></div>
+    </form>
+  {% endif %}
+</section>
+{% endblock %}

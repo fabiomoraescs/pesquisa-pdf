@@ -42,6 +42,13 @@ INTENT_LABELS = {
 }
 INTENSITY_LABELS = {"low": "Baixa", "medium": "Média", "high": "Alta"}
 RISK_LABELS = {"none": "Nenhum", "low": "Baixo", "medium": "Médio", "high": "Alto"}
+ASSESSMENT_SOURCE_LABELS = {
+    "automatic": "Classificação automática",
+    "manual": "Classificação humana",
+    "human_review": "Revisão humana",
+    "imported": "Avaliação importada",
+}
+HUMAN_ASSESSMENT_SOURCES = frozenset({"manual", "human_review"})
 
 
 class CommentAssessmentValidationError(ValueError):
@@ -62,9 +69,16 @@ def _ranked(values: Iterable, *, key) -> object | None:
 
 
 def effective_assessment(assessments: Iterable[InstagramCommentAssessment]) -> InstagramCommentAssessment | None:
-    """Avaliação efetiva: a mais recente não suplantada, com desempate estável."""
+    """Retorna a avaliação atual, preservando a prioridade da revisão humana.
+
+    Avaliações automáticas são evidência histórica útil, mas uma reexecução do
+    classificador não pode substituir silenciosamente uma decisão humana que
+    ainda esteja vigente. Entre avaliações da mesma natureza, a mais recente
+    vence de forma determinística.
+    """
     current = [item for item in assessments if item.superseded_at is None]
-    return _ranked(current, key=lambda item: (_utc(item.created_at), item.id))
+    human = [item for item in current if item.source in HUMAN_ASSESSMENT_SOURCES]
+    return _ranked(human or current, key=lambda item: (_utc(item.created_at), item.id))
 
 
 def current_text_version(versions: Iterable[InstagramCommentTextVersion]) -> InstagramCommentTextVersion | None:
@@ -186,6 +200,7 @@ class CommentRow:
 class ReceptionMetrics:
     imported: int
     classified: int
+    automatically_classified: int
     needs_response: int
     medium_or_high_risk: int
     known_likes: int
@@ -315,6 +330,10 @@ def build_instagram_comments_dashboard(
     metrics = ReceptionMetrics(
         imported=len(metric_source),
         classified=sum(row.assessment is not None for row in metric_source),
+        automatically_classified=sum(
+            any(item.source == "automatic" for item in row.comment.assessments)
+            for row in metric_source
+        ),
         needs_response=sum(row.assessment is not None and row.assessment.needs_response is True for row in metric_source),
         medium_or_high_risk=sum(
             row.assessment is not None and row.assessment.risk in {"medium", "high"} for row in metric_source
@@ -340,8 +359,9 @@ def build_instagram_comments_dashboard(
 
 
 __all__ = [
+    "ASSESSMENT_SOURCE_LABELS",
     "COMMENT_NEEDS_RESPONSE", "COMMENT_PERIOD_DAYS", "COMMENT_RISKS", "COMMENT_SENTIMENTS", "COMMENT_SORTS",
-    "COMMENT_STATUSES", "CommentAssessmentValidationError", "INTENSITY_LABELS", "INTENT_LABELS", "RISK_LABELS",
+    "COMMENT_STATUSES", "CommentAssessmentValidationError", "HUMAN_ASSESSMENT_SOURCES", "INTENSITY_LABELS", "INTENT_LABELS", "RISK_LABELS",
     "SENTIMENT_LABELS", "build_instagram_comments_dashboard", "classify_comment", "current_comment_observation",
     "current_text_version", "effective_assessment",
 ]

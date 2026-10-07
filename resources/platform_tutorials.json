@@ -867,7 +867,7 @@
     {
       "key": "instagram_comments",
       "title": "Como usar Comentários e recepção",
-      "summary": "Importe comentários vinculados a publicações já registradas, acompanhe versões e métricas observadas e aplique classificação humana rastreável.",
+      "summary": "Importe comentários vinculados a publicações já registradas, acompanhe versões e métricas observadas e use classificações locais ou revisões humanas rastreáveis.",
       "sections": [
         {
           "id": "finalidade",
@@ -900,12 +900,13 @@
           "items": []
         },
         {
-          "id": "classificacao-humana",
-          "title": "Classificação humana e histórico",
-          "keywords": ["sentimento", "intenção", "risco", "resposta", "revisão"],
+          "id": "classificacao-automatica-e-humana",
+          "title": "Classificação automática e revisão humana",
+          "keywords": ["sentimento", "intenção", "risco", "resposta", "revisão", "regras", "confiança"],
           "body": [
-            "Abra a ação de classificação para registrar sentimento, intensidade, intenção, tema, necessidade de resposta, risco e justificativa. Nesta fase, a classificação é manual e humana; não há interpretação automática por IA.",
-            "Ao revisar uma classificação, a versão anterior é preservada e a mais recente não substituída é apresentada como estado atual. Os gráficos e filtros sempre usam esse estado efetivo."
+            "A ação Classificar comentários executa a versão local baseada em regras. Ela não usa um modelo de IA: apenas reconhece poucos marcadores explícitos, como perguntas, agradecimentos, elogios, críticas e urgência. A confiança é heurística e indica a força da regra aplicada, não uma garantia de acurácia.",
+            "Abra um comentário para revisar sentimento, intensidade, intenção, tema, necessidade de resposta, risco e justificativa. A avaliação automática, a versão textual usada, o classificador e sua versão permanecem no histórico. Uma revisão humana é apresentada como estado efetivo e não apaga a classificação automática.",
+            "Outros classificadores poderão ser adicionados no futuro sem alterar esse histórico. Use os resultados locais como apoio à leitura, não como interpretação definitiva da recepção."
           ],
           "items": []
         },
@@ -915,7 +916,7 @@
           "keywords": ["filtro", "sentimento", "intenção", "risco", "necessita resposta"],
           "body": [
             "Use os filtros para delimitar o período de publicação, status de classificação, sentimento, decisão de resposta, risco e ordenação. As atualizações locais preservam o contexto da lista.",
-            "Os gráficos descrevem apenas classificações humanas disponíveis no recorte. Ausência de dado não equivale a sentimento neutro, risco inexistente ou decisão negativa de resposta."
+            "Os gráficos descrevem as classificações efetivas disponíveis no recorte. Ausência de dado não equivale a sentimento neutro, risco inexistente ou decisão negativa de resposta."
           ],
           "items": []
         }
