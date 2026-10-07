@@ -21,6 +21,9 @@ from .models import (
     InstagramCommentAssessment,
     InstagramCommentObservation,
     InstagramCommentTextVersion,
+    InstagramInsightEvidence,
+    InstagramInsightFinding,
+    InstagramInsightRun,
     InstagramMedia,
     InstagramMediaClassification,
     InstagramMediaObservation,
@@ -84,10 +87,27 @@ def _delete_project_records(project_id: str) -> None:
         InstagramComment.instagram_media_id.in_(media_ids)
     )
     run_ids = select(AnalyticsRun.id).where(AnalyticsRun.analytics_project_id == project_id)
+    insight_run_ids = select(InstagramInsightRun.id).where(
+        InstagramInsightRun.analytics_project_id == project_id
+    )
+    insight_finding_ids = select(InstagramInsightFinding.id).where(
+        InstagramInsightFinding.instagram_insight_run_id.in_(insight_run_ids)
+    )
     dimension_ids = select(InstagramTaxonomyDimension.id).where(
         InstagramTaxonomyDimension.analytics_project_id == project_id
     )
 
+    # Evidências polimórficas não têm FK para as fontes, mas os achados e runs
+    # têm FK real entre si; apagamos nessa ordem antes do projeto.
+    db.session.execute(delete(InstagramInsightEvidence).where(
+        InstagramInsightEvidence.instagram_insight_finding_id.in_(insight_finding_ids)
+    ))
+    db.session.execute(delete(InstagramInsightFinding).where(
+        InstagramInsightFinding.instagram_insight_run_id.in_(insight_run_ids)
+    ))
+    db.session.execute(delete(InstagramInsightRun).where(
+        InstagramInsightRun.analytics_project_id == project_id
+    ))
     # Inclui classificações atuais e históricas. A segunda condição protege a
     # limpeza mesmo se um registro legado apontar para uma dimensão do projeto.
     db.session.execute(delete(InstagramMediaClassification).where(or_(

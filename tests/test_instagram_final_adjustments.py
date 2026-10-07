@@ -186,12 +186,13 @@ class InstagramFinalAdjustmentsTests(unittest.TestCase):
         self.assertIn('aria-expanded="false"', dashboard)
         self.assertIn('aria-controls="instagram-project-tabs-menu-', dashboard)
         self.assertIn('class="platform-project-tabs-mobile-menu"', dashboard)
-        self.assertEqual(len(re.findall(r'class="platform-project-tab(?: is-current)?"', dashboard)), 10)
+        self.assertEqual(len(re.findall(r'class="platform-project-tab(?: is-current)?"', dashboard)), 12)
         mobile_tabs = dashboard[dashboard.index('class="platform-project-tabs-mobile-menu"'):]
         self.assertLess(mobile_tabs.index('>Dashboard</a>'), mobile_tabs.index('>Taxonomias</a>'))
         self.assertLess(mobile_tabs.index('>Taxonomias</a>'), mobile_tabs.index('>Classificação de conteúdos</a>'))
         self.assertLess(mobile_tabs.index('>Classificação de conteúdos</a>'), mobile_tabs.index('>Importar dados</a>'))
         self.assertLess(mobile_tabs.index('>Importar dados</a>'), mobile_tabs.index('>Comentários</a>'))
+        self.assertLess(mobile_tabs.index('>Comentários</a>'), mobile_tabs.index('>Insights</a>'))
         self.assertIn(f'href="{dashboard_url}" aria-current="page">Dashboard</a>', mobile_tabs)
         self.assertIn(f'href="{dashboard_url}" aria-current="page">Dashboard</a>', dashboard)
         self.assertIn(
@@ -207,9 +208,16 @@ class InstagramFinalAdjustmentsTests(unittest.TestCase):
         self.assertIn(
             f'href="/analytics/instagram/projects/{self.project.id}/imports/new">Importar dados</a>', dashboard,
         )
+        self.assertIn(
+            f'href="/analytics/instagram/projects/{self.project.id}/insights">Insights</a>', dashboard,
+        )
         self.assertLess(
             dashboard.index(f'href="/analytics/instagram/projects/{self.project.id}/imports/new">Importar dados</a>'),
             dashboard.index(f'href="/analytics/instagram/projects/{self.project.id}/comments">Comentários</a>'),
+        )
+        self.assertLess(
+            dashboard.index(f'href="/analytics/instagram/projects/{self.project.id}/comments">Comentários</a>'),
+            dashboard.index(f'href="/analytics/instagram/projects/{self.project.id}/insights">Insights</a>'),
         )
         self.assertIn('id="instagram-taxonomy-performance"', dashboard)
         self.assertIn('action="' + dashboard_url + '#instagram-taxonomy-performance"', dashboard)

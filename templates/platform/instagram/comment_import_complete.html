@@ -1,9 +1,13 @@
 {% extends "platform/base.html" %}
 {% from 'platform/instagram/_project_tabs.html' import project_tabs %}
+{% from 'platform/_tutorial_info.html' import tutorial_button, tutorial_dialog with context %}
+{% set instagram_tutorial = platform_help_for('instagram_comments') %}
 
 {% block title %}Importação de comentários concluída — {{ project.name }}{% endblock %}
-{% block page_intro %}<div class="mb-3"><h1 class="h4 mb-1">Importação de comentários concluída</h1><p class="platform-muted mb-0">{{ project.name }}</p></div>{% endblock %}
+{% block page_intro %}<div class="mb-3 d-flex flex-wrap align-items-start justify-content-between gap-2"><div><h1 class="h4 mb-1">Importação de comentários concluída</h1><p class="platform-muted mb-0">{{ project.name }}</p></div>{{ tutorial_button(instagram_tutorial, label='Abrir tutorial de Comentários e recepção') }}</div>{% endblock %}
 {% block body %}
 {{ project_tabs(project, 'comments') }}
 <section class="platform-panel" aria-labelledby="instagram-comment-import-complete-title"><h2 id="instagram-comment-import-complete-title" class="h5">Resumo da importação</h2><p>Uma nova execução histórica de comentários foi registrada.</p><ul><li>Comentários processados: {{ result.observations_created }}</li><li>Comentários novos: {{ result.comments_created }}</li><li>Comentários reutilizados: {{ result.comments_reused }}</li><li>Versões de texto criadas: {{ result.text_versions_created }}</li><li>Observações criadas: {{ result.observations_created }}</li></ul><a class="btn btn-primary" href="{{ url_for('instagram.comments', project_id=project.id) }}">Abrir comentários e recepção</a></section>
+{{ tutorial_dialog(instagram_tutorial) }}
+<script defer src="{{ url_for('static', filename='js/platform_tutorial.js') }}"></script>
 {% endblock %}

@@ -1,8 +1,10 @@
 {% extends "platform/base.html" %}
 {% from 'platform/instagram/_project_tabs.html' import project_tabs %}
+{% from 'platform/_tutorial_info.html' import tutorial_button, tutorial_dialog with context %}
+{% set instagram_tutorial = platform_help_for('instagram_import') %}
 
 {% block title %}Prévia da importação — {{ project.name }}{% endblock %}
-{% block page_intro %}<div class="mb-3"><h1 class="h4 mb-1">Prévia da importação</h1><p class="platform-muted mb-0">{{ project.name }}</p></div>{% endblock %}
+{% block page_intro %}<div class="mb-3 d-flex flex-wrap align-items-start justify-content-between gap-2"><div><h1 class="h4 mb-1">Prévia da importação</h1><p class="platform-muted mb-0">{{ project.name }}</p></div>{{ tutorial_button(instagram_tutorial, label='Abrir tutorial de Importar dados') }}</div>{% endblock %}
 {% block body %}
 {{ project_tabs(project, 'import') }}
 <section class="platform-panel" aria-labelledby="instagram-preview-title">
@@ -20,4 +22,6 @@
   <p class="platform-muted">O arquivo bruto não será mantido. A confirmação criará uma nova execução e não substituirá observações anteriores.</p>
   <div class="d-flex flex-wrap gap-2"><form method="post" action="{{ url_for('instagram.confirm_import', project_id=project.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="preview_token" value="{{ token }}"><button class="btn btn-primary" type="submit">Confirmar importação</button></form><form method="post" action="{{ url_for('instagram.cancel_import', project_id=project.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="preview_token" value="{{ token }}"><button class="btn btn-outline-primary" type="submit">Cancelar</button></form></div>
 </section>
+{{ tutorial_dialog(instagram_tutorial) }}
+<script defer src="{{ url_for('static', filename='js/platform_tutorial.js') }}"></script>
 {% endblock %}

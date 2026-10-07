@@ -1,5 +1,5 @@
 {
-  "version": "2026.10.06",
+  "version": "2026.10.07",
   "tutorials": [
     {
       "key": "home",
@@ -719,6 +719,26 @@
             "Os indicadores descrevem o desempenho registrado no período. Eles não representam, por si só, recomendações editoriais."
           ],
           "items": []
+        },
+        {
+          "id": "exemplo-de-leitura",
+          "title": "Exemplo de leitura cuidadosa",
+          "keywords": ["exemplo", "alcance", "taxa", "amostra", "mediana", "zero"],
+          "body": [
+            "Imagine duas publicações: uma alcançou 10.000 contas e teve taxa de interação de 2%, enquanto outra alcançou 800 contas e teve taxa de 8%. A primeira responde a uma pergunta sobre volume de alcance; a segunda sugere mais interação em relação às contas alcançadas. Nenhum dos números, isoladamente, diz qual conteúdo deve ser repetido.",
+            "Se a taxa de 8% vier de uma única publicação, ou se apenas parte das publicações tiver interações informadas, leia a mediana, a cobertura e o n antes de comparar grupos. Da mesma forma, zero registrado é informação; um traço significa dado indisponível, não desempenho zero. Consulte a tabela e a fonte importada quando precisar verificar uma publicação específica."
+          ],
+          "items": []
+        },
+        {
+          "id": "conexao-com-o-fluxo",
+          "title": "Como o Dashboard se conecta ao restante do projeto",
+          "keywords": ["Importar dados", "Taxonomias", "Classificação", "Comentários", "Insights", "fluxo"],
+          "body": [
+            "Um caminho inicial útil é importar dados, conferir se o Dashboard retrata o recorte esperado, definir ou revisar Taxonomias, classificar as publicações, importar e revisar comentários e, então, gerar Insights. O fluxo não é rígido: você pode voltar ao Dashboard sempre que precisar conferir cobertura, período ou uma publicação.",
+            "As comparações por classificação só fazem sentido depois que os critérios editoriais forem aplicados de modo consistente. Insights usa esses registros para apontar associações rastreáveis; ele não transforma um card ou gráfico em explicação causal nem em recomendação automática."
+          ],
+          "items": []
         }
       ]
     },
@@ -794,6 +814,26 @@
             "A taxonomia organiza os conteúdos. Ela não determina automaticamente quais categorias têm melhor ou pior desempenho."
           ],
           "items": []
+        },
+        {
+          "id": "exemplo-e-criterios",
+          "title": "Exemplo de critério editorial",
+          "keywords": ["exemplo", "Evento", "CTA", "Tema principal", "critério"],
+          "body": [
+            "Exemplo ilustrativo: uma publicação que anuncia inscrições para um evento pode receber um Objetivo comunicacional de divulgação, um Tipo editorial de Evento, um CTA relacionado a participar ou inscrever-se e um Tema principal ligado ao assunto do evento. Os nomes disponíveis no seu projeto podem ser diferentes; o exemplo não cria categorias novas nem determina uma resposta obrigatória.",
+            "Antes de classificar muitas publicações, escreva para a equipe critérios curtos para os casos limítrofes. Use Tema principal somente quando houver uma categoria criada para ele e registre uma dimensão múltipla, como CTA, apenas quando cada categoria realmente se aplicar. A consistência vale mais do que tentar capturar todos os detalhes de cada postagem."
+          ],
+          "items": []
+        },
+        {
+          "id": "limites-e-proximo-passo",
+          "title": "Limites e próximo passo",
+          "keywords": ["comparação", "associação", "Classificação de conteúdos", "Insights", "limite"],
+          "body": [
+            "Uma taxonomia é uma estrutura analítica, não uma explicação pronta para o desempenho. Categorias sobrepostas, vagas ou usadas com critérios diferentes produzem grupos difíceis de comparar. Arquivar uma opção preserva o histórico, mas uma mudança de critério pede revisão das classificações que dependem dela.",
+            "Depois de criar ou revisar a estrutura, avance para Classificação de conteúdos. Quando houver publicações classificadas, o Dashboard e os Insights podem mostrar diferenças descritivas entre grupos. Essas diferenças são associações observadas, não uma prova de que uma categoria causou o resultado."
+          ],
+          "items": []
         }
       ]
     },
@@ -861,6 +901,109 @@
             "A classificação organiza a análise. Ela não altera as métricas originais importadas do Instagram."
           ],
           "items": []
+        },
+        {
+          "id": "exemplo-pratico",
+          "title": "Exemplo prático de classificação",
+          "keywords": ["exemplo", "Evento", "Objetivo comunicacional", "CTA", "Tema principal"],
+          "body": [
+            "Exemplo ilustrativo: ao anunciar inscrições para um evento, uma publicação pode receber uma categoria de divulgação no Objetivo comunicacional, Evento no Tipo editorial, uma ou mais chamadas para participar no CTA e uma categoria de Tema principal criada para o assunto do evento. Use apenas categorias que existam na taxonomia do projeto; elas podem ter outros nomes.",
+            "A classificação não altera a legenda, o tipo técnico, o permalink ou as métricas importadas. Ela acrescenta uma camada editorial que permite formar grupos comparáveis no Dashboard e produzir evidências rastreáveis em Insights."
+          ],
+          "items": []
+        },
+        {
+          "id": "revisao-e-proximo-passo",
+          "title": "Revisar e seguir para a interpretação",
+          "keywords": ["revisão", "taxonomia", "Dashboard", "Comentários", "Insights", "consistência"],
+          "body": [
+            "Se uma dimensão, categoria ou critério mudar, revise as publicações que poderiam ter sido classificadas de outro modo. O histórico protege o registro das decisões, mas a comparação atual depende das classificações atuais e consistentes.",
+            "Depois de classificar um conjunto suficiente, volte ao Dashboard para conferir tamanho dos grupos e cobertura. Você também pode importar comentários para observar a recepção e gerar Insights para localizar padrões descritivos. Nenhuma dessas etapas substitui a leitura do contexto da publicação."
+          ],
+          "items": []
+        }
+      ]
+    },
+    {
+      "key": "instagram_import",
+      "title": "Como importar dados do Instagram",
+      "summary": "Use o modelo CSV ou XLSX para registrar publicações e suas observações históricas, validar tudo antes de salvar e acompanhar a evolução sem sobrescrever coletas anteriores.",
+      "sections": [
+        {
+          "id": "finalidade-e-fluxo",
+          "title": "Para que serve a importação",
+          "keywords": ["CSV", "XLSX", "modelo", "prévia", "confirmação", "histórico"],
+          "body": [
+            "A importação transforma um arquivo de dados em registros históricos do projeto. Cada linha representa uma publicação observada em uma coleta; o Análysis cria ou reutiliza a conta e a publicação identificada, mas registra uma nova observação para as métricas daquela coleta.",
+            "O fluxo é: baixar o modelo, preencher o CSV UTF-8 ou XLSX de uma única aba, enviar para validação, conferir a prévia e confirmar. Nada analítico é salvo antes da confirmação. Depois dela, o Dashboard passa a usar as novas observações junto ao histórico já existente."
+          ],
+          "items": [
+            {"name": "Modelo oficial", "description": "É a referência dos cabeçalhos aceitos. Não renomeie nem acrescente colunas fora do formato apresentado na tela."},
+            {"name": "Prévia", "description": "Valida todas as linhas e informa conta, período, mídias novas ou conhecidas, observações que serão criadas e avisos antes de gravar os dados."}
+          ]
+        },
+        {
+          "id": "campos-e-identidade",
+          "title": "Campos obrigatórios, opcionais e identidade",
+          "keywords": ["account_username", "media_external_id", "published_at", "observed_at", "métricas", "opcional"],
+          "body": [
+            "Os campos obrigatórios são account_username, media_external_id, published_at e observed_at. Eles identificam uma única conta, a publicação estável e os momentos necessários para ler a série histórica. Uma mesma importação deve conter uma só conta; se o projeto já estiver associado a outra, a validação informa a divergência.",
+            "Campos como media_type, permalink, caption, period_start, period_end e as métricas de publicação são opcionais. Também podem ser informadas métricas agregadas da conta, como followers_count, quando estiverem disponíveis. A tabela do modelo descreve cada coluna, formato e exemplo; use-a em vez de deduzir valores a partir da tela."
+          ],
+          "items": [
+            {"name": "media_external_id", "description": "É a identidade estável da publicação dentro da conta. Não é deduzido pela legenda, data ou permalink."},
+            {"name": "Campos de métrica", "description": "Aceitam apenas inteiros não negativos quando informados. Um campo vazio continua indisponível; 0 representa zero conhecido."}
+          ]
+        },
+        {
+          "id": "datas-e-timezone",
+          "title": "Datas, período e fuso horário",
+          "keywords": ["published_at", "observed_at", "period_start", "period_end", "ISO 8601", "timezone", "America/Maceio"],
+          "body": [
+            "published_at é o momento em que a publicação foi publicada. observed_at é o momento em que as métricas daquela linha foram observadas ou coletadas. Eles podem ser diferentes: uma postagem antiga pode receber uma observação nova hoje.",
+            "period_start e period_end são opcionais e descrevem o intervalo ao qual uma métrica agregada se refere quando a fonte o informa; eles não são substitutos de observed_at. Datas precisam usar ISO 8601 com timezone explícito, por exemplo 2026-09-20T18:30:00-03:00. O Análysis normaliza o armazenamento e apresenta datas no fuso configurado da plataforma, atualmente America/Maceio por padrão."
+          ],
+          "items": []
+        },
+        {
+          "id": "metricas-e-ausencias",
+          "title": "Métricas, zero e dado indisponível",
+          "keywords": ["alcance", "impressões", "interações", "seguidores", "zero", "NULL", "indisponível"],
+          "body": [
+            "Alcance, impressões, reproduções, curtidas, comentários, compartilhamentos, salvamentos, interações e seguidores são valores brutos da fonte. O Análysis não inventa uma métrica ausente nem converte texto inválido em zero.",
+            "Deixe o campo vazio quando a fonte não disponibilizou a métrica. Use 0 somente quando o valor observado foi realmente zero. Essa diferença permite que o Dashboard informe cobertura e evita concluir que uma publicação teve zero desempenho quando o dado simplesmente não foi coletado."
+          ],
+          "items": []
+        },
+        {
+          "id": "validacao-e-confirmacao",
+          "title": "Validação, prévia e confirmação",
+          "keywords": ["validação", "erros", "aviso", "confirmar", "cancelar", "arquivo"],
+          "body": [
+            "A validação percorre o arquivo inteiro antes de qualquer persistência. Cabeçalhos ausentes, datas sem timezone, números negativos, decimais em contagens, duas contas no mesmo arquivo ou linhas conflitantes retornam um erro claro para correção; o projeto não recebe dados parciais.",
+            "A prévia mostra o nome do arquivo, a conta identificada, quantidade de linhas, mídias distintas, mídias novas e conhecidas, período e observações previstas. Leia os avisos, inclusive o de hash já importado, antes de confirmar. Cancelar descarta a prévia; confirmar grava a execução de forma transacional."
+          ],
+          "items": []
+        },
+        {
+          "id": "historico-e-reimportacao",
+          "title": "Histórico, nova coleta e reimportação",
+          "keywords": ["histórico", "run", "reimportação", "source hash", "observação", "evolução"],
+          "body": [
+            "Uma importação confirmada cria uma nova execução histórica. Se a publicação já for conhecida pelo mesmo media_external_id, ela é reutilizada; as métricas observadas entram como uma nova observação, sem apagar a observação anterior. Assim, uma postagem que tinha alcance 1.000 em uma coleta e 1.450 em outra preserva os dois registros.",
+            "Um hash repetido gera aviso porque o arquivo pode já ter sido importado, mas não bloqueia conscientemente uma nova execução. Esse histórico permite acompanhar evolução, conferir a origem de um valor e manter comparações reproduzíveis. O arquivo bruto não é mantido após a confirmação; ficam a proveniência e os dados validados."
+          ],
+          "items": []
+        },
+        {
+          "id": "exemplo-e-proximo-passo",
+          "title": "Exemplo e próximo passo",
+          "keywords": ["exemplo", "Dashboard", "Taxonomias", "Classificação", "Comentários", "Insights"],
+          "body": [
+            "Exemplo: importe hoje uma planilha com uma publicação publicada em setembro e métricas observadas em outubro. Em uma nova coleta no mês seguinte, use o mesmo media_external_id e outro observed_at. O Dashboard usará a observação mais recente para o estado atual, enquanto o histórico conserva as duas coletas.",
+            "Depois de confirmar, abra o Dashboard para conferir período, cobertura e publicações. Em seguida, se quiser comparar conteúdos por critérios editoriais, defina Taxonomias e classifique as publicações. Comentários e Insights ampliam a leitura, mas não substituem a conferência da fonte importada."
+          ],
+          "items": []
         }
       ]
     },
@@ -919,11 +1062,149 @@
             "Os gráficos descrevem as classificações efetivas disponíveis no recorte. Ausência de dado não equivale a sentimento neutro, risco inexistente ou decisão negativa de resposta."
           ],
           "items": []
+        },
+        {
+          "id": "campos-analiticos",
+          "title": "Campos analíticos de recepção",
+          "keywords": ["sentimento", "intensidade", "intenção", "tema", "tema normalizado", "necessita resposta", "risco", "confidence", "rationale"],
+          "body": [
+            "Um assessment organiza a leitura de um comentário sem modificar seu texto. Sentimento descreve a tonalidade avaliada — Positivo, Neutro, Negativo ou Misto — e não mede a qualidade ou o desempenho da publicação. Intensidade diferencia sinais Baixos, Médios ou Altos; ela não é sinônimo de risco.",
+            "Intenção registra a função predominante do comentário, como Elogio, Pergunta, Pedido, Reclamação, Crítica, Informação, Spam ou Outro. Tema guarda a formulação observada; Tema normalizado ajuda a reunir formulações equivalentes sem apagar o texto original. Necessita resposta sinaliza uma possível dúvida, solicitação, esclarecimento ou oportunidade de interação: não é sinônimo de comentário negativo.",
+            "Risco é um sinal para priorizar leitura e revisão humana, não uma decisão automática de moderação. Confidence é uma medida heurística da força da regra local, não uma probabilidade estatisticamente calibrada de acerto. Rationale mostra uma justificativa resumida — a regra, sinal ou evidência aplicada — e não uma cadeia de raciocínio interna."
+          ],
+          "items": []
+        },
+        {
+          "id": "classificador-local",
+          "title": "Classificador local, determinístico e limitado",
+          "keywords": ["local-rule-based", "comment-local-rules-v1", "determinístico", "regras", "IA generativa", "confidence", "rationale"],
+          "body": [
+            "A classificação automática atual usa o classificador local local-rule-based, na versão comment-local-rules-v1. Ele é determinístico: diante do mesmo texto e da mesma versão, aplica as mesmas regras explícitas e não chama serviços externos. Não é IA generativa e não interpreta o comentário como uma decisão humana faria.",
+            "A prévia de classificação informa quantos comentários estão elegíveis, já classificados, ignorados ou com revisão humana efetiva. Use confidence e rationale para entender a regra aplicada, mas leia o comentário e o contexto da publicação antes de tratar um rótulo como conclusão sobre a recepção."
+          ],
+          "items": []
+        },
+        {
+          "id": "revisao-humana-e-historico",
+          "title": "Revisão humana, histórico e reprocessamento",
+          "keywords": ["revisão humana", "assessment", "histórico", "reprocessar", "versão textual", "classifier_version"],
+          "body": [
+            "Ao salvar uma classificação humana, você cria um novo assessment. A avaliação automática anterior continua no histórico, e a revisão humana passa a ser a avaliação efetiva quando aplicável. Exemplo: uma regra pode marcar uma frase curta como Negativa; depois da leitura do contexto, a pessoa responsável pode registrá-la como Neutra com uma justificativa. As duas etapas permanecem rastreáveis.",
+            "No fluxo normal, o mesmo texto que já recebeu a mesma versão do classificador é ignorado. A opção “Reprocessar comentários mesmo quando esta versão do classificador já foi registrada” força uma nova execução quando você precisa registrar novamente a aplicação da mesma versão. Uma nova versão textual ou uma nova classifier_version torna o comentário elegível de novo; revisões humanas continuam preservadas."
+          ],
+          "items": []
+        },
+        {
+          "id": "exemplo-e-proximo-passo",
+          "title": "Exemplo de leitura e próximo passo",
+          "keywords": ["exemplo", "pergunta", "risco", "Dashboard", "Insights", "evidência"],
+          "body": [
+            "Exemplo: “Onde encontro as inscrições?” pode ser uma Pergunta, indicar necessidade de resposta e exigir revisão de risco conforme o contexto, sem ser necessariamente um comentário negativo. O label ajuda a localizar um conjunto de comentários; ele não substitui a resposta da equipe nem decide sozinho sua prioridade.",
+            "Depois de importar e revisar comentários, use os filtros e gráficos para conferir o recorte e abra o detalhe quando precisar ver texto, versões e avaliações. Insights pode comparar recepção e conteúdo quando houver dados suficientes; abra as evidências e interprete qualquer padrão como associação descritiva, não como explicação causal."
+          ],
+          "items": []
         }
       ]
     },
-    {
-      "key": "fallback",
+      {
+        "key": "instagram_insights",
+        "title": "Como interpretar os Insights",
+        "summary": "Consulte achados descritivos gerados a partir de métricas, classificações editoriais e recepção já registradas no projeto.",
+        "sections": [
+          {
+            "id": "finalidade",
+            "title": "O que os Insights mostram",
+            "keywords": ["insights", "achados", "evidências", "associação", "causalidade"],
+            "body": [
+              "Insights registram padrões descritivos encontrados no período selecionado, como diferenças de mediana entre categorias editoriais, tipos de mídia ou concentrações em comentários. Eles não são recomendações automáticas.",
+              "Um achado indica uma associação observada nos dados disponíveis. Ele não prova causa e efeito, não prevê resultados futuros e não substitui a leitura do contexto de cada publicação e comentário."
+            ],
+            "items": []
+          },
+          {
+            "id": "metodo-e-cobertura",
+            "title": "Mediana, amostra e cobertura",
+            "keywords": ["mediana", "amostra", "n", "cobertura", "zero", "ausência"],
+            "body": [
+              "Comparações de desempenho usam a mediana como medida principal para reduzir o efeito de valores extremos. O motor exige tamanho mínimo nos grupos comparados, cobertura conhecida e diferença descritiva antes de registrar um achado.",
+              "Zero é um valor registrado e participa dos cálculos. Um campo ausente continua ausente: ele não vira zero. A cobertura informa quantos registros possuíam a métrica ou classificação necessária."
+            ],
+            "items": []
+          },
+          {
+            "id": "suporte-e-rastreabilidade",
+            "title": "Grau de suporte e evidências",
+            "keywords": ["exploratório", "moderado", "consistente", "versão", "regra", "evidência"],
+            "body": [
+              "Exploratório, moderado e consistente são graus descritivos calculados de forma determinística a partir do tamanho dos grupos, da cobertura e da magnitude observada. Eles não são significância estatística, p-valor ou intervalo de confiança.",
+              "Abra um achado para consultar sua regra, versões do motor e das métricas, período, grupos, valores, cobertura e referências às publicações, observações, classificações ou comentários que sustentam o resultado. Gerar insights cria uma execução histórica; abrir a página não cria uma nova execução."
+            ],
+            "items": []
+          },
+          {
+            "id": "associacao-nao-e-causalidade",
+            "title": "Associação não é causalidade",
+            "keywords": ["associação", "causalidade", "interpretação", "categoria", "salvamentos", "contexto"],
+            "body": [
+              "Um achado é um padrão descritivo identificado por uma regra analítica versionada e sustentado por evidências rastreáveis. Ele informa período, grupos comparados, métrica, valores, n, cobertura, grau de suporte e referências aos registros usados. Nesta fase, achados não geram automaticamente recomendações, ações ou estratégias definitivas.",
+              "Exemplo: se uma categoria editorial tem mediana de salvamentos superior no período, o sistema pode dizer que aquela categoria apresentou mediana maior entre os registros comparados. Ele não pode concluir que a categoria causou mais salvamentos: horário, público, assunto, campanha, distribuição e outros fatores também podem estar envolvidos."
+            ],
+            "items": []
+          },
+          {
+            "id": "mediana-n-e-cobertura",
+            "title": "Mediana, n e cobertura",
+            "keywords": ["mediana", "n", "amostra", "cobertura", "80%", "valor extremo", "grupo"],
+            "body": [
+              "A mediana é a medida principal em várias comparações porque sofre menos influência de valores extremos. Nos valores 100, 110, 120, 130 e 5.000, a mediana é 120: ela mostra o centro do conjunto sem deixar uma publicação excepcional dominar a leitura. Isso não torna a média inútil; as duas medidas respondem a perguntas diferentes.",
+              "n é a quantidade de casos considerados. Um grupo com n = 1 é muito mais frágil que um grupo com n = 20. Nesta versão, comparações entre grupos precisam de pelo menos 3 casos em cada grupo; regras de recorrência também exigem ao menos 3 ocorrências. Cobertura é a proporção dos registros elegíveis que têm o dado necessário: se 12 de 15 publicações têm alcance, a cobertura é 80%. Cobertura baixa reduz a força da interpretação."
+            ],
+            "items": []
+          },
+          {
+            "id": "diferencas-e-suporte",
+            "title": "Diferenças, pontos percentuais e grau de suporte",
+            "keywords": ["diferença absoluta", "diferença relativa", "pontos percentuais", "suporte", "significância", "exploratório", "moderado", "consistente"],
+            "body": [
+              "Diferença absoluta é a subtração entre os grupos: 20 contra 15 resulta em +5. Diferença relativa expressa essa diferença em relação à comparação: 20 contra 15 corresponde aproximadamente a +33%. Quando a comparação é zero, a diferença relativa não é calculada. Entre taxas, 8% contra 5% equivale a +3 pontos percentuais; isso é diferente de uma variação relativa de +60%.",
+              "Exploratório, Moderado e Consistente são graus de suporte calculados de modo determinístico a partir do menor n, da cobertura e da magnitude diante do limiar da regra. A versão atual só gera comparações com cobertura mínima de 70%. Grau de suporte não é p-valor, teste de hipótese, intervalo de confiança nem prova causal; é uma heurística descritiva para orientar a cautela na leitura."
+            ],
+            "items": []
+          },
+          {
+            "id": "familias-de-regras-e-evidencias",
+            "title": "Regras analisadas e evidências",
+            "keywords": ["categoria editorial", "tipo de mídia", "sentimento", "intenção", "risco", "tema", "evidências", "Ver evidências"],
+            "body": [
+              "As regras atuais podem comparar desempenho por categoria editorial e tipo de mídia, além de descrever recepção por sentimento, intenção, necessidade de resposta, risco e temas normalizados recorrentes. Quando há classificação editorial e comentários avaliáveis, também podem comparar a recepção entre grupos de conteúdo. O conjunto exibido depende dos dados disponíveis; nenhuma família é inventada quando faltam registros.",
+              "Abra Ver evidências no achado para conferir as publicações, observações, classificações, comentários ou assessments que o sustentam. A evidência é o caminho para verificar o registro de origem e o contexto, não uma autorização para generalizar o resultado para fora do período analisado."
+            ],
+            "items": []
+          },
+          {
+            "id": "dados-insuficientes-e-periodo",
+            "title": "Dados insuficientes, período e limites",
+            "keywords": ["dados insuficientes", "período", "30 dias", "todo histórico", "classificação", "comentários", "threshold"],
+            "body": [
+              "Não haver achados não significa que não exista um fenômeno. Pode haver n insuficiente, cobertura baixa, poucas classificações editoriais, poucos comentários avaliados ou diferença abaixo do limiar da regra. Verifique o Dashboard, Taxonomias, Classificação de conteúdos e Comentários antes de concluir que não há informação relevante.",
+              "Mudar de 30 dias para Todo o histórico altera o conjunto comparado e pode produzir achados diferentes. Leia sempre o período do run junto com a data de geração. Um padrão descritivo de um mês não deve ser automaticamente apresentado como característica permanente da conta."
+            ],
+            "items": []
+          },
+          {
+            "id": "runs-versoes-e-proximo-passo",
+            "title": "Runs, versões e próximo passo",
+            "keywords": ["run", "engine_version", "rule_version", "versão", "histórico", "fluxo", "Dashboard"],
+            "body": [
+              "Gerar Insights cria um run: uma análise registrada para um período, um momento, parâmetros e versões definidos. Um novo run não apaga os anteriores. engine_version e rule_version identificam de forma legível sob qual motor e regra o achado foi produzido, permitindo entender por que dois runs podem não apresentar exatamente o mesmo conjunto de resultados.",
+              "Fluxo recomendado: importe e confira os dados, leia o Dashboard, organize Taxonomias, classifique conteúdos, importe e revise Comentários, gere Insights e abra as evidências antes de interpretar. Você pode voltar a qualquer etapa para corrigir o recorte, ampliar a cobertura ou revisar uma classificação; o fluxo não precisa ser rigidamente linear."
+            ],
+            "items": []
+          }
+        ]
+      },
+      {
+        "key": "fallback",
       "title": "Ajuda desta página",
       "summary": "Use os controles visíveis desta página para continuar o fluxo de trabalho autorizado à sua conta.",
       "sections": [

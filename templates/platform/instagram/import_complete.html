@@ -1,8 +1,10 @@
 {% extends "platform/base.html" %}
 {% from 'platform/instagram/_project_tabs.html' import project_tabs %}
+{% from 'platform/_tutorial_info.html' import tutorial_button, tutorial_dialog with context %}
+{% set instagram_tutorial = platform_help_for('instagram_import') %}
 
 {% block title %}Importação concluída — {{ project.name }}{% endblock %}
-{% block page_intro %}<div class="mb-3"><h1 class="h4 mb-1">Importação concluída</h1><p class="platform-muted mb-0">{{ project.name }}</p></div>{% endblock %}
+{% block page_intro %}<div class="mb-3 d-flex flex-wrap align-items-start justify-content-between gap-2"><div><h1 class="h4 mb-1">Importação concluída</h1><p class="platform-muted mb-0">{{ project.name }}</p></div>{{ tutorial_button(instagram_tutorial, label='Abrir tutorial de Importar dados') }}</div>{% endblock %}
 {% block body %}
 {{ project_tabs(project, 'import') }}
 <section class="platform-panel" aria-labelledby="instagram-import-complete-title">
@@ -11,4 +13,6 @@
   <ul><li>Mídias processadas: {{ result.observations_created }}</li><li>Mídias novas: {{ result.media_created }}</li><li>Mídias reutilizadas: {{ result.media_reused }}</li><li>Observações criadas: {{ result.observations_created }}</li><li>Snapshot da conta: {{ 'criado' if result.snapshot_created else 'não informado' }}</li></ul>
   <a class="btn btn-primary" href="{{ url_for('instagram.project_detail', project_id=project.id) }}">Voltar ao projeto</a>
 </section>
+{{ tutorial_dialog(instagram_tutorial) }}
+<script defer src="{{ url_for('static', filename='js/platform_tutorial.js') }}"></script>
 {% endblock %}

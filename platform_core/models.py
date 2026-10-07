@@ -278,6 +278,9 @@ class AnalyticsProject(db.Model):
     taxonomy_dimensions: Mapped[list[InstagramTaxonomyDimension]] = relationship(
         back_populates="analytics_project"
     )
+    insight_runs: Mapped[list[InstagramInsightRun]] = relationship(
+        back_populates="analytics_project"
+    )
 
     __table_args__ = (
         CheckConstraint("length(trim(name)) > 0", name="ck_analytics_project_name"),
@@ -760,6 +763,134 @@ class InstagramMediaClassification(db.Model):
             "ix_instagram_media_classifications_dimension_category_current",
             "instagram_taxonomy_dimension_id", "instagram_taxonomy_category_id", "superseded_at",
         ),
+    )
+
+
+class InstagramInsightRun(db.Model):
+    """Execução histórica e reproduzível do motor de achados Instagram."""
+
+    __tablename__ = "instagram_insight_runs"
+    id: Mapped[str] = mapped_column(db.String(36), primary_key=True, default=lambda: str(uuid4()))
+    analytics_project_id: Mapped[str] = mapped_column(
+        db.ForeignKey("analytics_projects.id"), nullable=False
+    )
+    period_key: Mapped[str] = mapped_column(db.String(12), nullable=False)
+    period_start: Mapped[datetime | None] = mapped_column(db.DateTime(timezone=True))
+    period_end: Mapped[datetime | None] = mapped_column(db.DateTime(timezone=True))
+    reference_at: Mapped[datetime | None] = mapped_column(db.DateTime(timezone=True))
+    engine_version: Mapped[str] = mapped_column(db.String(80), nullable=False)
+    parameters_json: Mapped[dict] = mapped_column(db.JSON, default=dict, nullable=False)
+    publication_count: Mapped[int] = mapped_column(db.BigInteger, nullable=False, default=0)
+    comment_count: Mapped[int] = mapped_column(db.BigInteger, nullable=False, default=0)
+    finding_count: Mapped[int] = mapped_column(db.BigInteger, nullable=False, default=0)
+    generated_at: Mapped[datetime] = mapped_column(
+        db.DateTime(timezone=True), default=utcnow, nullable=False
+    )
+
+    analytics_project: Mapped[AnalyticsProject] = relationship(back_populates="insight_runs")
+    findings: Mapped[list[InstagramInsightFinding]] = relationship(back_populates="insight_run")
+
+    __table_args__ = (
+        CheckConstraint("period_key IN ('7d', '30d', '90d', 'all')", name="ck_instagram_insight_run_period"),
+        CheckConstraint(
+            "period_start IS NULL OR period_end IS NULL OR period_start <= period_end",
+            name="ck_instagram_insight_run_period_range",
+        ),
+        CheckConstraint(
+            "publication_count >= 0 AND comment_count >= 0 AND finding_count >= 0",
+            name="ck_instagram_insight_run_counts",
+        ),
+        Index("ix_instagram_insight_runs_project_generated", "analytics_project_id", "generated_at"),
+        Index("ix_instagram_insight_runs_project_period", "analytics_project_id", "period_key", "generated_at"),
+    )
+
+
+class InstagramInsightFinding(db.Model):
+    """Achado descritivo versionado, produzido por uma execução de insights."""
+
+    __tablename__ = "instagram_insight_findings"
+    id: Mapped[str] = mapped_column(db.String(36), primary_key=True, default=lambda: str(uuid4()))
+    instagram_insight_run_id: Mapped[str] = mapped_column(
+        db.ForeignKey("instagram_insight_runs.id"), nullable=False
+    )
+    rule_id: Mapped[str] = mapped_column(db.String(80), nullable=False)
+    rule_version: Mapped[str] = mapped_column(db.String(80), nullable=False)
+    engine_version: Mapped[str] = mapped_column(db.String(80), nullable=False)
+    kind: Mapped[str] = mapped_column(db.String(48), nullable=False)
+    title: Mapped[str] = mapped_column(db.String(320), nullable=False)
+    summary: Mapped[str] = mapped_column(db.Text, nullable=False)
+    metric_key: Mapped[str | None] = mapped_column(db.String(80))
+    metric_version: Mapped[str | None] = mapped_column(db.String(80))
+    group_label: Mapped[str] = mapped_column(db.String(240), nullable=False)
+    comparison_label: Mapped[str | None] = mapped_column(db.String(240))
+    group_value: Mapped[float | None] = mapped_column(db.Float)
+    comparison_value: Mapped[float | None] = mapped_column(db.Float)
+    absolute_difference: Mapped[float | None] = mapped_column(db.Float)
+    relative_difference: Mapped[float | None] = mapped_column(db.Float)
+    difference_unit: Mapped[str | None] = mapped_column(db.String(32))
+    group_n: Mapped[int] = mapped_column(db.Integer, nullable=False, default=0)
+    comparison_n: Mapped[int] = mapped_column(db.Integer, nullable=False, default=0)
+    coverage: Mapped[float] = mapped_column(db.Float, nullable=False, default=0)
+    support_level: Mapped[str] = mapped_column(db.String(16), nullable=False)
+    support_explanation: Mapped[str] = mapped_column(db.String(500), nullable=False)
+    details_json: Mapped[dict] = mapped_column(db.JSON, default=dict, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        db.DateTime(timezone=True), default=utcnow, nullable=False
+    )
+
+    insight_run: Mapped[InstagramInsightRun] = relationship(back_populates="findings")
+    evidence: Mapped[list[InstagramInsightEvidence]] = relationship(back_populates="finding")
+
+    __table_args__ = (
+        CheckConstraint("length(trim(rule_id)) > 0", name="ck_instagram_insight_finding_rule_id"),
+        CheckConstraint("length(trim(rule_version)) > 0", name="ck_instagram_insight_finding_rule_version"),
+        CheckConstraint("length(trim(engine_version)) > 0", name="ck_instagram_insight_finding_engine_version"),
+        CheckConstraint("length(trim(kind)) > 0", name="ck_instagram_insight_finding_kind"),
+        CheckConstraint("length(trim(title)) > 0", name="ck_instagram_insight_finding_title"),
+        CheckConstraint("length(trim(summary)) > 0", name="ck_instagram_insight_finding_summary"),
+        CheckConstraint("group_n >= 0 AND comparison_n >= 0", name="ck_instagram_insight_finding_counts"),
+        CheckConstraint("coverage >= 0 AND coverage <= 1", name="ck_instagram_insight_finding_coverage"),
+        CheckConstraint(
+            "support_level IN ('exploratory', 'moderate', 'consistent')",
+            name="ck_instagram_insight_finding_support",
+        ),
+        Index("ix_instagram_insight_findings_run_kind", "instagram_insight_run_id", "kind"),
+        Index("ix_instagram_insight_findings_run_rule", "instagram_insight_run_id", "rule_id"),
+    )
+
+
+class InstagramInsightEvidence(db.Model):
+    """Referência polimórfica declarada; a origem é validada pelo motor."""
+
+    __tablename__ = "instagram_insight_evidence"
+    id: Mapped[str] = mapped_column(db.String(36), primary_key=True, default=lambda: str(uuid4()))
+    instagram_insight_finding_id: Mapped[str] = mapped_column(
+        db.ForeignKey("instagram_insight_findings.id"), nullable=False
+    )
+    source_type: Mapped[str] = mapped_column(db.String(48), nullable=False)
+    source_id: Mapped[str] = mapped_column(db.String(36), nullable=False)
+    role: Mapped[str] = mapped_column(db.String(32), nullable=False)
+    details_json: Mapped[dict] = mapped_column(db.JSON, default=dict, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        db.DateTime(timezone=True), default=utcnow, nullable=False
+    )
+
+    finding: Mapped[InstagramInsightFinding] = relationship(back_populates="evidence")
+
+    __table_args__ = (
+        CheckConstraint(
+            "source_type IN ('media', 'media_observation', 'media_classification', "
+            "'comment', 'comment_assessment', 'comment_text_version', 'account_snapshot')",
+            name="ck_instagram_insight_evidence_source_type",
+        ),
+        CheckConstraint("length(trim(source_id)) > 0", name="ck_instagram_insight_evidence_source_id"),
+        CheckConstraint("length(trim(role)) > 0", name="ck_instagram_insight_evidence_role"),
+        UniqueConstraint(
+            "instagram_insight_finding_id", "source_type", "source_id", "role",
+            name="uq_instagram_insight_evidence_finding_source_role",
+        ),
+        Index("ix_instagram_insight_evidence_finding_role", "instagram_insight_finding_id", "role"),
+        Index("ix_instagram_insight_evidence_source", "source_type", "source_id"),
     )
 
 

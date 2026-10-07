@@ -151,6 +151,26 @@ def _latest_project_observation(project_id: str) -> datetime | None:
     return max((value for value in (media_at, account_at) if value is not None), default=None)
 
 
+def dashboard_period_bounds(period: str, reference_at: datetime | None,
+                            timezone_name: str) -> tuple[datetime | None, datetime | None]:
+    """Retorna o intervalo UTC do recorte já usado pelo Dashboard.
+
+    A data de fim continua sendo a última observação do projeto; o filtro de
+    publicações não usa o relógio atual. Outros módulos analíticos podem
+    reutilizar esta regra sem criar uma semântica temporal concorrente.
+    """
+    if period not in PERIOD_DAYS:
+        raise ValueError("Período inválido")
+    if reference_at is None:
+        return None, None
+    days = PERIOD_DAYS[period]
+    if days is None:
+        return None, reference_at
+    local_end = to_local_datetime(reference_at, timezone_name)
+    local_start = local_end - timedelta(days=days)
+    return local_start.astimezone(timezone.utc), reference_at
+
+
 def _media_rows(project_id: str, period: str, reference_at: datetime | None,
                 timezone_name: str) -> tuple[MediaRow, ...]:
     ranked_observations = (
@@ -179,16 +199,13 @@ def _media_rows(project_id: str, period: str, reference_at: datetime | None,
         .where(InstagramAccount.analytics_project_id == project_id)
         .order_by(InstagramMedia.published_at.desc(), InstagramMedia.id.desc())
     )
-    days = PERIOD_DAYS[period]
-    if days is not None:
-        if reference_at is None:
+    period_start, period_end = dashboard_period_bounds(period, reference_at, timezone_name)
+    if PERIOD_DAYS[period] is not None:
+        if period_start is None or period_end is None:
             return ()
-        # A janela usa o relógio local configurado; a comparação continua em UTC.
-        local_end = to_local_datetime(reference_at, timezone_name)
-        local_start = local_end - timedelta(days=days)
         query = query.where(
-            InstagramMedia.published_at >= local_start.astimezone(timezone.utc),
-            InstagramMedia.published_at <= reference_at,
+            InstagramMedia.published_at >= period_start,
+            InstagramMedia.published_at <= period_end,
         )
     return tuple(
         MediaRow(media, observation, ordinal, {})
@@ -229,6 +246,21 @@ def _with_derived_metrics(rows: tuple[MediaRow, ...]) -> tuple[MediaRow, ...]:
             derived_metrics=calculate_derived_metrics(_raw_values(row.observation)),
         )
         for row in rows
+    )
+
+
+def selected_media_rows(project: AnalyticsProject, period: str,
+                        timezone_name: str) -> tuple[datetime | None, tuple[MediaRow, ...]]:
+    """Seleciona uma publicação por mídia e aplica as métricas derivadas v1.
+
+    Esta é a interface reutilizável para camadas analíticas: mantém a regra
+    canônica de "última observação por publicação" sem somar coletas passadas.
+    """
+    if period not in PERIOD_DAYS:
+        raise ValueError("Período inválido")
+    reference_at = _latest_project_observation(project.id)
+    return reference_at, _with_derived_metrics(
+        _media_rows(project.id, period, reference_at, timezone_name)
     )
 
 
@@ -281,8 +313,7 @@ def build_instagram_dashboard(project: AnalyticsProject, period: str, timezone_n
         raise ValueError("Período inválido")
     if sort not in TABLE_SORTS:
         raise ValueError("Ordenação inválida")
-    reference_at = _latest_project_observation(project.id)
-    rows = _with_derived_metrics(_media_rows(project.id, period, reference_at, timezone_name))
+    reference_at, rows = selected_media_rows(project, period, timezone_name)
     metrics = []
     for field, label in METRICS:
         values = [getattr(row.observation, field) for row in rows if row.observation is not None]

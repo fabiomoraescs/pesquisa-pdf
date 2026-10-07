@@ -63,6 +63,15 @@ from .instagram_lifecycle import (
     InstagramProjectDeletionError,
     delete_instagram_project_permanently,
 )
+from .instagram_insights import (
+    InstagramInsightsError,
+    InstagramInsightsPersistenceError,
+    evidence_views,
+    finding_for_project,
+    generate_insights,
+    grouped_findings,
+    latest_insight_run,
+)
 from .instagram_previews import InstagramPreviewExpired, previews
 from .instagram_dashboard import PERIOD_DAYS, TABLE_SORTS, build_instagram_dashboard
 from .instagram_taxonomy import (
@@ -280,6 +289,64 @@ def dashboard(project_id: UUID):
         sort_options=(("recent", "Mais recentes"), ("reach", "Maior alcance"),
                       ("interactions", "Mais interações"),
                       ("interaction_rate", "Maior taxa de interação por alcance")),
+    )
+
+
+@instagram_bp.get("/projects/<uuid:project_id>/insights")
+@login_required
+def insights(project_id: UUID):
+    """Consulta a última execução explícita de achados para um recorte."""
+    project = _project_for_current_user(project_id)
+    period = request.args.get("period", "30d")
+    if period not in PERIOD_DAYS:
+        abort(400)
+    run = latest_insight_run(project, period)
+    period_options = (("7d", "7 dias"), ("30d", "30 dias"), ("90d", "90 dias"),
+                      ("all", "Todo o histórico"))
+    return render_template(
+        "platform/instagram/insights.html",
+        project=project,
+        insight_run=run,
+        findings_by_group=grouped_findings(run.findings) if run else {},
+        period=period, period_options=period_options, period_label=dict(period_options)[period],
+        can_generate=project.status == "active" and project.archived_at is None,
+    )
+
+
+@instagram_bp.post("/projects/<uuid:project_id>/insights/generate")
+@login_required
+def generate_project_insights(project_id: UUID):
+    """Cria um run analítico somente mediante ação protegida por CSRF."""
+    project = _project_for_current_user(project_id, active=True)
+    period = request.form.get("period", "30d")
+    if period not in PERIOD_DAYS:
+        abort(400)
+    try:
+        run = generate_insights(project, period, current_app.config["PRESENTATION_TIMEZONE"])
+    except InstagramInsightsError as error:
+        flash(str(error), "danger")
+    except InstagramInsightsPersistenceError:
+        current_app.logger.exception("Falha ao gerar insights do Instagram")
+        flash("Não foi possível gerar os insights. Nenhuma execução parcial foi gravada.", "danger")
+    else:
+        flash(f"Insights gerados: {run.finding_count} achado(s) descritivo(s).", "success")
+    return redirect(url_for("instagram.insights", project_id=project.id, period=period,
+                            _anchor="instagram-insights-content"))
+
+
+@instagram_bp.get("/projects/<uuid:project_id>/insights/<uuid:finding_id>")
+@login_required
+def insight_detail(project_id: UUID, finding_id: UUID):
+    project = _project_for_current_user(project_id)
+    finding = finding_for_project(project, str(finding_id))
+    if finding is None:
+        abort(404)
+    return render_template(
+        "platform/instagram/insight_detail.html",
+        project=project,
+        finding=finding,
+        insight_run=finding.insight_run,
+        evidence=evidence_views(project, finding),
     )
 
 

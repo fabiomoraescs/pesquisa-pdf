@@ -1,0 +1,70 @@
+{% extends "platform/base.html" %}
+{% from 'platform/_tutorial_info.html' import tutorial_button, tutorial_dialog with context %}
+{% from 'platform/instagram/_project_tabs.html' import project_tabs %}
+
+{% block title %}Insights — {{ project.name }} — Análysis Instagram{% endblock %}
+{% block body %}
+{% set instagram_tutorial = platform_help_for('instagram_insights') %}
+<section class="platform-panel mb-3" aria-labelledby="instagram-insights-title">
+  <div class="d-flex flex-wrap align-items-start justify-content-between gap-2">
+    <div>
+      <h1 id="instagram-insights-title" class="platform-page-title">Insights</h1>
+      <p class="platform-muted mb-0">{{ project.name }} · Padrões descritivos, versionados e rastreáveis nos dados registrados.</p>
+    </div>
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      {% if can_generate %}
+      <form method="post" action="{{ url_for('instagram.generate_project_insights', project_id=project.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="period" value="{{ period }}">
+        <button class="btn btn-primary btn-sm" type="submit">Gerar insights</button>
+      </form>
+      {% endif %}
+      {{ tutorial_button(instagram_tutorial, label='Abrir tutorial de Insights') }}
+    </div>
+  </div>
+</section>
+{{ project_tabs(project, 'insights') }}
+<section id="instagram-insights-content">
+  <div class="platform-filter-band" id="instagram-insights-period" aria-label="Período dos insights">
+    <form class="platform-filter-control-row" method="get" action="{{ url_for('instagram.insights', project_id=project.id, _anchor='instagram-insights-content') }}">
+      <label class="visually-hidden" for="instagram-insights-period-select">Período</label>
+      <select class="form-select platform-filter-select" id="instagram-insights-period-select" name="period" onchange="this.form.submit()">
+        {% for key, label in period_options %}<option value="{{ key }}"{% if period == key %} selected{% endif %}>Período: {{ label }}</option>{% endfor %}
+      </select>
+      <noscript><button class="btn btn-outline-primary btn-sm" type="submit">Atualizar</button></noscript>
+    </form>
+  </div>
+  {% if not insight_run %}
+  <section class="platform-empty-state" aria-labelledby="instagram-insights-empty-title">
+    <h2 id="instagram-insights-empty-title" class="h5">Ainda não há insights gerados para este projeto.</h2>
+    <p>Gere uma execução para registrar achados descritivos e suas evidências rastreáveis no período selecionado.</p>
+    {% if can_generate %}<form method="post" action="{{ url_for('instagram.generate_project_insights', project_id=project.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="period" value="{{ period }}"><button class="btn btn-primary" type="submit">Gerar insights</button></form>{% else %}<p class="platform-muted mb-0">Projeto arquivado: o histórico pode ser consultado, mas não recebe novas execuções.</p>{% endif %}
+  </section>
+  {% else %}
+  <section class="platform-panel mb-3" aria-labelledby="instagram-insights-run-title">
+    <div class="d-flex flex-wrap align-items-start justify-content-between gap-2"><div><h2 id="instagram-insights-run-title" class="h5 mb-1">Última execução do recorte</h2><p class="platform-muted mb-0">Gerada em {{ insight_run.generated_at | data_hora_local }} · referência dos dados: {{ insight_run.reference_at | data_hora_local if insight_run.reference_at else 'Não informada' }}</p></div><span class="platform-badge">{{ insight_run.engine_version }}</span></div>
+    <dl class="row mb-0 mt-3"><dt class="col-sm-4">Período</dt><dd class="col-sm-8">{{ period_label }}</dd><dt class="col-sm-4">Publicações analisadas</dt><dd class="col-sm-8">{{ insight_run.publication_count }}</dd><dt class="col-sm-4">Comentários analisados</dt><dd class="col-sm-8">{{ insight_run.comment_count }}</dd><dt class="col-sm-4">Achados gerados</dt><dd class="col-sm-8">{{ insight_run.finding_count }}</dd></dl>
+  </section>
+  {% if findings_by_group %}
+    {% for group, findings in findings_by_group.items() %}
+    <section class="platform-panel mb-3" aria-labelledby="instagram-insights-{{ loop.index }}">
+      <h2 id="instagram-insights-{{ loop.index }}" class="h5">{{ group }}</h2>
+      <div class="platform-view-list">
+      {% for finding in findings %}
+        <article class="platform-list-item">
+          <div><div class="platform-list-title">{{ finding.title }}</div><div class="platform-list-meta">{{ finding.summary }}</div></div>
+          <div class="platform-list-meta"><span class="platform-badge">Suporte {{ {'exploratory': 'exploratório', 'moderate': 'moderado', 'consistent': 'consistente'}[finding.support_level] }}</span><div class="mt-1">n = {{ finding.group_n }} · cobertura {{ '%.0f' | format(finding.coverage * 100) }}%{% if finding.absolute_difference is not none %} · diferença {{ '%+.2f' | format(finding.absolute_difference) }}{% endif %}</div></div>
+          <div class="platform-list-actions"><a class="btn btn-outline-primary btn-sm" href="{{ url_for('instagram.insight_detail', project_id=project.id, finding_id=finding.id) }}">Ver evidências</a></div>
+        </article>
+      {% endfor %}
+      </div>
+    </section>
+    {% endfor %}
+  {% else %}
+  <section class="platform-empty-state" aria-labelledby="instagram-insights-insufficient-title"><h2 id="instagram-insights-insufficient-title" class="h5">Os dados atuais ainda são insuficientes para gerar achados com os critérios desta versão.</h2><p>O motor exige tamanho mínimo de grupo, cobertura conhecida e diferenças descritivas antes de registrar um achado.</p></section>
+  {% endif %}
+  {% endif %}
+</section>
+{{ tutorial_dialog(instagram_tutorial) }}
+<script defer src="{{ url_for('static', filename='js/platform_tutorial.js') }}"></script>
+{% endblock %}
