@@ -134,9 +134,9 @@ class ProfileTests(unittest.TestCase):
                       "inherit", "allow", "deny"):
             for visible in re.findall(rf'<option value="{value}"[^>]*>([^<]+)</option>', html):
                 self.assertNotEqual(unescape(visible), value)
-        self.assertIn('>Bloqueado</option>', html)
-        self.assertIn('>Permitir</option>', html)
-        self.assertIn('>Gratuito — Estudante</option>', html)
+        self.assertIn('Estado: Bloqueado</option>', html)
+        self.assertIn('Permitir</option>', html)
+        self.assertIn('Forma de acesso: Gratuito — Estudante</option>', html)
         user_list = self.client.get("/admin/usuarios").get_data(as_text=True)
         self.assertIn("Administrador", user_list)
         self.assertNotIn(">admin<", user_list)

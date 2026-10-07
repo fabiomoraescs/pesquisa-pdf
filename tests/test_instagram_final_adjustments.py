@@ -180,7 +180,19 @@ class InstagramFinalAdjustmentsTests(unittest.TestCase):
         ).get_data(as_text=True)
         self.assertLess(dashboard.index("Voltar ao projeto"), dashboard.index("data-platform-tutorial-open"))
         self.assertIn('class="platform-project-tabs"', dashboard)
-        self.assertEqual(len(re.findall(r'class="platform-project-tab(?: is-current)?"', dashboard)), 4)
+        self.assertIn('data-project-tabs', dashboard)
+        self.assertIn('class="platform-project-tabs-menu-toggle"', dashboard)
+        self.assertIn('aria-label="Menu de navegação do projeto"', dashboard)
+        self.assertIn('aria-expanded="false"', dashboard)
+        self.assertIn('aria-controls="instagram-project-tabs-menu-', dashboard)
+        self.assertIn('class="platform-project-tabs-mobile-menu"', dashboard)
+        self.assertEqual(len(re.findall(r'class="platform-project-tab(?: is-current)?"', dashboard)), 10)
+        mobile_tabs = dashboard[dashboard.index('class="platform-project-tabs-mobile-menu"'):]
+        self.assertLess(mobile_tabs.index('>Dashboard</a>'), mobile_tabs.index('>Taxonomias</a>'))
+        self.assertLess(mobile_tabs.index('>Taxonomias</a>'), mobile_tabs.index('>Classificação de conteúdos</a>'))
+        self.assertLess(mobile_tabs.index('>Classificação de conteúdos</a>'), mobile_tabs.index('>Importar dados</a>'))
+        self.assertLess(mobile_tabs.index('>Importar dados</a>'), mobile_tabs.index('>Comentários</a>'))
+        self.assertIn(f'href="{dashboard_url}" aria-current="page">Dashboard</a>', mobile_tabs)
         self.assertIn(f'href="{dashboard_url}" aria-current="page">Dashboard</a>', dashboard)
         self.assertIn(
             f'href="/analytics/instagram/projects/{self.project.id}/taxonomies">Taxonomias</a>', dashboard,
@@ -190,7 +202,14 @@ class InstagramFinalAdjustmentsTests(unittest.TestCase):
             dashboard,
         )
         self.assertIn(
+            f'href="/analytics/instagram/projects/{self.project.id}/comments">Comentários</a>', dashboard,
+        )
+        self.assertIn(
             f'href="/analytics/instagram/projects/{self.project.id}/imports/new">Importar dados</a>', dashboard,
+        )
+        self.assertLess(
+            dashboard.index(f'href="/analytics/instagram/projects/{self.project.id}/imports/new">Importar dados</a>'),
+            dashboard.index(f'href="/analytics/instagram/projects/{self.project.id}/comments">Comentários</a>'),
         )
         self.assertIn('id="instagram-taxonomy-performance"', dashboard)
         self.assertIn('action="' + dashboard_url + '#instagram-taxonomy-performance"', dashboard)
@@ -203,12 +222,14 @@ class InstagramFinalAdjustmentsTests(unittest.TestCase):
         self.assertIn('data-partial-target="#instagram-media-table"', dashboard)
         self.assertIn('class="form-select platform-filter-select" id="instagram-dashboard-period-select"', dashboard)
         self.assertIn('name="period" data-filter-width="short" data-auto-submit', dashboard)
-        self.assertIn('<option value="all" selected>Todo o histórico</option>', dashboard)
+        self.assertIn('<label class="visually-hidden" for="instagram-dashboard-period-select">Período</label>', dashboard)
+        self.assertIn('<option value="all" selected>Período: Todo o histórico</option>', dashboard)
         self.assertIn('name="sort" value="reach"', dashboard)
         self.assertIn(f'name="taxonomy_dimension" value="{first_dimension.id}"', dashboard)
         self.assertIn('class="form-select platform-filter-select" id="instagram-dashboard-sort-select"', dashboard)
         self.assertIn('name="sort" data-filter-width="long" data-auto-submit', dashboard)
-        self.assertIn('<option value="reach" selected>Maior alcance</option>', dashboard)
+        self.assertIn('<label class="visually-hidden" for="instagram-dashboard-sort-select">Ordenar por</label>', dashboard)
+        self.assertIn('<option value="reach" selected>Ordenar por: Maior alcance</option>', dashboard)
         self.assertEqual(dashboard.count('platform-filter-control-row'), 2)
         self.assertEqual(dashboard.count('platform-filter-band'), 1)
         self.assertNotIn('platform-panel mb-3" id="instagram-dashboard-period"', dashboard)
@@ -237,6 +258,8 @@ class InstagramFinalAdjustmentsTests(unittest.TestCase):
         taxonomy = taxonomy_page.get_data(as_text=True)
         self.assertLess(taxonomy.index("Voltar ao projeto"), taxonomy.index("data-platform-tutorial-open"))
         self.assertIn(f'href="{taxonomy_url}" aria-current="page">Taxonomias</a>', taxonomy)
+        taxonomy_mobile_tabs = taxonomy[taxonomy.index('class="platform-project-tabs-mobile-menu"'):]
+        self.assertIn(f'href="{taxonomy_url}" aria-current="page">Taxonomias</a>', taxonomy_mobile_tabs)
         self.assertGreater(taxonomy.index('class="platform-project-tabs"'), taxonomy.index("data-platform-tutorial-open"))
         self.assertIn(f'id="instagram-taxonomy-dimension-{first_dimension.id}"', taxonomy)
         self.assertIn(f'title="Arquivar dimensão {first_dimension.name}"', taxonomy)
@@ -279,7 +302,8 @@ class InstagramFinalAdjustmentsTests(unittest.TestCase):
         self.assertIn('data-partial-target="#instagram-classifications-list"', filtered_classifications)
         self.assertIn('class="form-select platform-filter-select" id="instagram-classification-status-select"', filtered_classifications)
         self.assertIn('name="status" data-filter-width="standard" data-auto-submit', filtered_classifications)
-        self.assertIn('<option value="partial" selected>Parcialmente classificadas</option>', filtered_classifications)
+        self.assertIn('<label class="visually-hidden" for="instagram-classification-status-select">Exibir</label>', filtered_classifications)
+        self.assertIn('<option value="partial" selected>Exibir: Parcialmente classificadas</option>', filtered_classifications)
         self.assertEqual(filtered_classifications.count('platform-filter-control-row'), 1)
         self.assertEqual(filtered_classifications.count('platform-filter-band'), 1)
         self.assertNotIn('platform-panel mb-3" id="instagram-classification-filters"', filtered_classifications)
@@ -325,6 +349,7 @@ class InstagramFinalAdjustmentsTests(unittest.TestCase):
             f"/analytics/instagram/projects/{self.project.id}/dashboard"
         ).get_data(as_text=True)
         self.assertIn('class="platform-project-tab is-disabled" aria-disabled="true"', dashboard)
+        self.assertEqual(dashboard.count('Importar dados</span>'), 2)
         self.assertNotIn(f'href="/analytics/instagram/projects/{self.project.id}/imports/new"', dashboard)
         self.assertEqual(
             self.client.get(f"/analytics/instagram/projects/{self.project.id}/imports/new").status_code,
@@ -346,6 +371,28 @@ class InstagramFinalAdjustmentsTests(unittest.TestCase):
         self.assertIn("Hidden inputs retain no-JavaScript behavior", script)
         self.assertNotIn("instagram-dashboard", script)
         self.assertNotIn("instagram-classification", script)
+
+    def test_project_tabs_use_an_accessible_mobile_menu_without_changing_desktop_tabs(self):
+        root = Path(__file__).resolve().parents[1]
+        template = (root / "templates" / "platform" / "instagram" / "_project_tabs.html").read_text(
+            encoding="utf-8"
+        )
+        css = (root / "static" / "css" / "platform.css").read_text(encoding="utf-8")
+        script = (root / "static" / "js" / "platform.js").read_text(encoding="utf-8")
+
+        self.assertIn('data-project-tabs-toggle', template)
+        self.assertIn('aria-label="Menu de navegação do projeto"', template)
+        self.assertIn('aria-expanded="false"', template)
+        self.assertIn('aria-controls="{{ menu_id }}"', template)
+        self.assertIn('data-project-tabs-menu', template)
+        self.assertIn("@media (max-width: 800px)", css)
+        self.assertIn('.platform-project-tabs { display: none; }', css)
+        self.assertIn('.platform-project-tabs-menu-toggle { display: none;', css)
+        self.assertIn('.platform-project-tabs-mobile-menu { display: grid;', css)
+        self.assertIn('.platform-project-tabs-shell[data-project-tabs-ready] .platform-project-tabs-menu-toggle', css)
+        self.assertIn("document.querySelectorAll('[data-project-tabs]')", script)
+        self.assertIn("event.key === 'Escape'", script)
+        self.assertIn("menu.querySelectorAll('a').forEach", script)
 
     def test_instagram_tables_use_the_shared_theme_surface_tokens(self):
         root = Path(__file__).resolve().parents[1]

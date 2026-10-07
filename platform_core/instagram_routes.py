@@ -23,6 +23,32 @@ from .instagram_import import (
     build_preview,
     parse_instagram_import,
 )
+from .instagram_comment_import import (
+    COMMENT_IMPORT_FIELDS,
+    build_comment_preview,
+    parse_instagram_comment_import,
+)
+from .instagram_comment_previews import (
+    InstagramCommentPreviewExpired,
+    comment_previews,
+)
+from .instagram_comment_storage import (
+    InstagramCommentImportPersistenceError,
+    comment_import_conflict,
+    persist_instagram_comment_import,
+)
+from .instagram_comments import (
+    INTENSITY_LABELS,
+    INTENT_LABELS,
+    RISK_LABELS,
+    SENTIMENT_LABELS,
+    CommentAssessmentValidationError,
+    build_instagram_comments_dashboard,
+    classify_comment,
+    current_comment_observation,
+    current_text_version,
+    effective_assessment,
+)
 from .instagram_lifecycle import (
     InstagramProjectDeletionError,
     delete_instagram_project_permanently,
@@ -52,6 +78,8 @@ from .models import (
     AnalyticsProject,
     AnalyticsRun,
     InstagramAccount,
+    InstagramComment,
+    InstagramCommentTextVersion,
     InstagramMedia,
     InstagramTaxonomyCategory,
     InstagramTaxonomyDimension,
@@ -453,6 +481,248 @@ def edit_classification(project_id: UUID, media_id: UUID):
         current_category_ids=current_category_ids,
         can_mutate=project.status == "active" and project.archived_at is None,
     )
+
+
+def _comment_for_project(project: AnalyticsProject, comment_id: UUID) -> InstagramComment:
+    comment = db.session.scalar(
+        select(InstagramComment)
+        .join(InstagramMedia, InstagramMedia.id == InstagramComment.instagram_media_id)
+        .join(InstagramAccount, InstagramAccount.id == InstagramMedia.instagram_account_id)
+        .where(
+            InstagramComment.id == str(comment_id),
+            InstagramAccount.analytics_project_id == project.id,
+        )
+    )
+    if comment is None:
+        abort(404)
+    # As relações são consumidas por funções centrais de estado e pelo
+    # histórico no template. Carregá-las explicitamente evita queries por linha.
+    _ = comment.instagram_media, comment.text_versions, comment.observations, comment.assessments, comment.replies
+    return comment
+
+
+@instagram_bp.get("/projects/<uuid:project_id>/comments")
+@login_required
+def comments(project_id: UUID):
+    project = _project_for_current_user(project_id)
+    filters = {
+        "period": request.args.get("period", "30d"),
+        "sort": request.args.get("sort", "recent"),
+        "status": request.args.get("status", "all"),
+        "sentiment": request.args.get("sentiment", "all"),
+        "needs_response": request.args.get("needs_response", "all"),
+        "risk": request.args.get("risk", "all"),
+    }
+    try:
+        summary = build_instagram_comments_dashboard(project, **filters)
+    except ValueError:
+        abort(400)
+    return render_template(
+        "platform/instagram/comments.html",
+        project=project,
+        comments_dashboard=summary,
+        filters=filters,
+        period_options=(("7d", "7 dias"), ("30d", "30 dias"), ("90d", "90 dias"),
+                        ("all", "Todo o histórico")),
+        sentiment_labels=SENTIMENT_LABELS,
+        intent_labels=INTENT_LABELS,
+        risk_labels=RISK_LABELS,
+        can_mutate=project.status == "active" and project.archived_at is None,
+    )
+
+
+@instagram_bp.route("/projects/<uuid:project_id>/comments/<uuid:comment_id>", methods=("GET", "POST"))
+@login_required
+def comment_detail(project_id: UUID, comment_id: UUID):
+    project = _project_for_current_user(project_id, active=request.method == "POST")
+    comment = _comment_for_project(project, comment_id)
+    if request.method == "POST":
+        try:
+            classify_comment(comment, current_user.id, {
+                "sentiment": request.form.get("sentiment"),
+                "intensity": request.form.get("intensity"),
+                "intent": request.form.get("intent"),
+                "topic": request.form.get("topic"),
+                "topic_normalized": request.form.get("topic_normalized"),
+                "needs_response": request.form.get("needs_response"),
+                "risk": request.form.get("risk"),
+                "rationale": request.form.get("rationale"),
+            })
+            db.session.commit()
+        except CommentAssessmentValidationError as error:
+            db.session.rollback()
+            flash(str(error), "danger")
+        else:
+            flash("Classificação do comentário atualizada. O histórico anterior foi preservado.", "success")
+            return redirect(url_for(
+                "instagram.comment_detail", project_id=project.id, comment_id=comment.id,
+                _anchor="instagram-comment-classification",
+            ))
+    assessment = effective_assessment(comment.assessments)
+    return render_template(
+        "platform/instagram/comment_detail.html",
+        project=project,
+        comment=comment,
+        media=comment.instagram_media,
+        text_version=current_text_version(comment.text_versions),
+        observation=current_comment_observation(comment.observations),
+        assessment=assessment,
+        history=sorted(comment.assessments, key=lambda item: (item.created_at, item.id), reverse=True),
+        text_versions=sorted(comment.text_versions, key=lambda item: (item.first_observed_at, item.id), reverse=True),
+        sentiment_labels=SENTIMENT_LABELS,
+        intensity_labels=INTENSITY_LABELS,
+        intent_labels=INTENT_LABELS,
+        risk_labels=RISK_LABELS,
+        can_mutate=project.status == "active" and project.archived_at is None,
+    )
+
+
+@instagram_bp.get("/projects/<uuid:project_id>/comments/imports/new")
+@login_required
+def new_comment_import(project_id: UUID):
+    project = _project_for_current_user(project_id, active=True)
+    return render_template(
+        "platform/instagram/comment_import_new.html", project=project, import_fields=COMMENT_IMPORT_FIELDS,
+    )
+
+
+@instagram_bp.get("/projects/<uuid:project_id>/comments/imports/modelo")
+@login_required
+def comment_import_template(project_id: UUID):
+    _project_for_current_user(project_id, active=True)
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Comentários Instagram"
+    for index, field in enumerate(COMMENT_IMPORT_FIELDS, start=1):
+        cell = sheet.cell(1, index, field.name)
+        cell.fill = PatternFill("solid", fgColor="184775" if field.required else "52677A")
+        cell.font = Font(color="FFFFFF", bold=True)
+        cell.alignment = Alignment(wrap_text=True, vertical="center")
+        cell.comment = Comment(field.note, "Análysis")
+        sheet.column_dimensions[get_column_letter(index)].width = min(34, max(19, len(field.name) + 3))
+        if field.kind == "datetime":
+            for row in range(2, MAX_IMPORT_ROWS + 2):
+                sheet.cell(row, index).number_format = "@"
+    sheet.row_dimensions[1].height = 31
+    sheet.freeze_panes = "A2"
+    sheet.auto_filter.ref = f"A1:{get_column_letter(len(COMMENT_IMPORT_FIELDS))}1"
+    output = BytesIO()
+    workbook.save(output)
+    workbook.close()
+    output.seek(0)
+    return send_file(
+        output, as_attachment=True, download_name="modelo_importacao_comentarios_instagram_analysis.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+def _comment_known_hashes(project: AnalyticsProject) -> dict[tuple[str, str], set[str]]:
+    account = project.instagram_account
+    if account is None:
+        return {}
+    comments = db.session.execute(
+        select(InstagramComment, InstagramMedia.external_id)
+        .join(InstagramMedia, InstagramMedia.id == InstagramComment.instagram_media_id)
+        .where(InstagramMedia.instagram_account_id == account.id)
+    ).all()
+    hashes = {(media_external_id, comment.external_id): set() for comment, media_external_id in comments}
+    key_by_comment_id = {
+        comment.id: (media_external_id, comment.external_id)
+        for comment, media_external_id in comments
+    }
+    if comments:
+        ids = list(key_by_comment_id)
+        for version in db.session.scalars(select(InstagramCommentTextVersion).where(
+            InstagramCommentTextVersion.instagram_comment_id.in_(ids)
+        )):
+            hashes[key_by_comment_id[version.instagram_comment_id]].add(version.content_hash)
+    return hashes
+
+
+@instagram_bp.post("/projects/<uuid:project_id>/comments/imports/preview")
+@login_required
+def preview_comment_import(project_id: UUID):
+    project = _project_for_current_user(project_id, active=True)
+    uploaded = request.files.get("dataset")
+    if uploaded is None or not uploaded.filename:
+        flash("Selecione um arquivo CSV ou XLSX.", "danger")
+        return render_template(
+            "platform/instagram/comment_import_new.html", project=project, import_fields=COMMENT_IMPORT_FIELDS,
+        ), 400
+    data = uploaded.read(MAX_IMPORT_BYTES + 1)
+    try:
+        dataset = parse_instagram_comment_import(uploaded.filename, data)
+        conflict = comment_import_conflict(project, dataset)
+        if conflict:
+            raise InstagramImportError(conflict)
+        repeated_source_hash = db.session.scalar(
+            select(AnalyticsRun.id).where(
+                AnalyticsRun.analytics_project_id == project.id,
+                AnalyticsRun.source_hash == dataset.source_hash,
+            ).limit(1)
+        ) is not None
+        preview = build_comment_preview(
+            dataset, known_comment_hashes=_comment_known_hashes(project),
+            repeated_source_hash=repeated_source_hash,
+        )
+    except InstagramImportError as error:
+        flash(str(error), "danger")
+        return render_template(
+            "platform/instagram/comment_import_new.html", project=project, import_fields=COMMENT_IMPORT_FIELDS,
+        ), 400
+    try:
+        token = comment_previews.put(current_user.id, project.id, preview)
+    except OSError:
+        current_app.logger.exception("Não foi possível guardar a prévia de comentários Instagram")
+        flash("Não foi possível preparar a prévia. Tente enviar o arquivo novamente.", "danger")
+        return render_template(
+            "platform/instagram/comment_import_new.html", project=project, import_fields=COMMENT_IMPORT_FIELDS,
+        ), 500
+    return render_template("platform/instagram/comment_import_preview.html", project=project, preview=preview, token=token)
+
+
+@instagram_bp.post("/projects/<uuid:project_id>/comments/imports/confirm")
+@login_required
+def confirm_comment_import(project_id: UUID):
+    project = _project_for_current_user(project_id, active=True)
+    token = request.form.get("preview_token", "")
+    try:
+        claim = comment_previews.claim(token, current_user.id, project.id)
+    except InstagramCommentPreviewExpired:
+        flash("A prévia expirou. Envie o arquivo novamente.", "warning")
+        return redirect(url_for("instagram.new_comment_import", project_id=project.id))
+    if claim is None:
+        flash("Prévia indisponível. Envie o arquivo novamente.", "warning")
+        return redirect(url_for("instagram.new_comment_import", project_id=project.id))
+    preview = claim.preview
+    try:
+        result = persist_instagram_comment_import(project, preview.dataset)
+    except InstagramCommentImportPersistenceError as error:
+        claim.release()
+        flash(str(error), "danger")
+        return render_template(
+            "platform/instagram/comment_import_preview.html", project=project, preview=preview, token=token,
+        ), 409
+    except Exception:
+        claim.release()
+        current_app.logger.exception("Falha ao confirmar importação de comentários Instagram")
+        flash("Não foi possível concluir a importação. Nenhum dado foi salvo.", "danger")
+        return render_template(
+            "platform/instagram/comment_import_preview.html", project=project, preview=preview, token=token,
+        ), 500
+    try:
+        claim.complete()
+    except OSError:
+        current_app.logger.exception("Importação de comentários concluída; falha ao remover prévia consumida")
+    return render_template("platform/instagram/comment_import_complete.html", project=project, result=result, preview=preview)
+
+
+@instagram_bp.post("/projects/<uuid:project_id>/comments/imports/cancel")
+@login_required
+def cancel_comment_import(project_id: UUID):
+    project = _project_for_current_user(project_id)
+    comment_previews.discard(request.form.get("preview_token", ""), current_user.id, project.id)
+    return redirect(url_for("instagram.comments", project_id=project.id))
 
 
 @instagram_bp.get("/projects/<uuid:project_id>/imports/new")

@@ -17,6 +17,10 @@ from .models import (
     AnalyticsRun,
     InstagramAccount,
     InstagramAccountSnapshot,
+    InstagramComment,
+    InstagramCommentAssessment,
+    InstagramCommentObservation,
+    InstagramCommentTextVersion,
     InstagramMedia,
     InstagramMediaClassification,
     InstagramMediaObservation,
@@ -76,6 +80,9 @@ def _delete_project_records(project_id: str) -> None:
     media_ids = select(InstagramMedia.id).where(
         InstagramMedia.instagram_account_id.in_(account_ids)
     )
+    comment_ids = select(InstagramComment.id).where(
+        InstagramComment.instagram_media_id.in_(media_ids)
+    )
     run_ids = select(AnalyticsRun.id).where(AnalyticsRun.analytics_project_id == project_id)
     dimension_ids = select(InstagramTaxonomyDimension.id).where(
         InstagramTaxonomyDimension.analytics_project_id == project_id
@@ -87,6 +94,21 @@ def _delete_project_records(project_id: str) -> None:
         InstagramMediaClassification.instagram_media_id.in_(media_ids),
         InstagramMediaClassification.instagram_taxonomy_dimension_id.in_(dimension_ids),
     )))
+    # Comentários são dependentes das mídias, mas suas versões, avaliações e
+    # observações precisam desaparecer antes da auto-FK de respostas.
+    db.session.execute(delete(InstagramCommentAssessment).where(
+        InstagramCommentAssessment.instagram_comment_id.in_(comment_ids)
+    ))
+    db.session.execute(delete(InstagramCommentObservation).where(or_(
+        InstagramCommentObservation.instagram_comment_id.in_(comment_ids),
+        InstagramCommentObservation.analytics_run_id.in_(run_ids),
+    )))
+    db.session.execute(delete(InstagramCommentTextVersion).where(
+        InstagramCommentTextVersion.instagram_comment_id.in_(comment_ids)
+    ))
+    db.session.execute(delete(InstagramComment).where(
+        InstagramComment.instagram_media_id.in_(media_ids)
+    ))
     db.session.execute(delete(InstagramMediaObservation).where(or_(
         InstagramMediaObservation.instagram_media_id.in_(media_ids),
         InstagramMediaObservation.analytics_run_id.in_(run_ids),

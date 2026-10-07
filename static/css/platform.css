@@ -396,7 +396,7 @@ legend.platform-form-section-title { float: none; }
 .platform-auth-card-wide { width: min(100%, 600px); }
 .platform-auth-card h2 { font-size: 1.4rem; margin-bottom: 1.4rem; }
 .platform-auth-switch { margin: 1.35rem 0 0; color: var(--muted); text-align: center; }
-.platform-auth-switch a, .platform-panel a { color: var(--blue); }
+.platform-auth-switch a, .platform-panel a:not(.btn) { color: var(--blue); }
 .platform-form-section { border: 0; margin: 0 0 1.3rem; padding: 0; min-width: 0; }
 .platform-form-section + .platform-form-section { border-top: 1px solid var(--border); padding-top: 1.25rem; }
 .platform-form-section legend { float: none; width: auto; margin: 0 0 .8rem; font-size: 1.03rem; font-weight: 700; color: var(--ink); }
@@ -419,20 +419,18 @@ legend.platform-form-section-title { float: none; }
 .platform-project-tab:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
 .platform-project-tab.is-current { border-color: var(--border); border-bottom-color: var(--surface); background: var(--surface); color: var(--blue); font-weight: 750; }
 .platform-project-tab.is-disabled { color: var(--muted); cursor: not-allowed; opacity: .72; }
+.platform-project-tabs-mobile { display: none; }
 .platform-filter-control-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: .45rem; min-width: 0; }
 .platform-filter-control-row .form-label { flex: 0 0 auto; font-weight: 650; }
-.platform-filter-control-row .form-select { flex: 0 1 auto; width: fit-content; min-width: min(100%, 13rem); max-width: 100%; }
-.platform-filter-control-row .platform-filter-select { width: min(100%, var(--platform-filter-select-width)); min-width: 0; }
-.platform-filter-select[data-filter-width="short"] { --platform-filter-select-width: 9.75rem; }
-/* Compact defaults retain the full selected label when the exceptional long option is active. */
-.platform-filter-select[data-filter-width="standard"] { --platform-filter-select-width: 14.5rem; }
-.platform-filter-select[data-filter-width="long"] { --platform-filter-select-width: 18.75rem; }
-@supports selector(.platform-filter-select:has(option:checked)) {
-  .platform-filter-select[data-filter-width="standard"] { --platform-filter-select-width: 11rem; }
-  .platform-filter-select[data-filter-width="long"] { --platform-filter-select-width: 14.25rem; }
-  .platform-filter-select[data-filter-width="standard"]:has(option[value="partial"]:checked) { --platform-filter-select-width: 14.5rem; }
-  .platform-filter-select[data-filter-width="long"]:has(option[value="interaction_rate"]:checked) { --platform-filter-select-width: 18.75rem; }
+.platform-filter-control-row .form-select { flex: 0 0 auto; width: auto; min-width: 0; max-width: none; }
+/* Compact filters size themselves from their selected native option.  The shared
+   padding reserves room for the arrow without inflating every control. */
+.platform-filter-control-row .platform-filter-select { width: max-content; min-inline-size: 0; max-inline-size: none; padding-left: .5rem; padding-right: 1.625rem; }
+@supports (field-sizing: content) {
+  .platform-filter-control-row .platform-filter-select { width: auto; field-sizing: content; }
 }
+.platform-filter-control-row--start { justify-content: flex-start; gap: .55rem .8rem; }
+.platform-filter-control-row--comment-filters { width: 100%; gap: .55rem .8rem; }
 .platform-filter-band { display: flex; justify-content: flex-end; min-width: 0; margin: 0 0 1rem; }
 .platform-filter-band .platform-filter-control-row { width: 100%; }
 [data-partial-update][aria-busy="true"] { opacity: .68; }
@@ -567,7 +565,21 @@ legend.platform-form-section-title { float: none; }
   .platform-ai-settings-heading { align-items: stretch; flex-direction: column; }
   .platform-workspace-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+@media (max-width: 800px) {
+  .platform-project-tabs { display: none; }
+  .platform-project-tabs-mobile { position: relative; display: block; margin: 0 0 1rem; }
+  .platform-project-tabs-menu-toggle { display: none; align-items: center; justify-content: center; flex-direction: column; width: 2.5rem; min-width: 2.5rem; height: 2.5rem; gap: .25rem; padding: 0; border: 1px solid var(--border); border-radius: .55rem; color: var(--ink); background: var(--surface-muted); }
+  .platform-project-tabs-menu-toggle span { display: block; width: 1.1rem; height: 2px; border-radius: 2px; background: currentColor; }
+  .platform-project-tabs-menu-toggle:hover, .platform-project-tabs-menu-toggle:focus-visible { color: var(--blue); border-color: var(--blue); outline-offset: 2px; }
+  .platform-project-tabs-mobile-menu { display: grid; gap: .15rem; padding: .35rem; border: 1px solid var(--border); border-radius: .7rem; background: var(--surface); box-shadow: 0 .6rem 1.5rem var(--shadow); }
+  .platform-project-tabs-mobile-menu .platform-project-tab { width: 100%; min-width: 0; border: 0; border-radius: .45rem; white-space: normal; }
+  .platform-project-tabs-mobile-menu .platform-project-tab.is-current { background: var(--soft-blue); color: var(--blue); }
+  .platform-project-tabs-shell[data-project-tabs-ready] .platform-project-tabs-menu-toggle { display: inline-flex; }
+  .platform-project-tabs-shell[data-project-tabs-ready] .platform-project-tabs-mobile-menu { position: absolute; z-index: 12; top: calc(100% + .35rem); left: 0; width: min(100%, 20rem); min-width: min(20rem, calc(100vw - 2rem)); }
+  .platform-project-tabs-shell[data-project-tabs-ready] .platform-project-tabs-mobile-menu[hidden] { display: none; }
+}
 @media (max-width: 640px) {
+  .platform-filter-control-row--comment-filters .platform-filter-select { flex: 0 0 100%; width: 100%; max-width: none; field-sizing: fixed; }
   .platform-tutorial-dialog { width: min(100vw - 1rem, 58rem); max-height: calc(100dvh - 1rem); }
   .platform-tutorial-dialog__header { padding: 1rem; }
   .platform-tutorial-dialog__body { display: block; max-height: calc(100dvh - 8.2rem); }

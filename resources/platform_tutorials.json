@@ -865,6 +865,63 @@
       ]
     },
     {
+      "key": "instagram_comments",
+      "title": "Como usar Comentários e recepção",
+      "summary": "Importe comentários vinculados a publicações já registradas, acompanhe versões e métricas observadas e aplique classificação humana rastreável.",
+      "sections": [
+        {
+          "id": "finalidade",
+          "title": "O que esta área registra",
+          "keywords": ["comentários", "recepção", "histórico", "observação"],
+          "body": [
+            "Cada comentário é identificado pela publicação de origem e pelo seu identificador externo. Uma nova coleta não substitui as métricas anteriores: ela cria uma nova observação com data própria.",
+            "O total de comentários importados é uma evidência da coleta de comentários e não deve ser confundido com o campo de comentários agregado nas métricas da publicação. As duas fontes podem cobrir recortes diferentes."
+          ],
+          "items": []
+        },
+        {
+          "id": "importar",
+          "title": "Importar e conferir a prévia",
+          "keywords": ["CSV", "XLSX", "prévia", "comment_external_id", "media_external_id"],
+          "body": [
+            "Baixe o modelo, preencha uma linha por comentário observado e valide o arquivo. Cada linha exige media_external_id, comment_external_id, comment_text, published_at e observed_at em ISO 8601 com timezone explícito.",
+            "A prévia valida todo o arquivo antes de salvar. Ela informa comentários novos, já conhecidos, versões textuais novas e observações que serão criadas. O arquivo bruto não é mantido após a confirmação."
+          ],
+          "items": []
+        },
+        {
+          "id": "historico-texto-e-respostas",
+          "title": "Texto, respostas e métricas históricas",
+          "keywords": ["edição", "texto original", "resposta", "curtidas", "observed_at"],
+          "body": [
+            "O texto original de um comentário é preservado. Se uma coleta posterior trouxer texto diferente para a mesma identidade, uma nova versão é criada; nenhuma versão anterior é apagada.",
+            "parent_comment_external_id registra uma resposta a outro comentário da mesma publicação. Curtidas e quantidade de respostas são observações históricas: campos vazios significam que o dado não foi informado, enquanto zero significa zero real."
+          ],
+          "items": []
+        },
+        {
+          "id": "classificacao-humana",
+          "title": "Classificação humana e histórico",
+          "keywords": ["sentimento", "intenção", "risco", "resposta", "revisão"],
+          "body": [
+            "Abra a ação de classificação para registrar sentimento, intensidade, intenção, tema, necessidade de resposta, risco e justificativa. Nesta fase, a classificação é manual e humana; não há interpretação automática por IA.",
+            "Ao revisar uma classificação, a versão anterior é preservada e a mais recente não substituída é apresentada como estado atual. Os gráficos e filtros sempre usam esse estado efetivo."
+          ],
+          "items": []
+        },
+        {
+          "id": "leitura-responsavel",
+          "title": "Como ler os filtros e gráficos",
+          "keywords": ["filtro", "sentimento", "intenção", "risco", "necessita resposta"],
+          "body": [
+            "Use os filtros para delimitar o período de publicação, status de classificação, sentimento, decisão de resposta, risco e ordenação. As atualizações locais preservam o contexto da lista.",
+            "Os gráficos descrevem apenas classificações humanas disponíveis no recorte. Ausência de dado não equivale a sentimento neutro, risco inexistente ou decisão negativa de resposta."
+          ],
+          "items": []
+        }
+      ]
+    },
+    {
       "key": "fallback",
       "title": "Ajuda desta página",
       "summary": "Use os controles visíveis desta página para continuar o fluxo de trabalho autorizado à sua conta.",

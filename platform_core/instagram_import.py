@@ -7,6 +7,7 @@ import hashlib
 import io
 import re
 import unicodedata
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from xml.etree import ElementTree
@@ -274,14 +275,17 @@ def _validate_headers(headers: list[object], location: str) -> tuple[str, ...]:
     return normalized
 
 
-def _csv_rows(data: bytes) -> list[tuple[int, dict[str, object]]]:
+def _csv_rows(
+    data: bytes,
+    validate_headers: Callable[[list[object], str], tuple[str, ...]] = _validate_headers,
+) -> list[tuple[int, dict[str, object]]]:
     try:
         text = data.decode("utf-8-sig")
     except UnicodeDecodeError as error:
         raise InstagramImportError("O CSV deve estar codificado em UTF-8.") from error
     try:
         reader = csv.reader(io.StringIO(text, newline=""))
-        headers = _validate_headers(next(reader, []), "CSV, linha 1")
+        headers = validate_headers(next(reader, []), "CSV, linha 1")
         rows: list[tuple[int, dict[str, object]]] = []
         for line_number, values in enumerate(reader, start=2):
             if line_number > MAX_IMPORT_ROWS + 1:
@@ -296,7 +300,10 @@ def _csv_rows(data: bytes) -> list[tuple[int, dict[str, object]]]:
     return rows
 
 
-def _safe_xlsx_rows(data: bytes) -> list[tuple[int, dict[str, object]]]:
+def _safe_xlsx_rows(
+    data: bytes,
+    validate_headers: Callable[[list[object], str], tuple[str, ...]] = _validate_headers,
+) -> list[tuple[int, dict[str, object]]]:
     try:
         with ZipFile(io.BytesIO(data)) as archive:
             members = archive.infolist()
@@ -329,7 +336,7 @@ def _safe_xlsx_rows(data: bytes) -> list[tuple[int, dict[str, object]]]:
         first = next(iterator, None)
         if first is None:
             raise InstagramImportError("XLSX, linha 1: cabeçalhos ausentes.")
-        headers = _validate_headers([cell.value for cell in first], "XLSX, linha 1")
+        headers = validate_headers([cell.value for cell in first], "XLSX, linha 1")
         rows = []
         for line_number, cells in enumerate(iterator, start=2):
             if line_number > MAX_IMPORT_ROWS + 1:

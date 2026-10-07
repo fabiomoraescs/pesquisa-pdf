@@ -19,7 +19,7 @@
 <div class="d-flex gap-3 mt-3">{% if pagination.has_prev %}<a href="{{ url_for('admin.deleted_users', q=q, page=pagination.prev_num) }}">Anterior</a>{% endif %}{% if pagination.has_next %}<a href="{{ url_for('admin.deleted_users', q=q, page=pagination.next_num) }}">Próxima</a>{% endif %}</div>
 {% elif section == 'user_detail' %}
 <section class="platform-panel mb-3"><h2 class="h5">{{ user.name }}</h2><p>{{ user.email }} · {{ user.role | rotulo }} · <span class="platform-badge">{{ 'Excluído logicamente' if user.deleted_at else (user.status | rotulo) }}</span></p>
-  <form method="post" action="{{ url_for('admin.set_user_status', user_id=user.id) }}" class="d-flex flex-wrap gap-2 align-items-end"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label class="form-label mb-0" for="user-status">Estado<select class="form-select" id="user-status" name="status">{% for item in ['active','suspended','blocked'] %}<option value="{{ item }}" {% if user.status == item %}selected{% endif %}>{{ item | rotulo }}</option>{% endfor %}</select></label><button class="btn btn-primary">Salvar estado</button></form>
+  <form method="post" action="{{ url_for('admin.set_user_status', user_id=user.id) }}" class="d-flex flex-wrap gap-2 align-items-end"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label class="visually-hidden" for="user-status">Estado</label><select class="form-select" id="user-status" name="status">{% for item in ['active','suspended','blocked'] %}<option value="{{ item }}" {% if user.status == item %}selected{% endif %}>Estado: {{ item | rotulo }}</option>{% endfor %}</select><button class="btn btn-primary">Salvar estado</button></form>
 </section>
 <section class="platform-panel mb-3"><h2 class="h5">Perfil</h2><dl class="row mb-0">
   <dt class="col-sm-4">Grau de instrução</dt><dd class="col-sm-8">{{ user.profile.education_level | rotulo if user.profile else 'Não informado' }}</dd>
@@ -31,15 +31,15 @@
 </dl></section>
 <section class="platform-panel mb-3"><h2 class="h5">Plano e forma de acesso</h2><p>Atual: {{ grant.plan.name if grant else 'Nenhum' }}{% if grant %} · {{ grant.access_mode | rotulo }} · {{ grant.status | rotulo }}{% endif %}</p>
   <form method="post" action="{{ url_for('admin.set_user_access', user_id=user.id) }}" class="row g-3 align-items-end"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <div class="col-12 col-md-3"><label class="form-label" for="plan-id">Plano</label><select class="form-select" id="plan-id" name="plan_id">{% if grant and not grant.plan.active %}<option value="" selected disabled>{{ grant.plan.name }} (inativo; escolha outro plano)</option>{% endif %}{% for plan in plans %}<option value="{{ plan.id }}" {% if grant and grant.plan_id == plan.id %}selected{% endif %}>{{ plan.name }}</option>{% endfor %}</select></div>
-    <div class="col-12 col-md-3"><label class="form-label" for="access-mode">Forma de acesso</label><select class="form-select" id="access-mode" name="access_mode">{% for item in ['student_free','admin_courtesy','trial','paid'] %}<option value="{{ item }}" {% if grant and grant.access_mode == item %}selected{% endif %}>{{ item | rotulo }}</option>{% endfor %}</select></div>
-    <div class="col-12 col-md-3"><label class="form-label" for="access-status">Estado</label><select class="form-select" id="access-status" name="access_status">{% for item in ['active','trial','payment_pending','expired','canceled'] %}<option value="{{ item }}" {% if grant and grant.status == item %}selected{% endif %}>{{ item | rotulo }}</option>{% endfor %}</select></div>
+    <div class="col-12 col-md-3"><label class="visually-hidden" for="plan-id">Plano</label><select class="form-select" id="plan-id" name="plan_id">{% if grant and not grant.plan.active %}<option value="" selected disabled>Plano: {{ grant.plan.name }} (inativo; escolha outro plano)</option>{% endif %}{% for plan in plans %}<option value="{{ plan.id }}" {% if grant and grant.plan_id == plan.id %}selected{% endif %}>Plano: {{ plan.name }}</option>{% endfor %}</select></div>
+    <div class="col-12 col-md-3"><label class="visually-hidden" for="access-mode">Forma de acesso</label><select class="form-select" id="access-mode" name="access_mode">{% for item in ['student_free','admin_courtesy','trial','paid'] %}<option value="{{ item }}" {% if grant and grant.access_mode == item %}selected{% endif %}>Forma de acesso: {{ item | rotulo }}</option>{% endfor %}</select></div>
+    <div class="col-12 col-md-3"><label class="visually-hidden" for="access-status">Estado</label><select class="form-select" id="access-status" name="access_status">{% for item in ['active','trial','payment_pending','expired','canceled'] %}<option value="{{ item }}" {% if grant and grant.status == item %}selected{% endif %}>Estado: {{ item | rotulo }}</option>{% endfor %}</select></div>
     <div class="col-12 col-md-3"><label class="form-label" for="expires-at">Validade (opcional)</label><input class="form-control" id="expires-at" type="date" name="expires_at" value="{{ grant.expires_at.strftime('%Y-%m-%d') if grant and grant.expires_at else '' }}"></div>
     <div class="col-12"><button class="btn btn-primary">Conceder novo acesso</button></div>
   </form>
   <details class="mt-3"><summary>Histórico de concessões</summary><ul class="mt-2">{% for old in grants %}<li>{{ old.created_at.strftime('%d/%m/%Y %H:%M') }} · {{ old.plan_id | rotulo }} · {{ old.access_mode | rotulo }} · {{ old.status | rotulo }}{% if old.ended_at %} (encerrado){% endif %}</li>{% endfor %}</ul></details>
 </section>
-<section class="platform-panel mb-3"><h2 class="h5">Permissões por ferramenta</h2>{% for tool in tools %}<form method="post" action="{{ url_for('admin.set_override', user_id=user.id, tool_id=tool.id) }}" class="d-flex flex-wrap gap-2 align-items-end mb-3"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label class="form-label mb-0" for="override-{{ tool.id }}">{{ presentation_labels.get(tool.id, tool.name) }}</label><select class="form-select" id="override-{{ tool.id }}" name="decision" style="max-width: 240px">{% for choice in ['inherit','allow','deny'] %}<option value="{{ choice }}" {% if overrides.get(tool.id, 'inherit') == choice %}selected{% endif %}>{{ choice | rotulo }}</option>{% endfor %}</select><button class="btn btn-outline-primary" title="Salvar permissão" aria-label="Salvar permissão">Salvar</button></form>{% endfor %}</section>
+<section class="platform-panel mb-3"><h2 class="h5">Permissões por ferramenta</h2>{% for tool in tools %}<form method="post" action="{{ url_for('admin.set_override', user_id=user.id, tool_id=tool.id) }}" class="d-flex flex-wrap gap-2 align-items-end mb-3"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label class="visually-hidden" for="override-{{ tool.id }}">{{ presentation_labels.get(tool.id, tool.name) }}</label><select class="form-select" id="override-{{ tool.id }}" name="decision" style="max-width: 240px">{% for choice in ['inherit','allow','deny'] %}<option value="{{ choice }}" {% if overrides.get(tool.id, 'inherit') == choice %}selected{% endif %}>{{ presentation_labels.get(tool.id, tool.name) }}: {{ choice | rotulo }}</option>{% endfor %}</select><button class="btn btn-outline-primary" title="Salvar permissão" aria-label="Salvar permissão">Salvar</button></form>{% endfor %}</section>
 <section class="platform-panel mb-3"><h2 class="h5">Projetos do usuário</h2><ul class="mb-0">{% for project in projects %}<li><a href="{{ url_for('admin.project_detail', project_id=project.id) }}">{{ project.name }}</a> · {{ project.status | rotulo }}</li>{% else %}<li>Nenhum projeto.</li>{% endfor %}</ul></section>
 <div class="d-flex flex-wrap gap-2 align-items-center">{{ action_link(url_for('admin.reset_user_password', user_id=user.id), 'Redefinir senha', 'chave') }}{% if user.id != current_user.id %}{{ action_link(url_for('admin.delete_user', user_id=user.id), 'Excluir usuário', 'usuario_remover', true) }}{% endif %}</div>
 {% elif section == 'assistant_ai_settings' %}
@@ -52,17 +52,17 @@
   <form method="post" action="{{ url_for('admin.save_assistant_ai_settings') }}" class="platform-ai-settings-form" data-ai-settings-form>
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="platform-ai-form-grid">
-      <label class="form-label" for="ai-strategy">Estratégia
+      <div><label class="visually-hidden" for="ai-strategy">Estratégia</label>
         <select class="form-select" id="ai-strategy" name="strategy" data-ai-strategy>
-          <option value="single" {% if ai_settings.strategy == 'single' %}selected{% endif %}>Provider único</option>
-          <option value="fallback" {% if ai_settings.strategy == 'fallback' %}selected{% endif %}>Fallback técnico</option>
+          <option value="single" {% if ai_settings.strategy == 'single' %}selected{% endif %}>Estratégia: Provider único</option>
+          <option value="fallback" {% if ai_settings.strategy == 'fallback' %}selected{% endif %}>Estratégia: Fallback técnico</option>
         </select>
-      </label>
-      <label class="form-label" for="ai-primary-provider">Provider principal
+      </div>
+      <div><label class="visually-hidden" for="ai-primary-provider">Provider principal</label>
         <select class="form-select" id="ai-primary-provider" name="primary_provider" data-ai-primary>
-          {% for status in provider_statuses %}<option value="{{ status.id }}" {% if status.id == ai_settings.primary_provider %}selected{% endif %} {% if not status.enabled %}disabled{% endif %}>{{ status.display_name }}{% if not status.implemented %} (futuro){% endif %}</option>{% endfor %}
+          {% for status in provider_statuses %}<option value="{{ status.id }}" {% if status.id == ai_settings.primary_provider %}selected{% endif %} {% if not status.enabled %}disabled{% endif %}>Provider principal: {{ status.display_name }}{% if not status.implemented %} (futuro){% endif %}</option>{% endfor %}
         </select>
-      </label>
+      </div>
     </div>
     <div class="platform-ai-provider-grid" aria-label="Providers disponíveis">
       {% for status in provider_statuses %}
@@ -78,13 +78,12 @@
       {% endfor %}
       <article class="platform-ai-provider-card platform-ai-docchat" aria-labelledby="docchat-settings-title">
         <div class="platform-ai-provider-card-heading"><h3 class="h5" id="docchat-settings-title">DocChat</h3><span class="platform-badge">Preparação futura</span></div>
-        <label class="form-label" for="docchat-provider">Provider
-          <select class="form-select" id="docchat-provider" name="docchat_provider" form="docchat-settings-form">
-            <option value="">Não configurado</option>
-            <option value="gemini" {% if ai_settings.docchat_provider == 'gemini' %}selected{% endif %}>Gemini</option>
-            <option value="openai" {% if ai_settings.docchat_provider == 'openai' %}selected{% endif %}>OpenAI</option>
-          </select>
-        </label>
+        <label class="visually-hidden" for="docchat-provider">Provider</label>
+        <select class="form-select" id="docchat-provider" name="docchat_provider" form="docchat-settings-form">
+          <option value="">Provider: Não configurado</option>
+          <option value="gemini" {% if ai_settings.docchat_provider == 'gemini' %}selected{% endif %}>Provider: Gemini</option>
+          <option value="openai" {% if ai_settings.docchat_provider == 'openai' %}selected{% endif %}>Provider: OpenAI</option>
+        </select>
         <label class="form-label" for="docchat-model">Modelo
           <input class="form-control" id="docchat-model" name="docchat_model" form="docchat-settings-form" value="{{ ai_settings.docchat_model or '' }}" maxlength="160">
         </label>

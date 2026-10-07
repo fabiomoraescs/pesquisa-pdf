@@ -7,7 +7,7 @@ import unicodedata
 from uuid import uuid4
 
 from flask_login import UserMixin
-from sqlalchemy import CheckConstraint, ForeignKeyConstraint, Index, UniqueConstraint, event
+from sqlalchemy import CheckConstraint, ForeignKeyConstraint, Index, UniqueConstraint, event, inspect
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -312,6 +312,7 @@ class AnalyticsRun(db.Model):
     analytics_project: Mapped[AnalyticsProject] = relationship(back_populates="runs")
     media_observations: Mapped[list[InstagramMediaObservation]] = relationship(back_populates="analytics_run")
     account_snapshots: Mapped[list[InstagramAccountSnapshot]] = relationship(back_populates="analytics_run")
+    comment_observations: Mapped[list[InstagramCommentObservation]] = relationship(back_populates="analytics_run")
 
     __table_args__ = (
         CheckConstraint("record_count >= 0", name="ck_analytics_run_record_count"),
@@ -381,6 +382,7 @@ class InstagramMedia(db.Model):
     classifications: Mapped[list[InstagramMediaClassification]] = relationship(
         back_populates="instagram_media"
     )
+    comments: Mapped[list[InstagramComment]] = relationship(back_populates="instagram_media")
 
     __table_args__ = (
         UniqueConstraint("instagram_account_id", "external_id", name="uq_instagram_media_account_external_id"),
@@ -474,6 +476,175 @@ class InstagramAccountSnapshot(db.Model):
             name="ck_instagram_account_snapshot_nonnegative",
         ),
         Index("ix_instagram_account_snapshots_account_observed", "instagram_account_id", "observed_at"),
+    )
+
+
+class InstagramComment(db.Model):
+    """Identidade estável de um comentário; nunca contém métricas mutáveis."""
+
+    __tablename__ = "instagram_comments"
+    id: Mapped[str] = mapped_column(db.String(36), primary_key=True, default=lambda: str(uuid4()))
+    instagram_media_id: Mapped[str] = mapped_column(db.ForeignKey("instagram_media.id"), nullable=False)
+    external_id: Mapped[str] = mapped_column(db.String(128), nullable=False)
+    parent_comment_id: Mapped[str | None] = mapped_column(db.ForeignKey("instagram_comments.id"))
+    author_username: Mapped[str | None] = mapped_column(db.String(100))
+    author_external_id: Mapped[str | None] = mapped_column(db.String(128))
+    published_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), nullable=False)
+    # A primeira evidência textual permanece aqui; versões posteriores vivem
+    # em instagram_comment_text_versions e não a substituem.
+    original_text: Mapped[str] = mapped_column(db.Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        db.DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
+
+    instagram_media: Mapped[InstagramMedia] = relationship(back_populates="comments")
+    parent: Mapped[InstagramComment | None] = relationship(
+        "InstagramComment", remote_side="InstagramComment.id", foreign_keys=[parent_comment_id],
+        back_populates="replies",
+    )
+    replies: Mapped[list[InstagramComment]] = relationship(
+        "InstagramComment", foreign_keys=[parent_comment_id], back_populates="parent"
+    )
+    text_versions: Mapped[list[InstagramCommentTextVersion]] = relationship(back_populates="instagram_comment")
+    observations: Mapped[list[InstagramCommentObservation]] = relationship(back_populates="instagram_comment")
+    assessments: Mapped[list[InstagramCommentAssessment]] = relationship(back_populates="instagram_comment")
+
+    __table_args__ = (
+        UniqueConstraint("instagram_media_id", "external_id", name="uq_instagram_comment_media_external_id"),
+        CheckConstraint("length(trim(external_id)) > 0", name="ck_instagram_comment_external_id"),
+        CheckConstraint("length(trim(original_text)) > 0", name="ck_instagram_comment_original_text"),
+        CheckConstraint(
+            "parent_comment_id IS NULL OR parent_comment_id <> id",
+            name="ck_instagram_comment_not_self_parent",
+        ),
+        Index("ix_instagram_comments_media_published", "instagram_media_id", "published_at"),
+        Index("ix_instagram_comments_parent", "parent_comment_id"),
+    )
+
+
+@event.listens_for(InstagramComment, "before_update")
+def _preserve_instagram_comment_original_text(_mapper, _connection, comment: InstagramComment) -> None:
+    """O texto original é evidência primária e não pode ser alterado em updates."""
+    if inspect(comment).attrs.original_text.history.has_changes():
+        raise ValueError("O texto original do comentário não pode ser alterado.")
+
+
+class InstagramCommentTextVersion(db.Model):
+    """Versão textual observada, inclusive em caso de edição externa."""
+
+    __tablename__ = "instagram_comment_text_versions"
+    id: Mapped[str] = mapped_column(db.String(36), primary_key=True, default=lambda: str(uuid4()))
+    instagram_comment_id: Mapped[str] = mapped_column(db.ForeignKey("instagram_comments.id"), nullable=False)
+    text: Mapped[str] = mapped_column(db.Text, nullable=False)
+    content_hash: Mapped[str] = mapped_column(db.String(64), nullable=False)
+    first_observed_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), nullable=False)
+    is_original: Mapped[bool] = mapped_column(db.Boolean, nullable=False, default=False)
+    created_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+
+    instagram_comment: Mapped[InstagramComment] = relationship(back_populates="text_versions")
+    assessments: Mapped[list[InstagramCommentAssessment]] = relationship(back_populates="text_version")
+
+    __table_args__ = (
+        UniqueConstraint("instagram_comment_id", "content_hash", name="uq_instagram_comment_text_version_hash"),
+        CheckConstraint("length(trim(text)) > 0", name="ck_instagram_comment_text_version_text"),
+        CheckConstraint("length(content_hash) = 64", name="ck_instagram_comment_text_version_hash"),
+        Index("ix_instagram_comment_text_versions_comment_observed", "instagram_comment_id", "first_observed_at"),
+    )
+
+
+class InstagramCommentObservation(db.Model):
+    """Métricas de comentário observadas em uma execução histórica."""
+
+    __tablename__ = "instagram_comment_observations"
+    id: Mapped[str] = mapped_column(db.String(36), primary_key=True, default=lambda: str(uuid4()))
+    instagram_comment_id: Mapped[str] = mapped_column(db.ForeignKey("instagram_comments.id"), nullable=False)
+    analytics_run_id: Mapped[str] = mapped_column(db.ForeignKey("analytics_runs.id"), nullable=False)
+    observed_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), nullable=False)
+    like_count: Mapped[int | None] = mapped_column(db.BigInteger)
+    replies_count: Mapped[int | None] = mapped_column(db.BigInteger)
+    created_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+
+    instagram_comment: Mapped[InstagramComment] = relationship(back_populates="observations")
+    analytics_run: Mapped[AnalyticsRun] = relationship(back_populates="comment_observations")
+
+    __table_args__ = (
+        UniqueConstraint("analytics_run_id", "instagram_comment_id", name="uq_instagram_comment_observation_run_comment"),
+        CheckConstraint(
+            "(like_count IS NULL OR like_count >= 0) AND (replies_count IS NULL OR replies_count >= 0)",
+            name="ck_instagram_comment_observation_nonnegative",
+        ),
+        Index("ix_instagram_comment_observations_comment_observed", "instagram_comment_id", "observed_at"),
+    )
+
+
+class InstagramCommentAssessment(db.Model):
+    """Classificação histórica de uma versão específica do comentário."""
+
+    __tablename__ = "instagram_comment_assessments"
+    id: Mapped[str] = mapped_column(db.String(36), primary_key=True, default=lambda: str(uuid4()))
+    instagram_comment_id: Mapped[str] = mapped_column(db.ForeignKey("instagram_comments.id"), nullable=False)
+    instagram_comment_text_version_id: Mapped[str] = mapped_column(
+        db.ForeignKey("instagram_comment_text_versions.id"), nullable=False
+    )
+    supersedes_assessment_id: Mapped[str | None] = mapped_column(
+        db.ForeignKey("instagram_comment_assessments.id")
+    )
+    source: Mapped[str] = mapped_column(db.String(24), nullable=False)
+    classifier_key: Mapped[str | None] = mapped_column(db.String(80))
+    classifier_version: Mapped[str | None] = mapped_column(db.String(80))
+    reviewer_user_id: Mapped[str | None] = mapped_column(db.ForeignKey("users.id"))
+    sentiment: Mapped[str | None] = mapped_column(db.String(16))
+    intensity: Mapped[str | None] = mapped_column(db.String(16))
+    intent: Mapped[str | None] = mapped_column(db.String(24))
+    topic: Mapped[str | None] = mapped_column(db.String(200))
+    topic_normalized: Mapped[str | None] = mapped_column(db.String(200))
+    needs_response: Mapped[bool | None] = mapped_column(db.Boolean)
+    risk: Mapped[str | None] = mapped_column(db.String(16))
+    confidence: Mapped[float | None] = mapped_column(db.Float)
+    rationale: Mapped[str | None] = mapped_column(db.Text)
+    created_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+    superseded_at: Mapped[datetime | None] = mapped_column(db.DateTime(timezone=True))
+
+    instagram_comment: Mapped[InstagramComment] = relationship(back_populates="assessments")
+    text_version: Mapped[InstagramCommentTextVersion] = relationship(back_populates="assessments")
+    supersedes: Mapped[InstagramCommentAssessment | None] = relationship(
+        "InstagramCommentAssessment", remote_side="InstagramCommentAssessment.id",
+        foreign_keys=[supersedes_assessment_id],
+    )
+    reviewer: Mapped[User | None] = relationship(foreign_keys=[reviewer_user_id])
+
+    __table_args__ = (
+        CheckConstraint(
+            "source IN ('manual', 'automatic', 'human_review', 'imported')",
+            name="ck_instagram_comment_assessment_source",
+        ),
+        CheckConstraint(
+            "sentiment IS NULL OR sentiment IN ('positive', 'neutral', 'negative', 'mixed')",
+            name="ck_instagram_comment_assessment_sentiment",
+        ),
+        CheckConstraint(
+            "intensity IS NULL OR intensity IN ('low', 'medium', 'high')",
+            name="ck_instagram_comment_assessment_intensity",
+        ),
+        CheckConstraint(
+            "intent IS NULL OR intent IN ('praise', 'question', 'request', 'complaint', 'criticism', 'information', 'spam', 'other')",
+            name="ck_instagram_comment_assessment_intent",
+        ),
+        CheckConstraint(
+            "risk IS NULL OR risk IN ('none', 'low', 'medium', 'high')",
+            name="ck_instagram_comment_assessment_risk",
+        ),
+        CheckConstraint(
+            "confidence IS NULL OR (confidence >= 0 AND confidence <= 1)",
+            name="ck_instagram_comment_assessment_confidence",
+        ),
+        CheckConstraint(
+            "supersedes_assessment_id IS NULL OR supersedes_assessment_id <> id",
+            name="ck_instagram_comment_assessment_not_self_supersedes",
+        ),
+        Index("ix_instagram_comment_assessments_comment_current", "instagram_comment_id", "superseded_at", "created_at"),
+        Index("ix_instagram_comment_assessments_filters", "sentiment", "intent", "risk", "needs_response", "superseded_at"),
     )
 
 
