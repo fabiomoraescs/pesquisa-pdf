@@ -1,0 +1,53 @@
+{% extends "platform/base.html" %}
+{% from 'platform/_icons.html' import icon %}
+{% from 'platform/_tutorial_info.html' import tutorial_button, tutorial_dialog with context %}
+{% from 'platform/instagram/_project_tabs.html' import project_tabs %}
+
+{% block title %}Taxonomias — {{ project.name }} — Análysis Instagram{% endblock %}
+{% block body %}
+{% set instagram_tutorial = platform_help_for('instagram_taxonomies') %}
+<section class="platform-panel mb-3" aria-labelledby="instagram-taxonomies-title">
+  <div class="d-flex flex-wrap align-items-start justify-content-between gap-2">
+    <div><h1 id="instagram-taxonomies-title" class="h4 mb-1">Taxonomias editoriais</h1><p class="platform-muted mb-0">{{ project.name }} · Estrutura manual e versionada para classificar publicações.</p></div>
+    <div class="d-flex flex-wrap align-items-center gap-2"><a class="btn btn-outline-primary btn-sm" href="{{ url_for('instagram.project_detail', project_id=project.id) }}">Voltar ao projeto</a>{{ tutorial_button(instagram_tutorial, label='Abrir tutorial de Taxonomias') }}</div>
+  </div>
+</section>
+{{ project_tabs(project, 'taxonomies') }}
+<section id="instagram-taxonomy-workspace">
+
+{% if not dimensions %}
+<section class="platform-empty-state" aria-labelledby="instagram-taxonomy-empty-title">
+  <h2 id="instagram-taxonomy-empty-title" class="h5">Ainda não há taxonomias neste projeto.</h2>
+  <p>Crie a estrutura inicial para organizar objetivos, tipos editoriais, CTAs e temas. As categorias podem ser ajustadas depois.</p>
+  {% if can_mutate %}<form method="post" action="{{ url_for('instagram.initialize_taxonomy', project_id=project.id) }}" data-partial-update data-partial-target="#instagram-taxonomy-workspace"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-primary" type="submit">Criar estrutura inicial</button></form>{% endif %}
+</section>
+{% else %}
+<section class="platform-panel mb-3" id="instagram-taxonomy-dimensions" aria-labelledby="instagram-taxonomy-list-title">
+  <div class="d-flex flex-wrap align-items-start justify-content-between gap-2 mb-3"><div><h2 id="instagram-taxonomy-list-title" class="h5 mb-1">Dimensões e categorias</h2><p class="platform-muted mb-0">Cada dimensão aceita uma única escolha ou várias escolhas, conforme indicado.</p></div><span class="platform-muted small">{{ taxonomy_version }}</span></div>
+  <div class="platform-view-list">
+    {% for dimension in dimensions %}
+    <article class="platform-list-item" id="instagram-taxonomy-dimension-{{ dimension.id }}">
+      <div><div class="platform-list-title">{{ dimension.name }} {% if not dimension.active %}<span class="platform-badge platform-badge-inactive">Arquivada</span>{% endif %}</div><div class="platform-list-meta">{{ 'Escolha única' if dimension.selection_mode == 'single' else 'Múltiplas escolhas' }} · Chave: <code>{{ dimension.key }}</code>{% if dimension.description %} · {{ dimension.description }}{% endif %}</div></div>
+      <div class="platform-list-meta">{{ dimension.categories | length }} categoria(s)</div>
+      <div class="platform-list-actions">{% if can_mutate %}{% set dimension_action = 'Arquivar dimensão ' ~ dimension.name if dimension.active else 'Restaurar dimensão ' ~ dimension.name %}<form method="post" action="{{ url_for('instagram.set_taxonomy_dimension_state', project_id=project.id, dimension_id=dimension.id) }}" data-partial-update data-partial-target="#instagram-taxonomy-dimension-{{ dimension.id }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="active" value="{{ 'false' if dimension.active else 'true' }}"><button id="instagram-taxonomy-dimension-action-{{ dimension.id }}" class="btn btn-outline-primary btn-sm platform-action-button" type="submit" title="{{ dimension_action }}" aria-label="{{ dimension_action }}">{{ icon('arquivar' if dimension.active else 'restaurar') }}</button></form>{% endif %}</div>
+      <div class="platform-list-detail">
+        {% if dimension.categories %}<div class="table-responsive"><table class="table platform-themed-table table-sm align-middle mb-2"><thead><tr><th scope="col">Categoria</th><th scope="col">Chave</th><th scope="col">Estado</th>{% if can_mutate %}<th scope="col">Ação</th>{% endif %}</tr></thead><tbody>{% for category in dimension.categories %}<tr><td>{{ category.name }}{% if category.description %}<small class="platform-muted d-block">{{ category.description }}</small>{% endif %}</td><td><code>{{ category.key }}</code></td><td>{{ 'Ativa' if category.active else 'Arquivada' }}</td>{% if can_mutate %}{% set category_action = 'Arquivar categoria ' ~ category.name if category.active else 'Restaurar categoria ' ~ category.name %}<td><form method="post" action="{{ url_for('instagram.set_taxonomy_category_state', project_id=project.id, category_id=category.id) }}" data-partial-update data-partial-target="#instagram-taxonomy-dimension-{{ dimension.id }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="active" value="{{ 'false' if category.active else 'true' }}"><button id="instagram-taxonomy-category-action-{{ category.id }}" class="btn btn-outline-primary btn-sm platform-action-button" type="submit" title="{{ category_action }}" aria-label="{{ category_action }}">{{ icon('arquivar' if category.active else 'restaurar') }}</button></form></td>{% endif %}</tr>{% endfor %}</tbody></table></div>{% else %}<p class="platform-muted">Nenhuma categoria cadastrada. Para “Tema principal”, crie as categorias que fizerem sentido para este projeto.</p>{% endif %}
+        {% if can_mutate %}<details><summary>Adicionar categoria</summary><form class="row g-2 align-items-end mt-1" method="post" action="{{ url_for('instagram.add_taxonomy_category', project_id=project.id, dimension_id=dimension.id) }}" data-partial-update data-partial-target="#instagram-taxonomy-dimension-{{ dimension.id }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><div class="col-md-4"><label class="form-label" for="category-name-{{ dimension.id }}">Nome</label><input class="form-control" id="category-name-{{ dimension.id }}" name="name" maxlength="160" required></div><div class="col-md-3"><label class="form-label" for="category-key-{{ dimension.id }}">Chave (opcional)</label><input class="form-control" id="category-key-{{ dimension.id }}" name="key" maxlength="80"></div><div class="col-md-3"><label class="form-label" for="category-position-{{ dimension.id }}">Posição (opcional)</label><input class="form-control" id="category-position-{{ dimension.id }}" name="position" type="number" min="0"></div><div class="col-md-2"><button class="btn btn-outline-primary w-100" type="submit">Adicionar</button></div><div class="col-12"><label class="form-label" for="category-description-{{ dimension.id }}">Descrição (opcional)</label><input class="form-control" id="category-description-{{ dimension.id }}" name="description" maxlength="4000"></div></form></details>{% endif %}
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+{% if can_mutate %}
+<section class="platform-panel" id="instagram-new-dimension" aria-labelledby="instagram-new-dimension-title">
+  <h2 id="instagram-new-dimension-title" class="h5">Nova dimensão</h2>
+  <form class="row g-2 align-items-end" method="post" action="{{ url_for('instagram.add_taxonomy_dimension', project_id=project.id) }}" data-partial-update data-partial-target="#instagram-taxonomy-workspace"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><div class="col-md-4"><label class="form-label" for="dimension-name">Nome</label><input class="form-control" id="dimension-name" name="name" maxlength="160" required></div><div class="col-md-3"><label class="form-label" for="dimension-key">Chave (opcional)</label><input class="form-control" id="dimension-key" name="key" maxlength="80"></div><div class="col-md-3"><label class="form-label" for="dimension-mode">Modo de seleção</label><select class="form-select" id="dimension-mode" name="selection_mode"><option value="single">Escolha única</option><option value="multi">Múltiplas escolhas</option></select></div><div class="col-md-2"><button class="btn btn-primary w-100" type="submit">Criar dimensão</button></div><div class="col-md-3"><label class="form-label" for="dimension-position">Posição (opcional)</label><input class="form-control" id="dimension-position" name="position" type="number" min="0"></div><div class="col-md-9"><label class="form-label" for="dimension-description">Descrição (opcional)</label><input class="form-control" id="dimension-description" name="description" maxlength="4000"></div></form>
+</section>
+{% endif %}
+</section>
+{{ tutorial_dialog(instagram_tutorial) }}
+<script defer src="{{ url_for('static', filename='js/platform_tutorial.js') }}"></script>
+<script defer src="{{ url_for('static', filename='js/platform_auto_submit.js') }}"></script>
+{% endblock %}

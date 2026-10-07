@@ -13,12 +13,15 @@
 </head>
 <body class="platform-page">
   {% include 'platform/_header.html' %}
-  <main class="platform-main">
-    <section class="hero-card" aria-labelledby="titulo-historico-racial">
-      {% from 'platform/_tutorial_info.html' import tutorial_button with context %}{% set structured_tutorial = platform_help_for('structured_search') %}<div class="hero-actions" aria-label="Controles da aplicação">{{ tutorial_button(structured_tutorial, label='Abrir tutorial da Busca estruturada') }}</div>
-
+  <main class="platform-main platform-main-legacy">
+    {% from 'platform/_tutorial_info.html' import tutorial_button with context %}
+    {% set structured_tutorial = platform_help_for('structured_search') %}
+    <div class="app-content-container platform-toolbar mb-4" data-base-intro>
+      <p class="h5 mb-0">{{ project.name }}</p>
+      <div aria-label="Controles da aplicação">{{ tutorial_button(structured_tutorial, label='Abrir tutorial da Busca estruturada') }}</div>
+    </div>
+    <section class="hero-card platform-primary-boxes" aria-labelledby="titulo-historico-racial">
       <h1 class="visually-hidden" id="titulo-historico-racial">Busca estruturada</h1>
-      <p class="h5 mb-4">{{ project.name }}</p>
 
       {% if vocabulario %}
       <section class="download-card p-4 mb-4" aria-labelledby="titulo-vocabulario-pesquisa">

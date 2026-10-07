@@ -21,6 +21,12 @@ from .instagram_metrics import (
     follower_variation,
     summarize_values,
 )
+from .instagram_taxonomy import (
+    TaxonomyDashboardData,
+    TaxonomyMetricInput,
+    TaxonomyValidationError,
+    taxonomy_dashboard_data,
+)
 from .models import (
     AnalyticsProject,
     AnalyticsRun,
@@ -115,6 +121,7 @@ class InstagramDashboard:
     followers_variation: FollowerVariation
     performance_statistics: Mapping[str, MetricStatistics]
     type_comparisons: tuple[ContentTypeComparison, ...]
+    taxonomy: TaxonomyDashboardData
     table_rows: tuple[MediaRow, ...]
     sort: str
     derived_metrics_version: str
@@ -268,7 +275,7 @@ def _table_rows(rows: tuple[MediaRow, ...], sort: str) -> tuple[MediaRow, ...]:
 
 
 def build_instagram_dashboard(project: AnalyticsProject, period: str, timezone_name: str,
-                              *, sort: str = "recent") -> InstagramDashboard:
+                              *, sort: str = "recent", taxonomy_dimension_id: str | None = None) -> InstagramDashboard:
     """Carrega agregados sem N+1 e nunca soma observações de uma mesma mídia."""
     if period not in PERIOD_DAYS:
         raise ValueError("Período inválido")
@@ -294,6 +301,21 @@ def build_instagram_dashboard(project: AnalyticsProject, period: str, timezone_n
     followers_delta = follower_variation(point.value for point in followers_series)
     performance_statistics = _performance_statistics(rows)
     type_comparisons = _type_comparisons(rows)
+    try:
+        taxonomy = taxonomy_dashboard_data(
+            project,
+            (
+                TaxonomyMetricInput(
+                    media_id=row.media.id,
+                    raw_values=_raw_values(row.observation),
+                    derived_values=row.derived_metrics,
+                )
+                for row in rows
+            ),
+            selected_dimension_id=taxonomy_dimension_id,
+        )
+    except TaxonomyValidationError as error:
+        raise ValueError(str(error)) from error
     reach_rows = [row for row in rows if row.observation is not None and row.observation.reach is not None]
     interaction_rows = [row for row in rows if row.observation is not None
                         and row.observation.interactions is not None]
@@ -318,12 +340,20 @@ def build_instagram_dashboard(project: AnalyticsProject, period: str, timezone_n
             "values": [comparison.interaction_rate_by_reach.median_value for comparison in type_comparisons
                        if comparison.interaction_rate_by_reach.median_value is not None],
         },
+        "taxonomy_interaction_rate": {
+            "labels": [f"{comparison.name} (n = {comparison.publications})" for comparison in taxonomy.comparisons
+                       if comparison.interaction_rate_by_reach.median_value is not None],
+            "values": [comparison.interaction_rate_by_reach.median_value for comparison in taxonomy.comparisons
+                       if comparison.interaction_rate_by_reach.median_value is not None],
+            "horizontal": len(taxonomy.comparisons) > 5,
+        },
     }
     return InstagramDashboard(
         reference_at=reference_at, period=period, rows=rows, metrics=tuple(metrics), ranking=ranking,
         followers_count=followers_count, followers_observed_at=followers_at,
         followers_series=followers_series, followers_variation=followers_delta,
         performance_statistics=performance_statistics, type_comparisons=type_comparisons,
+        taxonomy=taxonomy,
         table_rows=_table_rows(rows, sort), sort=sort,
         derived_metrics_version=DERIVED_METRICS_VERSION, has_data=reference_at is not None,
         chart_data=chart_data,

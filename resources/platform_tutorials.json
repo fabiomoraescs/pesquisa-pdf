@@ -1,5 +1,5 @@
 {
-  "version": "2026.09.30",
+  "version": "2026.10.06",
   "tutorials": [
     {
       "key": "home",
@@ -632,6 +632,236 @@
         {"id": "acesso", "title": "Planos e permissões", "body": ["O acesso a uma ferramenta depende de conta ativa, ferramenta ativa, override individual quando houver, plano concedido e seus PlanTool; administradores têm o comportamento de bypass definido pela plataforma."], "items": []},
         {"id": "cuidados", "title": "Uso responsável", "body": ["Alterações de estado, plano, exceção e exclusão afetam pessoas e dados. Confirme o usuário, projeto e consequência antes de salvar; use os fluxos próprios de arquivamento, restauração ou exclusão."], "items": []},
         {"id": "ia", "title": "Configuração de IA", "body": ["A configuração de IA fica em tela específica. Segredos não devem ser incluídos em campos de texto, relatórios ou registros de auditoria."], "items": []}
+      ]
+    },
+    {
+      "key": "instagram_dashboard",
+      "title": "Como usar e interpretar o Dashboard",
+      "summary": "Acompanhe os indicadores registrados nas importações, compare publicações e leia as medidas sempre no contexto do período, da cobertura e do tamanho dos grupos.",
+      "sections": [
+        {
+          "id": "finalidade-e-periodo",
+          "title": "Finalidade, período e coletas históricas",
+          "keywords": ["Dashboard Instagram", "7 dias", "30 dias", "90 dias", "Todo o histórico", "coleta mais recente", "publicação"],
+          "body": [
+            "O Dashboard reúne indicadores das publicações e da conta para acompanhar e comparar o desempenho registrado nos dados importados. Ele descreve os registros disponíveis; não cria recomendações editoriais automáticas.",
+            "Use o campo Período para selecionar 7 dias, 30 dias, 90 dias ou Todo o histórico. A seleção atualiza automaticamente o Dashboard. O recorte usa a data de publicação e toma como referência a data da coleta mais recente disponível no projeto; por isso, uma publicação antiga pode não aparecer em um período curto.",
+            "Uma mesma publicação pode ter mais de uma coleta histórica. Para mostrar seu estado atual no Dashboard, o Análysis utiliza a coleta mais recente disponível para aquela publicação. As coletas não são somadas."
+          ],
+          "items": [
+            {"name": "Dados atualizados até", "description": "Indica o momento da coleta mais recente usada como referência para o projeto."},
+            {"name": "Todo o histórico", "description": "Inclui todas as publicações importadas, sem restringi-las a uma janela recente."}
+          ]
+        },
+        {
+          "id": "indicadores-e-cobertura",
+          "title": "Indicadores gerais, zero e cobertura",
+          "keywords": ["Publicações", "Alcance", "Impressões", "Interações", "Seguidores", "cobertura", "zero", "dado ausente"],
+          "body": [
+            "Os cards resumem o número de publicações e as métricas disponíveis, como alcance, impressões, reproduções, curtidas, comentários, compartilhamentos, salvamentos e interações. O card Seguidores mostra o valor do snapshot mais recente da conta; ele não é somado entre coletas.",
+            "Zero é um valor conhecido: uma publicação pode ter zero interações, por exemplo. Um traço indica que a informação não foi fornecida ou não está disponível. O Análysis não transforma automaticamente dado ausente em zero.",
+            "A cobertura mostra quantas publicações possuem um valor válido para cada indicador. Em 8/10, oito das dez publicações do período têm aquela informação. Valores ausentes não entram no cálculo; zeros conhecidos participam normalmente."
+          ],
+          "items": [
+            {"name": "Publicações", "description": "Conta uma vez cada publicação selecionada no período, ainda que ela tenha mais de uma coleta."},
+            {"name": "Alcance e impressões", "description": "Mostram os valores registrados na coleta mais recente disponível para cada publicação."},
+            {"name": "Interações", "description": "Usa o valor de interações informado pela fonte, sem reconstruí-lo a partir de outros campos."},
+            {"name": "Seguidores", "description": "Mostra a contagem registrada no snapshot mais recente da conta."}
+          ]
+        },
+        {
+          "id": "indicadores-de-desempenho",
+          "title": "Indicadores de desempenho",
+          "keywords": ["taxa de interação", "média", "mediana", "seguidores", "variação", "interações alcance"],
+          "body": [
+            "A taxa de interação por alcance é calculada por publicação com a fórmula: interações ÷ alcance × 100. Ela só aparece quando os dois valores foram informados e o alcance é diferente de zero.",
+            "A taxa média considera a média aritmética das taxas válidas das publicações. A taxa mediana é o valor central dessas taxas e tende a sofrer menos influência de valores muito altos ou muito baixos. As duas medidas respondem a perguntas diferentes e são exibidas com seus próprios nomes.",
+            "A variação de seguidores desde a coleta anterior compara os dois snapshots válidos mais recentes: mostra a diferença absoluta e, quando o valor anterior não é zero, a variação percentual. Ela pode ser positiva ou negativa e não é apresentada como recomendação."
+          ],
+          "items": [
+            {"name": "Taxa mediana", "description": "Valor central das taxas válidas por publicação no período selecionado."},
+            {"name": "Taxa média", "description": "Média das taxas válidas por publicação; não é uma soma de interações dividida pela soma dos alcances."},
+            {"name": "Variação de seguidores", "description": "Comparação entre os dois snapshots válidos mais recentes da conta."}
+          ]
+        },
+        {
+          "id": "comparacoes",
+          "title": "Comparar tipos e classificações editoriais",
+          "keywords": ["Reel", "Carrossel", "Imagem", "n", "taxonomias", "classificação editorial", "CTA", "Não classificado"],
+          "body": [
+            "Desempenho por tipo de conteúdo agrupa publicações pelo tipo técnico informado na importação, como Reel, Carrossel, Imagem ou Outro. A tabela mostra número de publicações, médias, medianas e cobertura. O indicador n informa o tamanho do grupo; os valores descrevem o conjunto, sem declarar que um tipo é melhor do que outro.",
+            "Desempenho por classificação editorial usa as dimensões configuradas em Taxonomias e aplicadas em Classificação de conteúdos. Escolha, por exemplo, Objetivo comunicacional, Tipo editorial, Tema principal ou CTA para mudar o agrupamento analisado.",
+            "Em uma dimensão de múltipla seleção, como CTA, uma publicação pode pertencer a Salvar e Compartilhar ao mesmo tempo. Por isso, a soma das categorias pode ser maior que o total de publicações. Quando exibido, Não classificado é apenas um agrupamento visual de conteúdos sem classificação atual naquela dimensão; não é uma categoria gravada na taxonomia."
+          ],
+          "items": [
+            {"name": "Taxonomias", "description": "Define as dimensões e categorias editoriais do projeto."},
+            {"name": "Classificação de conteúdos", "description": "Aplica manualmente as categorias às publicações."},
+            {"name": "n", "description": "Quantidade de publicações no grupo analisado."}
+          ]
+        },
+        {
+          "id": "graficos-ranking-e-tabela",
+          "title": "Gráficos, ranking e tabela de publicações",
+          "keywords": ["gráfico", "evolução de seguidores", "alcance por publicação", "interações", "ranking", "ordenar"],
+          "body": [
+            "Os gráficos exibem somente dados registrados: evolução de seguidores por snapshot, alcance por publicação, interações por publicação, taxa mediana por tipo de conteúdo e, quando houver classificação editorial no período, taxa mediana por categoria. Todos acompanham o recorte selecionado, exceto os seguidores, que representam os snapshots da conta.",
+            "O ranking Publicações com maior alcance ordena até cinco publicações pela métrica objetiva de alcance registrada na coleta mais recente. Ele não é uma recomendação de conteúdo.",
+            "A tabela mostra uma linha por publicação. Use o campo Ordenar por para escolher mais recentes, maior alcance, mais interações ou maior taxa de interação por alcance; a seleção atualiza automaticamente a tabela. Use o link Abrir quando a publicação possuir permalink e confira os valores com a fonte importada quando necessário."
+          ],
+          "items": []
+        },
+        {
+          "id": "leitura-responsavel",
+          "title": "Como interpretar os resultados",
+          "keywords": ["interpretação", "amostra", "cobertura", "contexto", "recomendação"],
+          "body": [
+            "Leia os indicadores considerando o período selecionado, o tamanho da amostra, a cobertura das métricas e o contexto de cada publicação. Grupos pequenos ou com muitos dados ausentes merecem conferência adicional antes de qualquer comparação.",
+            "Os indicadores descrevem o desempenho registrado no período. Eles não representam, por si só, recomendações editoriais."
+          ],
+          "items": []
+        }
+      ]
+    },
+    {
+      "key": "instagram_taxonomies",
+      "title": "Como organizar as Taxonomias",
+      "summary": "Defina uma estrutura editorial clara para classificar publicações manualmente e, depois, comparar grupos no Dashboard.",
+      "sections": [
+        {
+          "id": "finalidade",
+          "title": "O que as Taxonomias organizam",
+          "keywords": ["taxonomia", "tipo técnico", "classificação editorial", "Reel", "objetivo", "tema", "CTA"],
+          "body": [
+            "Taxonomias organizam as publicações segundo características editoriais definidas por você. Essa camada complementa os dados importados do Instagram e não altera as métricas registradas.",
+            "Tipo técnico e classificação editorial descrevem aspectos diferentes do mesmo conteúdo. Uma publicação pode ser um Reel, ter Objetivo comunicacional Educar / Orientar, Tipo editorial Curiosidade, Tema principal Publicação científica e CTAs Salvar e Compartilhar."
+          ],
+          "items": []
+        },
+        {
+          "id": "dimensoes-e-categorias",
+          "title": "Dimensões e categorias",
+          "keywords": ["dimensão", "categoria", "Objetivo comunicacional", "Tipo editorial", "Tema principal", "CTA"],
+          "body": [
+            "Uma dimensão é a pergunta usada para classificar. Objetivo comunicacional pergunta qual é a função predominante da publicação; Tipo editorial pergunta qual é sua forma editorial; Tema principal pergunta sobre o assunto predominante; CTA pergunta qual ação é solicitada ao público.",
+            "Categorias são as opções dentro de cada dimensão. Em Tipo editorial, por exemplo, podem existir Curiosidade, Evento, Dica / Tutorial e Notícia / Aviso. Use nomes que permitam aplicar o mesmo critério ao longo do projeto."
+          ],
+          "items": [
+            {"name": "Escolha única", "description": "Mantém apenas uma categoria atual por publicação naquela dimensão, como Curiosidade ou Evento."},
+            {"name": "Múltiplas escolhas", "description": "Permite várias categorias atuais ao mesmo tempo, como os CTAs Salvar e Compartilhar."}
+          ]
+        },
+        {
+          "id": "estrutura-inicial",
+          "title": "Criar a estrutura inicial",
+          "keywords": ["Criar estrutura inicial", "Objetivo comunicacional", "Tipo editorial", "CTA", "Tema principal"],
+          "body": [
+            "Quando ainda não houver taxonomias, use Criar estrutura inicial. O sistema cria Objetivo comunicacional, Tipo editorial, CTA e Tema principal como um ponto de partida versionado para o projeto.",
+            "A estrutura inicial não é obrigatória nem definitiva. Tema principal começa sem categorias para que você possa adaptá-lo aos assuntos específicos da conta, e todas as dimensões podem ser ajustadas conforme o recorte do projeto."
+          ],
+          "items": [
+            {"name": "Objetivo comunicacional", "description": "Registra a função predominante da publicação."},
+            {"name": "Tipo editorial", "description": "Registra a forma editorial predominante."},
+            {"name": "CTA", "description": "Registra as ações solicitadas ao público e aceita múltiplas escolhas."},
+            {"name": "Tema principal", "description": "Registra o assunto principal e pode receber categorias próprias do projeto."}
+          ]
+        },
+        {
+          "id": "personalizar",
+          "title": "Criar e ajustar a estrutura",
+          "keywords": ["Nova dimensão", "Adicionar categoria", "posição", "personalização", "ordem"],
+          "body": [
+            "Use Nova dimensão para criar uma pergunta classificatória com nome, chave opcional, modo de seleção e posição. Use Adicionar categoria dentro de cada dimensão para criar as opções que serão aplicadas às publicações.",
+            "A posição ajuda a manter uma ordem de leitura previsível. Prefira nomes claros, evite categorias redundantes e registre critérios consistentes antes de classificar um conjunto grande de conteúdos."
+          ],
+          "items": []
+        },
+        {
+          "id": "arquivar-e-integrar",
+          "title": "Arquivamento e relação com as outras telas",
+          "keywords": ["Arquivar", "Restaurar", "Classificação de conteúdos", "Dashboard", "histórico"],
+          "body": [
+            "Arquivar uma dimensão ou categoria impede novas utilizações, mas preserva as classificações históricas já feitas. Restaurar volta a disponibilizar a estrutura. Arquivar não significa excluir definitivamente.",
+            "O fluxo recomendado é: Taxonomias define a estrutura; Classificação de conteúdos aplica essa estrutura às publicações; o Dashboard agrupa categorias para comparar indicadores quantitativos, como alcance, interações, médias, medianas e taxa de interação por alcance."
+          ],
+          "items": []
+        },
+        {
+          "id": "nota-final",
+          "title": "Uso consistente",
+          "keywords": ["consistência", "comparabilidade", "desempenho"],
+          "body": [
+            "Revise periodicamente se as categorias continuam distintas e compreensíveis para o objetivo do projeto. Adaptar Tema principal ao vocabulário da conta pode tornar a organização mais útil.",
+            "A taxonomia organiza os conteúdos. Ela não determina automaticamente quais categorias têm melhor ou pior desempenho."
+          ],
+          "items": []
+        }
+      ]
+    },
+    {
+      "key": "instagram_classifications",
+      "title": "Como classificar os conteúdos",
+      "summary": "Aplique manualmente as categorias editoriais às publicações, acompanhe o estado de cada item e use os agrupamentos no Dashboard.",
+      "sections": [
+        {
+          "id": "finalidade-e-fluxo",
+          "title": "Finalidade e fluxo recomendado",
+          "keywords": ["classificação manual", "Taxonomias", "Classificar", "Editar", "Dashboard"],
+          "body": [
+            "Esta área aplica às publicações as categorias criadas em Taxonomias. Nesta versão, a classificação é manual e humana; não existe classificação automática por IA.",
+            "Fluxo recomendado: 1. Configure Taxonomias. 2. Abra Classificação de conteúdos. 3. Localize uma publicação. 4. Escolha Classificar ou Editar. 5. Preencha as dimensões disponíveis. 6. Salve. 7. Volte à lista para acompanhar o estado. 8. Consulte as comparações no Dashboard quando houver grupos classificados."
+          ],
+          "items": []
+        },
+        {
+          "id": "lista-e-estados",
+          "title": "Entenda a lista e os estados",
+          "keywords": ["legenda", "tipo", "data", "permalink", "Não classificado", "Parcialmente classificado", "Classificado", "filtro"],
+          "body": [
+            "Cada item representa uma publicação, mesmo que ela possua várias coletas históricas de métricas. A lista mostra um trecho da legenda, tipo, data, categorias atuais quando houver e a ação para classificar ou editar. Abrir aparece quando a publicação tem permalink.",
+            "Não classificado significa que não existe classificação atual. Parcialmente classificado indica que alguma classificação existe, mas pelo menos uma dimensão única ativa com categorias ainda não foi preenchida. Classificado indica que todas essas dimensões únicas ativas têm uma classificação atual. Uma dimensão múltipla vazia, como CTA, não impede esse estado.",
+            "Use o campo Exibir para visualizar Todas, Não classificadas, Parcialmente classificadas ou Classificadas. A seleção atualiza automaticamente a listagem."
+          ],
+          "items": []
+        },
+        {
+          "id": "preencher-dimensoes",
+          "title": "Preencher dimensões únicas e múltiplas",
+          "keywords": ["Escolha única", "Múltiplas escolhas", "CTA", "Salvar", "Compartilhar"],
+          "body": [
+            "Em uma dimensão de escolha única, uma nova seleção substitui a classificação atual daquela dimensão. Por exemplo, se Notícia / Aviso for alterada para Curiosidade, Curiosidade passa a ser a classificação atual.",
+            "Em uma dimensão de múltiplas escolhas, você pode selecionar todas as categorias que se aplicam. Em CTA, por exemplo, uma publicação pode receber Salvar e Compartilhar ao mesmo tempo."
+          ],
+          "items": []
+        },
+        {
+          "id": "historico-e-reimportacao",
+          "title": "Histórico e novas importações",
+          "keywords": ["histórico", "alteração", "reimportação", "coleta", "métricas"],
+          "body": [
+            "Quando você altera uma classificação, a mudança permanece historicamente rastreável, enquanto a lista apresenta a classificação atual. Isso permite atualizar critérios sem apagar o registro anterior.",
+            "Uma nova importação de métricas da mesma publicação não remove a classificação editorial. A classificação acompanha a publicação; as coletas continuam registrando a evolução das métricas separadamente."
+          ],
+          "items": []
+        },
+        {
+          "id": "dashboard-e-consistencia",
+          "title": "Usar a classificação no Dashboard",
+          "keywords": ["Dashboard", "alcance", "interações", "média", "mediana", "taxa de interação", "consistência"],
+          "body": [
+            "Depois de classificar conteúdos, o Dashboard pode comparar alcance, interações, médias, medianas e taxa de interação por alcance entre as categorias. Esses agrupamentos descrevem os dados registrados; não definem uma recomendação automática.",
+            "Aplicar critérios de forma consistente melhora a comparabilidade dos grupos. Revise a legenda e o contexto da publicação antes de salvar quando houver dúvida sobre a categoria adequada."
+          ],
+          "items": []
+        },
+        {
+          "id": "nota-final",
+          "title": "Limite da classificação",
+          "keywords": ["métricas originais", "análise"],
+          "body": [
+            "A classificação organiza a análise. Ela não altera as métricas originais importadas do Instagram."
+          ],
+          "items": []
+        }
       ]
     },
     {

@@ -23,14 +23,39 @@ from .instagram_import import (
     build_preview,
     parse_instagram_import,
 )
+from .instagram_lifecycle import (
+    InstagramProjectDeletionError,
+    delete_instagram_project_permanently,
+)
 from .instagram_previews import InstagramPreviewExpired, previews
 from .instagram_dashboard import PERIOD_DAYS, TABLE_SORTS, build_instagram_dashboard
+from .instagram_taxonomy import (
+    CLASSIFICATION_STATUSES,
+    DEFAULT_TAXONOMY_VERSION,
+    TaxonomyValidationError,
+    classification_states,
+    classify_media,
+    create_category,
+    create_dimension,
+    create_initial_taxonomy,
+    current_classifications,
+    set_category_active,
+    set_dimension_active,
+    taxonomy_dimensions,
+)
 from .instagram_storage import (
     InstagramImportPersistenceError,
     account_conflict,
     persist_instagram_import,
 )
-from .models import AnalyticsProject, AnalyticsRun, InstagramMedia
+from .models import (
+    AnalyticsProject,
+    AnalyticsRun,
+    InstagramAccount,
+    InstagramMedia,
+    InstagramTaxonomyCategory,
+    InstagramTaxonomyDimension,
+)
 from .services import ANALYTICS_INSTAGRAM_TOOL, can_use_tool
 
 
@@ -98,7 +123,7 @@ def archive_project(project_id: UUID):
     project.archived_at = datetime.now(timezone.utc)
     db.session.commit()
     flash("Projeto arquivado. O histórico foi preservado.", "success")
-    return redirect(url_for("instagram.archived_projects"))
+    return redirect(url_for("instagram.home", _anchor="instagram-project-list"))
 
 
 @instagram_bp.post("/projects/<uuid:project_id>/restore")
@@ -113,7 +138,35 @@ def restore_project(project_id: UUID):
     project.archived_at = None
     db.session.commit()
     flash("Projeto restaurado.", "success")
-    return redirect(url_for("instagram.home"))
+    return redirect(url_for("instagram.archived_projects", _anchor="instagram-archived-project-list"))
+
+
+@instagram_bp.route("/projects/<uuid:project_id>/delete", methods=("GET", "POST"))
+@login_required
+def delete_project(project_id: UUID):
+    project = _project_for_current_user(project_id)
+    if project.status != "archived" or project.archived_at is None:
+        abort(400)
+    if request.method == "POST":
+        try:
+            delete_instagram_project_permanently(
+                project, current_user, request.form.get("confirmation", ""),
+            )
+        except InstagramProjectDeletionError as error:
+            flash(str(error), "danger")
+            return render_template(
+                "platform/instagram/project_delete.html", project=project,
+            ), 400
+        except Exception:
+            current_app.logger.exception("Falha ao excluir projeto Instagram permanentemente")
+            db.session.rollback()
+            flash("Não foi possível excluir o projeto permanentemente. Nenhum dado foi removido.", "danger")
+            return render_template(
+                "platform/instagram/project_delete.html", project=project,
+            ), 500
+        flash("Projeto excluído permanentemente.", "success")
+        return redirect(url_for("instagram.archived_projects"))
+    return render_template("platform/instagram/project_delete.html", project=project)
 
 
 @instagram_bp.get("/projects/new")
@@ -174,9 +227,13 @@ def dashboard(project_id: UUID):
     sort = request.args.get("sort", "recent")
     if period not in PERIOD_DAYS or sort not in TABLE_SORTS:
         abort(400)
-    summary = build_instagram_dashboard(
-        project, period, current_app.config["PRESENTATION_TIMEZONE"], sort=sort
-    )
+    try:
+        summary = build_instagram_dashboard(
+            project, period, current_app.config["PRESENTATION_TIMEZONE"], sort=sort,
+            taxonomy_dimension_id=request.args.get("taxonomy_dimension") or None,
+        )
+    except ValueError:
+        abort(400)
     return render_template(
         "platform/instagram/dashboard.html", project=project, account=project.instagram_account,
         dashboard=summary,
@@ -185,6 +242,216 @@ def dashboard(project_id: UUID):
         sort_options=(("recent", "Mais recentes"), ("reach", "Maior alcance"),
                       ("interactions", "Mais interações"),
                       ("interaction_rate", "Maior taxa de interação por alcance")),
+    )
+
+
+def _taxonomy_dimension_anchor(dimension_id: UUID | str) -> str:
+    return f"instagram-taxonomy-dimension-{dimension_id}"
+
+
+def _taxonomy_category_anchor(project: AnalyticsProject, category_id: UUID) -> str:
+    dimension_id = db.session.scalar(
+        select(InstagramTaxonomyCategory.instagram_taxonomy_dimension_id)
+        .join(InstagramTaxonomyDimension)
+        .where(
+            InstagramTaxonomyCategory.id == str(category_id),
+            InstagramTaxonomyDimension.analytics_project_id == project.id,
+        )
+    )
+    return _taxonomy_dimension_anchor(dimension_id) if dimension_id else "instagram-taxonomy-dimensions"
+
+
+def _taxonomy_error_redirect(
+    project: AnalyticsProject, error: TaxonomyValidationError, *, anchor: str = "instagram-taxonomy-dimensions",
+):
+    flash(str(error), "danger")
+    return redirect(url_for("instagram.taxonomies", project_id=project.id, _anchor=anchor))
+
+
+def _classification_media(project: AnalyticsProject) -> tuple[InstagramMedia, ...]:
+    return tuple(db.session.scalars(
+        select(InstagramMedia)
+        .join(InstagramAccount, InstagramAccount.id == InstagramMedia.instagram_account_id)
+        .where(InstagramAccount.analytics_project_id == project.id)
+        .order_by(InstagramMedia.published_at.desc(), InstagramMedia.id.desc())
+    ).all())
+
+
+def _classification_media_for_project(project: AnalyticsProject, media_id: UUID) -> InstagramMedia:
+    media = db.session.scalar(
+        select(InstagramMedia)
+        .join(InstagramAccount, InstagramAccount.id == InstagramMedia.instagram_account_id)
+        .where(
+            InstagramMedia.id == str(media_id),
+            InstagramAccount.analytics_project_id == project.id,
+        )
+    )
+    if media is None:
+        abort(404)
+    return media
+
+
+@instagram_bp.get("/projects/<uuid:project_id>/taxonomies")
+@login_required
+def taxonomies(project_id: UUID):
+    project = _project_for_current_user(project_id)
+    return render_template(
+        "platform/instagram/taxonomies.html",
+        project=project,
+        dimensions=taxonomy_dimensions(project.id),
+        can_mutate=project.status == "active" and project.archived_at is None,
+        taxonomy_version=DEFAULT_TAXONOMY_VERSION,
+    )
+
+
+@instagram_bp.post("/projects/<uuid:project_id>/taxonomies/initial")
+@login_required
+def initialize_taxonomy(project_id: UUID):
+    project = _project_for_current_user(project_id, active=True)
+    create_initial_taxonomy(project)
+    db.session.commit()
+    flash("Estrutura inicial de taxonomias criada.", "success")
+    return redirect(url_for("instagram.taxonomies", project_id=project.id, _anchor="instagram-taxonomy-dimensions"))
+
+
+@instagram_bp.post("/projects/<uuid:project_id>/taxonomies/dimensions")
+@login_required
+def add_taxonomy_dimension(project_id: UUID):
+    project = _project_for_current_user(project_id, active=True)
+    try:
+        create_dimension(
+            project,
+            name=request.form.get("name", ""),
+            key=request.form.get("key") or None,
+            description=request.form.get("description") or None,
+            selection_mode=request.form.get("selection_mode", ""),
+            position=request.form.get("position"),
+        )
+        db.session.commit()
+    except TaxonomyValidationError as error:
+        db.session.rollback()
+        return _taxonomy_error_redirect(project, error, anchor="instagram-new-dimension")
+    flash("Dimensão criada.", "success")
+    return redirect(url_for("instagram.taxonomies", project_id=project.id, _anchor="instagram-taxonomy-dimensions"))
+
+
+@instagram_bp.post("/projects/<uuid:project_id>/taxonomies/dimensions/<uuid:dimension_id>/categories")
+@login_required
+def add_taxonomy_category(project_id: UUID, dimension_id: UUID):
+    project = _project_for_current_user(project_id, active=True)
+    try:
+        create_category(
+            project, str(dimension_id),
+            name=request.form.get("name", ""),
+            key=request.form.get("key") or None,
+            description=request.form.get("description") or None,
+            position=request.form.get("position"),
+        )
+        db.session.commit()
+    except TaxonomyValidationError as error:
+        db.session.rollback()
+        return _taxonomy_error_redirect(project, error, anchor=_taxonomy_dimension_anchor(dimension_id))
+    flash("Categoria criada.", "success")
+    return redirect(url_for(
+        "instagram.taxonomies", project_id=project.id, _anchor=_taxonomy_dimension_anchor(dimension_id),
+    ))
+
+
+def _active_form_value() -> bool:
+    value = request.form.get("active")
+    if value == "true":
+        return True
+    if value == "false":
+        return False
+    abort(400)
+
+
+@instagram_bp.post("/projects/<uuid:project_id>/taxonomies/dimensions/<uuid:dimension_id>/state")
+@login_required
+def set_taxonomy_dimension_state(project_id: UUID, dimension_id: UUID):
+    project = _project_for_current_user(project_id, active=True)
+    try:
+        set_dimension_active(project, str(dimension_id), active=_active_form_value())
+        db.session.commit()
+    except TaxonomyValidationError as error:
+        db.session.rollback()
+        return _taxonomy_error_redirect(project, error, anchor=_taxonomy_dimension_anchor(dimension_id))
+    flash("Estado da dimensão atualizado.", "success")
+    return redirect(url_for(
+        "instagram.taxonomies", project_id=project.id, _anchor=_taxonomy_dimension_anchor(dimension_id),
+    ))
+
+
+@instagram_bp.post("/projects/<uuid:project_id>/taxonomies/categories/<uuid:category_id>/state")
+@login_required
+def set_taxonomy_category_state(project_id: UUID, category_id: UUID):
+    project = _project_for_current_user(project_id, active=True)
+    anchor = _taxonomy_category_anchor(project, category_id)
+    try:
+        set_category_active(project, str(category_id), active=_active_form_value())
+        db.session.commit()
+    except TaxonomyValidationError as error:
+        db.session.rollback()
+        return _taxonomy_error_redirect(project, error, anchor=anchor)
+    flash("Estado da categoria atualizado.", "success")
+    return redirect(url_for("instagram.taxonomies", project_id=project.id, _anchor=anchor))
+
+
+@instagram_bp.get("/projects/<uuid:project_id>/classifications")
+@login_required
+def classifications(project_id: UUID):
+    project = _project_for_current_user(project_id)
+    status_filter = request.args.get("status", "all")
+    if status_filter not in CLASSIFICATION_STATUSES:
+        abort(400)
+    media = _classification_media(project)
+    states = classification_states(project, tuple(item.id for item in media))
+    if status_filter != "all":
+        media = tuple(item for item in media if states[item.id].status == status_filter)
+    return render_template(
+        "platform/instagram/classifications.html",
+        project=project,
+        media=media,
+        states=states,
+        status_filter=status_filter,
+        can_mutate=project.status == "active" and project.archived_at is None,
+    )
+
+
+@instagram_bp.route("/projects/<uuid:project_id>/classifications/<uuid:media_id>", methods=("GET", "POST"))
+@login_required
+def edit_classification(project_id: UUID, media_id: UUID):
+    project = _project_for_current_user(project_id, active=request.method == "POST")
+    media = _classification_media_for_project(project, media_id)
+    dimensions = taxonomy_dimensions(project.id, active_only=True)
+    if request.method == "POST":
+        selections = {
+            dimension.id: request.form.getlist(f"dimension_{dimension.id}")
+            for dimension in dimensions
+        }
+        try:
+            classify_media(project, media.id, selections, current_user)
+            db.session.commit()
+        except TaxonomyValidationError as error:
+            db.session.rollback()
+            flash(str(error), "danger")
+        else:
+            flash("Classificação atualizada. O histórico anterior foi preservado.", "success")
+            return redirect(url_for(
+                "instagram.classifications",
+                project_id=project.id,
+                _anchor=f"instagram-classification-{media.id}",
+            ))
+    current = current_classifications(project.id, media_ids=(media.id,))
+    current_category_ids = {item.instagram_taxonomy_category_id for item in current}
+    return render_template(
+        "platform/instagram/classification_edit.html",
+        project=project,
+        media=media,
+        dimensions=dimensions,
+        current=current,
+        current_category_ids=current_category_ids,
+        can_mutate=project.status == "active" and project.archived_at is None,
     )
 
 

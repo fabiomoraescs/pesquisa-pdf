@@ -275,6 +275,9 @@ class AnalyticsProject(db.Model):
     instagram_account: Mapped[InstagramAccount | None] = relationship(
         back_populates="analytics_project", uselist=False
     )
+    taxonomy_dimensions: Mapped[list[InstagramTaxonomyDimension]] = relationship(
+        back_populates="analytics_project"
+    )
 
     __table_args__ = (
         CheckConstraint("length(trim(name)) > 0", name="ck_analytics_project_name"),
@@ -375,6 +378,9 @@ class InstagramMedia(db.Model):
 
     instagram_account: Mapped[InstagramAccount] = relationship(back_populates="media")
     observations: Mapped[list[InstagramMediaObservation]] = relationship(back_populates="instagram_media")
+    classifications: Mapped[list[InstagramMediaClassification]] = relationship(
+        back_populates="instagram_media"
+    )
 
     __table_args__ = (
         UniqueConstraint("instagram_account_id", "external_id", name="uq_instagram_media_account_external_id"),
@@ -468,6 +474,121 @@ class InstagramAccountSnapshot(db.Model):
             name="ck_instagram_account_snapshot_nonnegative",
         ),
         Index("ix_instagram_account_snapshots_account_observed", "instagram_account_id", "observed_at"),
+    )
+
+
+class InstagramTaxonomyDimension(db.Model):
+    """Dimensão editorial manual pertencente exclusivamente a um projeto Instagram."""
+
+    __tablename__ = "instagram_taxonomy_dimensions"
+    id: Mapped[str] = mapped_column(db.String(36), primary_key=True, default=lambda: str(uuid4()))
+    analytics_project_id: Mapped[str] = mapped_column(
+        db.ForeignKey("analytics_projects.id"), nullable=False
+    )
+    key: Mapped[str] = mapped_column(db.String(80), nullable=False)
+    name: Mapped[str] = mapped_column(db.String(160), nullable=False)
+    description: Mapped[str | None] = mapped_column(db.Text)
+    selection_mode: Mapped[str] = mapped_column(db.String(16), nullable=False, default="single")
+    position: Mapped[int] = mapped_column(db.Integer, nullable=False, default=0)
+    active: Mapped[bool] = mapped_column(db.Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        db.DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
+
+    analytics_project: Mapped[AnalyticsProject] = relationship(back_populates="taxonomy_dimensions")
+    categories: Mapped[list[InstagramTaxonomyCategory]] = relationship(
+        back_populates="dimension", order_by="InstagramTaxonomyCategory.position, InstagramTaxonomyCategory.name"
+    )
+    classifications: Mapped[list[InstagramMediaClassification]] = relationship(back_populates="dimension")
+
+    __table_args__ = (
+        UniqueConstraint("analytics_project_id", "key", name="uq_instagram_taxonomy_dimension_project_key"),
+        CheckConstraint("length(trim(key)) > 0", name="ck_instagram_taxonomy_dimension_key"),
+        CheckConstraint("length(trim(name)) > 0", name="ck_instagram_taxonomy_dimension_name"),
+        CheckConstraint("selection_mode IN ('single', 'multi')", name="ck_instagram_taxonomy_dimension_mode"),
+        CheckConstraint("position >= 0", name="ck_instagram_taxonomy_dimension_position"),
+        Index(
+            "ix_instagram_taxonomy_dimensions_project_active_position",
+            "analytics_project_id", "active", "position",
+        ),
+    )
+
+
+class InstagramTaxonomyCategory(db.Model):
+    """Categoria editorial configurável dentro de uma dimensão do projeto."""
+
+    __tablename__ = "instagram_taxonomy_categories"
+    id: Mapped[str] = mapped_column(db.String(36), primary_key=True, default=lambda: str(uuid4()))
+    instagram_taxonomy_dimension_id: Mapped[str] = mapped_column(
+        db.ForeignKey("instagram_taxonomy_dimensions.id"), nullable=False
+    )
+    key: Mapped[str] = mapped_column(db.String(80), nullable=False)
+    name: Mapped[str] = mapped_column(db.String(160), nullable=False)
+    description: Mapped[str | None] = mapped_column(db.Text)
+    position: Mapped[int] = mapped_column(db.Integer, nullable=False, default=0)
+    active: Mapped[bool] = mapped_column(db.Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        db.DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
+
+    dimension: Mapped[InstagramTaxonomyDimension] = relationship(back_populates="categories")
+    classifications: Mapped[list[InstagramMediaClassification]] = relationship(back_populates="category")
+
+    __table_args__ = (
+        UniqueConstraint(
+            "instagram_taxonomy_dimension_id", "key",
+            name="uq_instagram_taxonomy_category_dimension_key",
+        ),
+        CheckConstraint("length(trim(key)) > 0", name="ck_instagram_taxonomy_category_key"),
+        CheckConstraint("length(trim(name)) > 0", name="ck_instagram_taxonomy_category_name"),
+        CheckConstraint("position >= 0", name="ck_instagram_taxonomy_category_position"),
+        Index(
+            "ix_instagram_taxonomy_categories_dimension_active_position",
+            "instagram_taxonomy_dimension_id", "active", "position",
+        ),
+    )
+
+
+class InstagramMediaClassification(db.Model):
+    """Atribuição editorial histórica: a classificação anterior nunca é apagada."""
+
+    __tablename__ = "instagram_media_classifications"
+    id: Mapped[str] = mapped_column(db.String(36), primary_key=True, default=lambda: str(uuid4()))
+    instagram_media_id: Mapped[str] = mapped_column(db.ForeignKey("instagram_media.id"), nullable=False)
+    instagram_taxonomy_dimension_id: Mapped[str] = mapped_column(
+        db.ForeignKey("instagram_taxonomy_dimensions.id"), nullable=False
+    )
+    instagram_taxonomy_category_id: Mapped[str] = mapped_column(
+        db.ForeignKey("instagram_taxonomy_categories.id"), nullable=False
+    )
+    source: Mapped[str] = mapped_column(db.String(24), nullable=False, default="manual")
+    assigned_by_user_id: Mapped[str | None] = mapped_column(db.ForeignKey("users.id"))
+    assigned_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+    superseded_at: Mapped[datetime | None] = mapped_column(db.DateTime(timezone=True))
+    confidence: Mapped[float | None] = mapped_column(db.Float)
+    classifier_version: Mapped[str | None] = mapped_column(db.String(64))
+
+    instagram_media: Mapped[InstagramMedia] = relationship(back_populates="classifications")
+    dimension: Mapped[InstagramTaxonomyDimension] = relationship(back_populates="classifications")
+    category: Mapped[InstagramTaxonomyCategory] = relationship(back_populates="classifications")
+    assigned_by: Mapped[User | None] = relationship(foreign_keys=[assigned_by_user_id])
+
+    __table_args__ = (
+        CheckConstraint("source = 'manual'", name="ck_instagram_media_classification_source"),
+        CheckConstraint(
+            "confidence IS NULL OR (confidence >= 0 AND confidence <= 1)",
+            name="ck_instagram_media_classification_confidence",
+        ),
+        Index(
+            "ix_instagram_media_classifications_media_dimension_current",
+            "instagram_media_id", "instagram_taxonomy_dimension_id", "superseded_at",
+        ),
+        Index(
+            "ix_instagram_media_classifications_dimension_category_current",
+            "instagram_taxonomy_dimension_id", "instagram_taxonomy_category_id", "superseded_at",
+        ),
     )
 
 

@@ -1,8 +1,10 @@
 {% extends "platform/base.html" %}
+{% from 'platform/instagram/_project_tabs.html' import project_tabs %}
 
 {% block title %}Importação concluída — {{ project.name }}{% endblock %}
 {% block page_intro %}<div class="mb-3"><h1 class="h4 mb-1">Importação concluída</h1><p class="platform-muted mb-0">{{ project.name }}</p></div>{% endblock %}
 {% block body %}
+{{ project_tabs(project, 'import') }}
 <section class="platform-panel" aria-labelledby="instagram-import-complete-title">
   <h2 id="instagram-import-complete-title" class="h5">Resumo da importação</h2>
   <p>Uma nova execução histórica foi registrada para @{{ preview.dataset.account_username }}.</p>

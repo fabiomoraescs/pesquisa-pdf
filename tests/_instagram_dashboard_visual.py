@@ -9,6 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app import create_app
 from platform_core.extensions import db
+from platform_core.instagram_taxonomy import classify_media, create_initial_taxonomy, taxonomy_dimensions
 from platform_core.models import (
     AnalyticsProject, AnalyticsRun, InstagramAccount, InstagramAccountSnapshot,
     InstagramMedia, InstagramMediaObservation, PlanTool, User,
@@ -42,12 +43,19 @@ with TemporaryDirectory(prefix="instagram-dashboard-visual-") as temp:
         db.session.flush()
         first_at = datetime(2026, 10, 2, 13, tzinfo=timezone.utc)
         second_at = datetime(2026, 10, 9, 13, tzinfo=timezone.utc)
+        archived_project = AnalyticsProject(
+            owner_user_id=user.id, name="Projeto arquivado para revisão visual",
+            status="archived", archived_at=second_at,
+        )
+        db.session.add(archived_project)
+        db.session.flush()
         old = AnalyticsRun(analytics_project_id=project.id, status="completed",
                            started_at=first_at, completed_at=first_at)
         new = AnalyticsRun(analytics_project_id=project.id, status="completed",
                            started_at=second_at, completed_at=second_at)
         db.session.add_all((old, new))
         db.session.flush()
+        media_items = []
         for index, day in enumerate((3, 6, 10, 12, 15, 18, 21, 24, 27, 30), start=1):
             media = InstagramMedia(
                 instagram_account_id=account.id, external_id=f"post_{index:03d}",
@@ -58,6 +66,7 @@ with TemporaryDirectory(prefix="instagram-dashboard-visual-") as temp:
             )
             db.session.add(media)
             db.session.flush()
+            media_items.append(media)
             db.session.add_all((
                 InstagramMediaObservation(instagram_media_id=media.id, analytics_run_id=old.id,
                                           observed_at=first_at, reach=1000 * index,
@@ -76,6 +85,18 @@ with TemporaryDirectory(prefix="instagram-dashboard-visual-") as temp:
             InstagramAccountSnapshot(instagram_account_id=account.id, analytics_run_id=new.id,
                                      observed_at=second_at, followers_count=8675),
         ))
+        create_initial_taxonomy(project)
+        dimensions = {dimension.key: dimension for dimension in taxonomy_dimensions(project.id, active_only=True)}
+        objective = dimensions["communicational-objective"]
+        editorial = dimensions["editorial-type"]
+        cta = dimensions["call-to-action"]
+        for index, media in enumerate(media_items, start=1):
+            classify_media(project, media.id, {
+                objective.id: (objective.categories[index % len(objective.categories)].id,),
+                editorial.id: (editorial.categories[index % len(editorial.categories)].id,),
+                cta.id: (cta.categories[index % len(cta.categories)].id,) if index % 2 else (),
+            }, user)
         db.session.commit()
         print(f"VISUAL_PROJECT_ID={project.id}", flush=True)
+        print(f"VISUAL_ARCHIVED_PROJECT_ID={archived_project.id}", flush=True)
     app.run(host="127.0.0.1", port=5006, debug=False, use_reloader=False)

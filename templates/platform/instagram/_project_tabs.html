@@ -1,0 +1,17 @@
+{% macro project_tabs(project, active_tab=None) %}
+<nav class="platform-project-tabs" aria-label="Navegação do projeto Instagram">
+  {% set tabs = (
+    ('dashboard', 'Dashboard', url_for('instagram.dashboard', project_id=project.id)),
+    ('taxonomies', 'Taxonomias', url_for('instagram.taxonomies', project_id=project.id)),
+    ('classifications', 'Classificação de conteúdos', url_for('instagram.classifications', project_id=project.id)),
+  ) %}
+  {% for key, label, href in tabs %}
+  <a class="platform-project-tab{% if active_tab == key %} is-current{% endif %}" href="{{ href }}"{% if active_tab == key %} aria-current="page"{% endif %}>{{ label }}</a>
+  {% endfor %}
+  {% if project.status == 'active' and project.archived_at is none %}
+  <a class="platform-project-tab{% if active_tab == 'import' %} is-current{% endif %}" href="{{ url_for('instagram.new_import', project_id=project.id) }}"{% if active_tab == 'import' %} aria-current="page"{% endif %}>Importar dados</a>
+  {% else %}
+  <span class="platform-project-tab is-disabled" aria-disabled="true" title="A importação fica indisponível enquanto o projeto estiver arquivado">Importar dados</span>
+  {% endif %}
+</nav>
+{% endmacro %}

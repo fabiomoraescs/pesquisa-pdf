@@ -30,6 +30,10 @@ class TesteHistoricoRacial(unittest.TestCase):
         self.assertIn("Busca estruturada", pagina)
         self.assertIn(">Processar</button>", pagina)
         self.assertIn(f'action="/analise-documental/projetos/{projeto}/analisar"', pagina)
+        self.assertIn('<main class="platform-main platform-main-legacy">', pagina)
+        self.assertIn('class="app-content-container platform-toolbar mb-4" data-base-intro', pagina)
+        self.assertIn('Abrir tutorial da Busca estruturada', pagina)
+        self.assertNotIn('class="hero-actions"', pagina)
 
     def test_rota_principal_permanece_disponivel(self):
         with self.app.test_client() as cliente:

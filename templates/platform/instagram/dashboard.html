@@ -1,24 +1,34 @@
 {% extends 'platform/base.html' %}
+{% from 'platform/_tutorial_info.html' import tutorial_button, tutorial_dialog with context %}
+{% from 'platform/_icons.html' import icon %}
+{% from 'platform/instagram/_project_tabs.html' import project_tabs %}
 {% block title %}Dashboard — {{ project.name }} — Análysis Instagram{% endblock %}
 {% macro number(value) %}{% if value is none %}—{% elif value == value|int %}{{ '{:,}'.format(value|int).replace(',', '.') }}{% else %}{{ '{:,.2f}'.format(value).replace(',', '@').replace('.', ',').replace('@', '.') }}{% endif %}{% endmacro %}
 {% macro percentage(value) %}{{ '{:,.2f}'.format(value).replace(',', '@').replace('.', ',').replace('@', '.') if value is not none else '—' }}{% if value is not none %}%{% endif %}{% endmacro %}
 {% macro signed_number(value) %}{% if value is not none %}{{ '+' if value > 0 else '' }}{{ number(value) }}{% else %}—{% endif %}{% endmacro %}
 {% macro signed_percentage(value) %}{% if value is not none %}{{ '+' if value > 0 else '' }}{{ percentage(value) }}{% else %}—{% endif %}{% endmacro %}
 {% block body %}
+{% set instagram_tutorial = platform_help_for('instagram_dashboard') %}
 <section class="platform-panel mb-3" aria-labelledby="instagram-dashboard-title">
   <div class="d-flex flex-wrap align-items-start justify-content-between gap-2">
     <div><h1 id="instagram-dashboard-title" class="h4 mb-1">Dashboard</h1><p class="platform-muted mb-1">{{ project.name }}{% if account %} · @{{ account.username.lstrip('@') }}{% endif %}</p></div>
-    <a class="btn btn-outline-primary btn-sm" href="{{ url_for('instagram.project_detail', project_id=project.id) }}">Voltar ao projeto</a>
+    <div class="d-flex flex-wrap align-items-center gap-2"><a class="btn btn-outline-primary btn-sm" href="{{ url_for('instagram.project_detail', project_id=project.id) }}">Voltar ao projeto</a>{{ tutorial_button(instagram_tutorial, label='Abrir tutorial do Dashboard') }}</div>
   </div>
   {% if dashboard.reference_at %}<p class="platform-muted mb-1"><strong>Dados atualizados até</strong> {{ dashboard.reference_at | data_hora_local }}</p>{% endif %}
   <p class="platform-muted mb-0">O período filtra publicações pela data em que foram publicadas, tomando a observação mais recente do projeto como referência. Seguidores refletem os snapshots da conta.</p>
 </section>
-<nav class="platform-panel mb-3 d-flex flex-wrap align-items-center gap-2" aria-label="Período das publicações">
-  <span class="platform-muted me-1">Período:</span>
-  {% for key, label in period_options %}
-  <a class="btn btn-sm btn-outline-primary{% if dashboard.period == key %} active{% endif %}" href="{{ url_for('instagram.dashboard', project_id=project.id, period=key, sort=dashboard.sort) }}"{% if dashboard.period == key %} aria-current="page"{% endif %}>{{ label }}</a>
-  {% endfor %}
-</nav>
+{{ project_tabs(project, 'dashboard') }}
+<section id="instagram-dashboard-content">
+<div class="platform-filter-band" id="instagram-dashboard-period" aria-label="Período das publicações">
+  <form class="platform-filter-control-row" method="get" action="{{ url_for('instagram.dashboard', project_id=project.id, _anchor='instagram-dashboard-period') }}" data-partial-update data-partial-target="#instagram-dashboard-content" data-partial-history="replace">
+    <input type="hidden" name="sort" value="{{ dashboard.sort }}">
+    {% if dashboard.taxonomy.selected_dimension %}<input type="hidden" name="taxonomy_dimension" value="{{ dashboard.taxonomy.selected_dimension.id }}">{% endif %}
+    <label class="form-label mb-0" for="instagram-dashboard-period-select">Período:</label>
+    <select class="form-select platform-filter-select" id="instagram-dashboard-period-select" name="period" data-filter-width="short" data-auto-submit>
+      {% for key, label in period_options %}<option value="{{ key }}"{% if dashboard.period == key %} selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select>
+  </form>
+</div>
 {% if not dashboard.has_data %}
 <div class="platform-empty-state"><h2 class="h5">Ainda não há dados para exibir.</h2><p>Importe um arquivo para iniciar o histórico deste projeto.</p>{% if project.status == 'active' %}<a class="btn btn-primary btn-sm" href="{{ url_for('instagram.new_import', project_id=project.id) }}">Importar dados</a>{% endif %}</div>
 {% else %}
@@ -53,12 +63,12 @@
       <div class="col-12 col-md-4"><div class="metric-card"><span>Variação de seguidores desde a coleta anterior</span><strong>{{ signed_number(dashboard.followers_variation.absolute) }}</strong><small class="platform-muted">{% if dashboard.followers_variation.absolute is none %}São necessários dois snapshots válidos.{% elif dashboard.followers_variation.percentage is none %}Percentual indisponível: snapshot anterior igual a zero.{% else %}{{ signed_percentage(dashboard.followers_variation.percentage) }}{% endif %}</small></div></div>
     </div>
     {% set statistic_rows = (('reach', 'Alcance', false), ('impressions', 'Impressões', false), ('interactions', 'Interações', false), ('interaction_rate_by_reach', 'Taxa de interação por alcance', true)) %}
-    <div class="table-responsive mt-3"><table class="table table-sm align-middle text-nowrap mb-0"><thead><tr><th scope="col">Métrica</th><th scope="col">Valores conhecidos</th><th scope="col">Média por publicação</th><th scope="col">Mediana por publicação</th></tr></thead><tbody>{% for identifier, label, is_percentage in statistic_rows %}{% set statistic = dashboard.performance_statistics[identifier] %}<tr><td>{{ label }}</td><td>{{ statistic.known }} de {{ statistic.publications }}</td><td>{{ percentage(statistic.mean_value) if is_percentage else number(statistic.mean_value) }}</td><td>{{ percentage(statistic.median_value) if is_percentage else number(statistic.median_value) }}</td></tr>{% endfor %}</tbody></table></div>
+    <div class="table-responsive mt-3"><table class="table platform-themed-table table-sm align-middle text-nowrap mb-0"><thead><tr><th scope="col">Métrica</th><th scope="col">Valores conhecidos</th><th scope="col">Média por publicação</th><th scope="col">Mediana por publicação</th></tr></thead><tbody>{% for identifier, label, is_percentage in statistic_rows %}{% set statistic = dashboard.performance_statistics[identifier] %}<tr><td>{{ label }}</td><td>{{ statistic.known }} de {{ statistic.publications }}</td><td>{{ percentage(statistic.mean_value) if is_percentage else number(statistic.mean_value) }}</td><td>{{ percentage(statistic.median_value) if is_percentage else number(statistic.median_value) }}</td></tr>{% endfor %}</tbody></table></div>
   </section>
   <section class="platform-panel mb-3" aria-labelledby="instagram-types-title">
     <h2 id="instagram-types-title" class="h5">Desempenho por tipo de conteúdo</h2>
     <p class="platform-muted">Valores descritivos por publicação; não representam recomendação automática.</p>
-    <div class="table-responsive"><table class="table table-sm align-middle text-nowrap mb-0">
+    <div class="table-responsive"><table class="table platform-themed-table table-sm align-middle text-nowrap mb-0">
       <thead><tr><th scope="col">Tipo</th><th scope="col">Publicações</th><th scope="col">Alcance mediano</th><th scope="col">Alcance médio</th><th scope="col">Interações medianas</th><th scope="col" title="Interações ÷ alcance × 100">Taxa mediana de interação por alcance</th><th scope="col" title="Interações ÷ alcance × 100">Taxa média de interação por alcance</th></tr></thead>
       <tbody>{% for comparison in dashboard.type_comparisons %}<tr>
         <td>{{ comparison.label }}{% if comparison.raw_types %}<small class="platform-muted"> · {{ comparison.raw_types | join(', ') }}</small>{% endif %}</td><td>{{ comparison.publications }}</td>
@@ -67,6 +77,24 @@
         <td>{{ percentage(comparison.interaction_rate_by_reach.median_value) }} <small class="platform-muted">({{ comparison.interaction_rate_by_reach.known }}/{{ comparison.publications }})</small></td><td>{{ percentage(comparison.interaction_rate_by_reach.mean_value) }} <small class="platform-muted">({{ comparison.interaction_rate_by_reach.known }}/{{ comparison.publications }})</small></td>
       </tr>{% endfor %}</tbody>
     </table></div>
+  </section>
+  <section class="platform-panel mb-3" id="instagram-taxonomy-performance" aria-labelledby="instagram-taxonomy-performance-title">
+    <div class="d-flex flex-wrap align-items-start justify-content-between gap-2 mb-3">
+      <div><h2 id="instagram-taxonomy-performance-title" class="h5 mb-1">Desempenho por classificação editorial</h2><p class="platform-muted mb-0">Valores descritivos por categoria; não representam recomendação automática.</p></div>
+      <a class="btn btn-outline-primary btn-sm" href="{{ url_for('instagram.taxonomies', project_id=project.id) }}">Taxonomias</a>
+    </div>
+    {% if dashboard.taxonomy.dimensions %}
+      <form class="row g-2 align-items-end mb-3" method="get" action="{{ url_for('instagram.dashboard', project_id=project.id, _anchor='instagram-taxonomy-performance') }}" data-partial-update data-partial-target="#instagram-taxonomy-performance" data-partial-history="replace"><input type="hidden" name="period" value="{{ dashboard.period }}"><input type="hidden" name="sort" value="{{ dashboard.sort }}"><div class="col-sm"><label class="form-label" for="taxonomy-dashboard-dimension">Dimensão</label><select class="form-select" id="taxonomy-dashboard-dimension" name="taxonomy_dimension">{% for dimension in dashboard.taxonomy.dimensions %}<option value="{{ dimension.id }}"{% if dashboard.taxonomy.selected_dimension and dimension.id == dashboard.taxonomy.selected_dimension.id %} selected{% endif %}>{{ dimension.name }}</option>{% endfor %}</select></div><div class="col-sm-auto"><button class="btn btn-outline-primary" type="submit">Atualizar</button></div></form>
+      {% if not dashboard.taxonomy.has_current_classifications %}<p class="platform-muted">Ainda não há conteúdos classificados nesta dimensão no período selecionado.</p>{% endif %}
+      {% if dashboard.taxonomy.comparisons %}
+        <div class="table-responsive"><table class="table platform-themed-table table-sm align-middle text-nowrap mb-0"><thead><tr><th scope="col">Categoria</th><th scope="col">Publicações</th><th scope="col">Alcance mediano</th><th scope="col">Alcance médio</th><th scope="col">Interações medianas</th><th scope="col" title="Interações ÷ alcance × 100">Taxa mediana de interação por alcance</th><th scope="col" title="Interações ÷ alcance × 100">Taxa média de interação por alcance</th></tr></thead><tbody>{% for comparison in dashboard.taxonomy.comparisons %}<tr><td>{{ comparison.name }}{% if comparison.is_unclassified %}<small class="platform-muted"> · agrupamento de interface</small>{% endif %}</td><td>{{ comparison.publications }}</td><td>{{ number(comparison.reach.median_value) }} <small class="platform-muted">({{ comparison.reach.known }}/{{ comparison.publications }})</small></td><td>{{ number(comparison.reach.mean_value) }} <small class="platform-muted">({{ comparison.reach.known }}/{{ comparison.publications }})</small></td><td>{{ number(comparison.interactions.median_value) }} <small class="platform-muted">({{ comparison.interactions.known }}/{{ comparison.publications }})</small></td><td>{{ percentage(comparison.interaction_rate_by_reach.median_value) }} <small class="platform-muted">({{ comparison.interaction_rate_by_reach.known }}/{{ comparison.publications }})</small></td><td>{{ percentage(comparison.interaction_rate_by_reach.mean_value) }} <small class="platform-muted">({{ comparison.interaction_rate_by_reach.known }}/{{ comparison.publications }})</small></td></tr>{% endfor %}</tbody></table></div>
+        {% if dashboard.taxonomy.is_multi %}<p class="platform-muted small mb-0 mt-2">Uma publicação pode pertencer a mais de uma categoria desta dimensão; por isso, as contagens podem não ser aditivas.</p>{% endif %}
+      {% elif dashboard.taxonomy.has_current_classifications %}<p class="platform-muted mb-0">Ainda não há categorias com dados para comparar neste período.</p>{% endif %}
+    {% else %}<p class="platform-muted mb-0">Configure uma taxonomia editorial para comparar publicações por categoria.</p>{% endif %}
+    {% if dashboard.taxonomy.selected_dimension and dashboard.taxonomy.has_current_classifications and dashboard.taxonomy.comparisons %}
+    <div class="row g-4 dashboard-grid mt-1" aria-label="Gráfico de classificação editorial"><div class="col-12"><div class="chart-card"><div class="chart-header"><h2>Taxa mediana de interação por alcance por categoria</h2><span class="chart-subtitle">{{ dashboard.taxonomy.selected_dimension.name }} · Interações ÷ alcance × 100, calculada por publicação</span></div><div id="instagram-chart-taxonomy-interaction-rate" class="chart" role="img" aria-label="Taxa mediana de interação por alcance por categoria"></div></div></div></div>
+    <script id="instagram-taxonomy-chart-data" type="application/json">{{ dashboard.chart_data.taxonomy_interaction_rate | tojson }}</script>
+    {% endif %}
   </section>
   {% endif %}
   <section class="row g-4 dashboard-grid mb-3" aria-label="Gráficos do Instagram">
@@ -82,23 +110,29 @@
     <h2 id="instagram-ranking-title" class="h5">Publicações com maior alcance</h2>
     {% if dashboard.ranking %}<ol class="mb-0">{% for row in dashboard.ranking %}<li class="mb-2"><span title="{{ row.caption }}">{{ row.short_caption }}</span> · {{ row.media.media_type_raw or 'Tipo não informado' }} · {{ row.media.published_at | data_local }} · <strong>{{ number(row.observation.reach) }}</strong>{% if row.permalink %} · <a href="{{ row.permalink }}" target="_blank" rel="noopener noreferrer">Abrir publicação</a>{% endif %}</li>{% endfor %}</ol>{% else %}<p class="platform-muted mb-0">Nenhuma publicação possui alcance informado.</p>{% endif %}
   </section>
-  <section class="platform-panel" aria-labelledby="instagram-media-table-title">
-    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2"><h2 id="instagram-media-table-title" class="h5 mb-0">Publicações</h2><nav class="d-flex flex-wrap gap-1" aria-label="Ordenação das publicações"><span class="platform-muted small align-self-center me-1">Ordenar:</span>{% for key, label in sort_options %}<a class="btn btn-sm btn-outline-primary{% if dashboard.sort == key %} active{% endif %}" href="{{ url_for('instagram.dashboard', project_id=project.id, period=dashboard.period, sort=key) }}"{% if dashboard.sort == key %} aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}</nav></div>
-    <div class="table-responsive"><table class="table table-sm align-middle text-nowrap">
+  <section class="platform-panel" id="instagram-media-table" aria-labelledby="instagram-media-table-title">
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2"><h2 id="instagram-media-table-title" class="h5 mb-0">Publicações</h2><form class="platform-filter-control-row" method="get" action="{{ url_for('instagram.dashboard', project_id=project.id, _anchor='instagram-media-table') }}" data-partial-update data-partial-target="#instagram-media-table" data-partial-history="replace"><input type="hidden" name="period" value="{{ dashboard.period }}">{% if dashboard.taxonomy.selected_dimension %}<input type="hidden" name="taxonomy_dimension" value="{{ dashboard.taxonomy.selected_dimension.id }}">{% endif %}<label class="form-label mb-0" for="instagram-dashboard-sort-select">Ordenar por:</label><select class="form-select platform-filter-select" id="instagram-dashboard-sort-select" name="sort" data-filter-width="long" data-auto-submit>{% for key, label in sort_options %}<option value="{{ key }}"{% if dashboard.sort == key %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></form></div>
+    <div class="table-responsive"><table class="table platform-themed-table table-sm align-middle text-nowrap">
       <thead><tr><th scope="col">Publicação</th><th scope="col">Tipo</th><th scope="col">Publicada em</th><th scope="col">Alcance</th><th scope="col">Impressões</th><th scope="col">Reproduções</th><th scope="col">Curtidas</th><th scope="col">Comentários</th><th scope="col">Compartilhamentos</th><th scope="col">Salvamentos</th><th scope="col">Interações</th><th scope="col" title="Interações ÷ alcance × 100">Taxa de interação por alcance</th><th scope="col" title="Curtidas ÷ alcance × 100">Curtidas por alcance</th><th scope="col" title="Comentários ÷ alcance × 100">Comentários por alcance</th><th scope="col" title="Compartilhamentos ÷ alcance × 100">Compartilhamentos por alcance</th><th scope="col" title="Salvamentos ÷ alcance × 100">Salvamentos por alcance</th><th scope="col">Observada em</th><th scope="col">Ação</th></tr></thead>
       <tbody>{% for row in dashboard.table_rows %}<tr>
         <td><span class="d-inline-block text-truncate align-middle" style="max-width: 14rem" title="{{ row.caption }}">{{ row.short_caption }}</span></td>
         <td>{{ row.media.media_type_raw or '—' }}</td><td>{{ row.media.published_at | data_hora_local if row.media.published_at else '—' }}</td>
         <td>{{ number(row.observation.reach) if row.observation else '—' }}</td><td>{{ number(row.observation.impressions) if row.observation else '—' }}</td><td>{{ number(row.observation.plays) if row.observation else '—' }}</td><td>{{ number(row.observation.likes) if row.observation else '—' }}</td><td>{{ number(row.observation.comments_count) if row.observation else '—' }}</td><td>{{ number(row.observation.shares) if row.observation else '—' }}</td><td>{{ number(row.observation.saves) if row.observation else '—' }}</td><td>{{ number(row.observation.interactions) if row.observation else '—' }}</td>
         <td>{{ percentage(row.derived_metrics['interaction_rate_by_reach']) }}</td><td>{{ percentage(row.derived_metrics['likes_rate_by_reach']) }}</td><td>{{ percentage(row.derived_metrics['comments_rate_by_reach']) }}</td><td>{{ percentage(row.derived_metrics['shares_rate_by_reach']) }}</td><td>{{ percentage(row.derived_metrics['saves_rate_by_reach']) }}</td>
-        <td>{{ row.observation.observed_at | data_hora_local if row.observation else '—' }}</td><td>{% if row.permalink %}<a href="{{ row.permalink }}" target="_blank" rel="noopener noreferrer" aria-label="Abrir publicação {{ row.media.external_id or row.ordinal }}">Abrir</a>{% else %}—{% endif %}</td>
+        <td>{{ row.observation.observed_at | data_hora_local if row.observation else '—' }}</td><td>{% if row.permalink %}{% set open_action = 'Abrir publicação ' ~ (row.media.external_id or row.ordinal) %}<a class="btn btn-outline-primary btn-sm platform-action-button" href="{{ row.permalink }}" target="_blank" rel="noopener noreferrer" title="{{ open_action }}" aria-label="{{ open_action }}">{{ icon('abrir') }}</a>{% else %}—{% endif %}</td>
       </tr>{% endfor %}</tbody>
     </table></div>
   </section>
   {% endif %}
   <script id="instagram-dashboard-chart-data" type="application/json">{{ dashboard.chart_data | tojson }}</script>
-  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
-  <script src="{{ url_for('static', filename='js/plot_theme.js') }}"></script>
-  <script src="{{ url_for('static', filename='js/instagram_dashboard.js') }}"></script>
 {% endif %}
+</section>
+{% if dashboard.has_data %}
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<script src="{{ url_for('static', filename='js/plot_theme.js') }}"></script>
+<script src="{{ url_for('static', filename='js/instagram_dashboard.js') }}"></script>
+{% endif %}
+{{ tutorial_dialog(instagram_tutorial) }}
+<script defer src="{{ url_for('static', filename='js/platform_tutorial.js') }}"></script>
+<script defer src="{{ url_for('static', filename='js/platform_auto_submit.js') }}"></script>
 {% endblock %}
