@@ -284,6 +284,9 @@ class AnalyticsProject(db.Model):
     recommendation_runs: Mapped[list[InstagramRecommendationRun]] = relationship(
         back_populates="analytics_project"
     )
+    recommendation_actions: Mapped[list[InstagramRecommendationAction]] = relationship(
+        back_populates="analytics_project"
+    )
 
     __table_args__ = (
         CheckConstraint("length(trim(name)) > 0", name="ck_analytics_project_name"),
@@ -978,6 +981,9 @@ class InstagramRecommendation(db.Model):
     finding_links: Mapped[list[InstagramRecommendationFinding]] = relationship(
         back_populates="recommendation"
     )
+    actions: Mapped[list[InstagramRecommendationAction]] = relationship(
+        back_populates="recommendation"
+    )
 
     __table_args__ = (
         CheckConstraint("length(trim(canonical_key)) > 0", name="ck_instagram_recommendation_key"),
@@ -1021,6 +1027,87 @@ class InstagramRecommendationFinding(db.Model):
         Index(
             "ix_instagram_recommendation_findings_finding",
             "instagram_insight_finding_id",
+        ),
+    )
+
+
+class InstagramRecommendationAction(db.Model):
+    """Ação ou teste operacional, sempre derivado de uma recomendação persistida."""
+
+    __tablename__ = "instagram_recommendation_actions"
+    id: Mapped[str] = mapped_column(db.String(36), primary_key=True, default=lambda: str(uuid4()))
+    analytics_project_id: Mapped[str] = mapped_column(
+        db.ForeignKey("analytics_projects.id"), nullable=False
+    )
+    instagram_recommendation_id: Mapped[str] = mapped_column(
+        db.ForeignKey("instagram_recommendations.id"), nullable=False
+    )
+    created_by_user_id: Mapped[str] = mapped_column(db.ForeignKey("users.id"), nullable=False)
+    action_kind: Mapped[str] = mapped_column(db.String(16), nullable=False)
+    title: Mapped[str] = mapped_column(db.String(320), nullable=False)
+    description: Mapped[str] = mapped_column(db.Text, default="", nullable=False)
+    objective: Mapped[str] = mapped_column(db.Text, nullable=False)
+    hypothesis: Mapped[str | None] = mapped_column(db.Text)
+    target_metric: Mapped[str | None] = mapped_column(db.String(80))
+    baseline_value: Mapped[float | None] = mapped_column(db.Float)
+    target_value: Mapped[float | None] = mapped_column(db.Float)
+    success_criterion: Mapped[str | None] = mapped_column(db.Text)
+    planned_start_at: Mapped[datetime | None] = mapped_column(db.DateTime(timezone=True))
+    planned_end_at: Mapped[datetime | None] = mapped_column(db.DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(db.String(16), nullable=False, default="planned")
+    result_summary: Mapped[str | None] = mapped_column(db.Text)
+    observed_result: Mapped[float | None] = mapped_column(db.Float)
+    outcome: Mapped[str | None] = mapped_column(db.String(20))
+    created_at: Mapped[datetime] = mapped_column(
+        db.DateTime(timezone=True), default=utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        db.DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(db.DateTime(timezone=True))
+
+    analytics_project: Mapped[AnalyticsProject] = relationship(
+        back_populates="recommendation_actions"
+    )
+    recommendation: Mapped[InstagramRecommendation] = relationship(back_populates="actions")
+    created_by: Mapped[User] = relationship(foreign_keys=[created_by_user_id])
+
+    __table_args__ = (
+        CheckConstraint("action_kind IN ('action', 'test')", name="ck_instagram_action_kind"),
+        CheckConstraint(
+            "status IN ('planned', 'in_progress', 'completed', 'cancelled')",
+            name="ck_instagram_action_status",
+        ),
+        CheckConstraint(
+            "outcome IS NULL OR outcome IN ('supported', 'not_supported', 'inconclusive', 'not_applicable')",
+            name="ck_instagram_action_outcome",
+        ),
+        CheckConstraint("length(trim(title)) > 0", name="ck_instagram_action_title"),
+        CheckConstraint("length(trim(objective)) > 0", name="ck_instagram_action_objective"),
+        CheckConstraint(
+            "planned_start_at IS NULL OR planned_end_at IS NULL OR planned_start_at <= planned_end_at",
+            name="ck_instagram_action_planned_range",
+        ),
+        CheckConstraint(
+            "completed_at IS NULL OR status = 'completed'",
+            name="ck_instagram_action_completed_at",
+        ),
+        CheckConstraint(
+            "status != 'completed' OR (completed_at IS NOT NULL AND outcome IS NOT NULL "
+            "AND result_summary IS NOT NULL AND length(trim(result_summary)) > 0)",
+            name="ck_instagram_action_completion_payload",
+        ),
+        CheckConstraint(
+            "result_summary IS NULL OR length(result_summary) <= 4000",
+            name="ck_instagram_action_result_summary_length",
+        ),
+        Index(
+            "ix_instagram_actions_project_status_created",
+            "analytics_project_id", "status", "created_at",
+        ),
+        Index(
+            "ix_instagram_actions_recommendation_created",
+            "instagram_recommendation_id", "created_at",
         ),
     )
 

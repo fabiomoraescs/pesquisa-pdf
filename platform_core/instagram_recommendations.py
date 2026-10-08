@@ -440,6 +440,8 @@ def recommendation_run_for_insight(
             selectinload(InstagramRecommendationRun.recommendations)
             .selectinload(InstagramRecommendation.finding_links)
             .joinedload(InstagramRecommendationFinding.finding),
+            selectinload(InstagramRecommendationRun.recommendations)
+            .selectinload(InstagramRecommendation.actions),
             joinedload(InstagramRecommendationRun.insight_run),
         )
     )
@@ -483,6 +485,7 @@ def recommendation_for_project(
             selectinload(InstagramRecommendation.finding_links)
             .joinedload(InstagramRecommendationFinding.finding)
             .joinedload(InstagramInsightFinding.insight_run),
+            selectinload(InstagramRecommendation.actions),
         )
     )
 

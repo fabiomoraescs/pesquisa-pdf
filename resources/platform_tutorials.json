@@ -1202,6 +1202,22 @@
             "items": []
           },
           {
+            "id": "acoes-e-testes-derivados",
+            "title": "Como transformar recomendações em ações e testes",
+            "keywords": ["ação", "teste", "baseline", "métrica", "critério de sucesso", "resultado", "inconclusivo", "rastreabilidade"],
+            "body": [
+              "Uma recomendação não é uma obrigação nem executa nenhuma mudança fora da plataforma. Ao escolher Transformar em ação, você registra uma decisão operacional humana; ao escolher Criar teste, registra uma intervenção que pretende acompanhar em novo ciclo. A cadeia Ação/Teste → Recomendação → Achado → Evidência preserva o contexto analítico de origem.",
+              "O formulário pode sugerir título, objetivo, hipótese e métrica com base na recomendação e nos achados já persistidos. Revise tudo antes de salvar. Baseline é um snapshot opcional do valor registrado na origem; zero continua sendo um valor válido. O Análysis não inventa meta numérica: use valor-alvo apenas quando você o definir ou descreva um critério de sucesso textual.",
+              "Concluir um teste permite registrar resultado observado e uma conclusão consistente, não consistente, inconclusiva ou não aplicável. Mesmo uma melhora antes/depois não prova causalidade: período, público, distribuição, assunto e outras mudanças podem influenciar. Resultado inconclusivo é um registro legítimo quando há amostra baixa, dados insuficientes, período curto ou fatores simultâneos.",
+              "Exemplo: um achado registra que conteúdos educativos tiveram mais salvamentos; a recomendação sugere testar maior presença; o teste registra essa presença em próximo ciclo e acompanha a mediana de salvamentos. Se ela aumentar, isso orienta uma nova leitura dos dados, mas não demonstra por si só que a intervenção causou o aumento."
+            ],
+            "items": [
+              {"name": "Ação", "description": "Escolha operacional registrada pelo usuário, como revisar clareza, organizar acompanhamento humano ou ampliar cobertura de dados."},
+              {"name": "Teste", "description": "Intervenção delimitada com hipótese e métrica acompanhada; não é automaticamente um experimento causal controlado."},
+              {"name": "Rastreabilidade", "description": "Ação/Teste → Recomendação → Achado → Evidência permite recuperar o contexto analítico sem recalcular o motor."}
+            ]
+          },
+          {
             "id": "runs-versoes-e-proximo-passo",
             "title": "Runs, versões e próximo passo",
             "keywords": ["run", "engine_version", "rule_version", "versão", "histórico", "fluxo", "Dashboard"],

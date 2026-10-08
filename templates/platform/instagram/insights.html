@@ -77,7 +77,7 @@
         <article class="platform-list-item">
           <div><div class="platform-list-title">{{ recommendation.title }}</div><div class="platform-list-meta">{{ recommendation.summary }}</div></div>
           <div class="platform-list-meta"><span class="platform-badge">Prioridade {{ {'low': 'baixa', 'medium': 'média', 'high': 'alta'}[recommendation.priority] }}</span><span class="platform-badge ms-1">Suporte {{ {'exploratory': 'exploratório', 'moderate': 'moderado', 'consistent': 'consistente'}[recommendation.support_level] }}</span><div class="mt-1">{{ recommendation_type_labels[recommendation.recommendation_type] }} · {{ recommendation.finding_links | length }} achado(s) de origem</div></div>
-          <div class="platform-list-actions"><a class="btn btn-outline-primary btn-sm platform-action-button" href="{{ url_for('instagram.recommendation_detail', project_id=project.id, recommendation_id=recommendation.id) }}" title="Ver recomendação" aria-label="Ver recomendação">{{ icon('abrir') }}</a></div>
+          <div class="platform-list-actions">{% if can_mutate %}<a class="btn btn-outline-primary btn-sm platform-action-button" href="{{ url_for('instagram.new_recommendation_action', project_id=project.id, recommendation_id=recommendation.id, action_kind='action') }}" title="Transformar em ação" aria-label="Transformar em ação">{{ icon('ativar') }}</a><a class="btn btn-outline-primary btn-sm platform-action-button" href="{{ url_for('instagram.new_recommendation_action', project_id=project.id, recommendation_id=recommendation.id, action_kind='test') }}" title="Criar teste" aria-label="Criar teste">{{ icon('analytics') }}</a>{% endif %}<a class="btn btn-outline-primary btn-sm platform-action-button" href="{{ url_for('instagram.recommendation_detail', project_id=project.id, recommendation_id=recommendation.id) }}" title="Ver recomendação" aria-label="Ver recomendação">{{ icon('abrir') }}</a></div>
         </article>
         {% endfor %}
       </div>
@@ -88,8 +88,29 @@
       <div class="platform-empty-state mt-3"><p class="mb-0">Gere recomendações a partir deste run de Insights para registrar orientações rastreáveis.</p></div>
     {% endif %}
   </section>
+  <section id="instagram-actions" class="platform-panel mb-3" aria-labelledby="instagram-actions-title">
+    <div class="d-flex flex-wrap align-items-start justify-content-between gap-2">
+      <div><h2 id="instagram-actions-title" class="h5 mb-1">Ações/Testes</h2><p class="platform-muted mb-0">Registros operacionais vinculados às recomendações; não executam intervenções fora do Análysis.</p></div>
+      {% if action_counts['planned'] or action_counts['in_progress'] or action_counts['completed'] or action_counts['cancelled'] %}<div class="d-flex flex-wrap gap-1"><span class="platform-badge">Planejadas {{ action_counts['planned'] }}</span><span class="platform-badge">Em andamento {{ action_counts['in_progress'] }}</span><span class="platform-badge">Concluídas {{ action_counts['completed'] }}</span></div>{% endif %}
+    </div>
+    {% if action_counts['planned'] or action_counts['in_progress'] or action_counts['completed'] or action_counts['cancelled'] %}
+      <form class="platform-filter-control-row platform-filter-control-row--start mt-3" method="get" action="{{ url_for('instagram.insights', project_id=project.id, _anchor='instagram-actions') }}" data-partial-update data-partial-target="#instagram-actions" data-partial-history="replace">
+        <input type="hidden" name="period" value="{{ period }}">
+        <label class="visually-hidden" for="instagram-action-kind-filter">Tipo</label><select class="form-select platform-filter-select" id="instagram-action-kind-filter" name="action_kind" data-auto-submit><option value="all"{% if action_kind == 'all' %} selected{% endif %}>Tipo: Todos</option>{% for key, label in action_kind_labels.items() %}<option value="{{ key }}"{% if action_kind == key %} selected{% endif %}>Tipo: {{ label }}</option>{% endfor %}</select>
+        <label class="visually-hidden" for="instagram-action-status-filter">Status</label><select class="form-select platform-filter-select" id="instagram-action-status-filter" name="action_status" data-auto-submit><option value="all"{% if action_status == 'all' %} selected{% endif %}>Status: Todos</option>{% for key, label in action_status_labels.items() %}<option value="{{ key }}"{% if action_status == key %} selected{% endif %}>Status: {{ label }}</option>{% endfor %}</select>
+        <noscript><button class="btn btn-outline-primary btn-sm" type="submit">Atualizar</button></noscript>
+      </form>
+      {% if actions %}<div class="platform-view-list mt-3">
+      {% for action in actions %}
+        <article class="platform-list-item"><div><div class="platform-list-title">{{ action.title }}</div><div class="platform-list-meta">{{ action_kind_labels[action.action_kind] }} · Origem: {{ action.recommendation.title }}</div></div><div class="platform-list-meta"><span class="platform-badge">{{ action_status_labels[action.status] }}</span>{% if action.target_metric %}<div class="mt-1">Métrica: {{ action.target_metric }}</div>{% endif %}</div><div class="platform-list-actions"><a class="btn btn-outline-primary btn-sm platform-action-button" href="{{ url_for('instagram.recommendation_action_detail', project_id=project.id, action_id=action.id) }}" title="Abrir {{ action_kind_labels[action.action_kind] | lower }}" aria-label="Abrir {{ action_kind_labels[action.action_kind] | lower }}">{{ icon('abrir') }}</a></div></article>
+      {% endfor %}
+      </div>{% else %}<div class="platform-empty-state mt-3"><p class="mb-0">Nenhuma ação ou teste corresponde aos filtros selecionados.</p></div>{% endif %}
+    {% else %}
+      <div class="platform-empty-state mt-3"><p class="mb-0">Ainda não há ações ou testes derivados das recomendações deste projeto.</p></div>
+    {% endif %}
+  </section>
   {% endif %}
 </section>
 {{ tutorial_dialog(instagram_tutorial) }}
-<script defer src="{{ url_for('static', filename='js/platform_tutorial.js') }}"></script>
+<script defer src="{{ url_for('static', filename='js/platform_tutorial.js') }}"></script><script defer src="{{ url_for('static', filename='js/platform_auto_submit.js') }}"></script>
 {% endblock %}

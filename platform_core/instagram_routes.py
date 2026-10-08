@@ -81,6 +81,20 @@ from .instagram_recommendations import (
     recommendation_for_project,
     recommendation_run_for_insight,
 )
+from .instagram_actions import (
+    ACTION_KIND_LABELS,
+    ACTION_OUTCOME_LABELS,
+    ACTION_STATUS_LABELS,
+    InstagramActionError,
+    InstagramActionPersistenceError,
+    action_counts,
+    action_prefill,
+    actions_for_project,
+    create_recommendation_action,
+    parse_planned_datetime,
+    recommendation_action_for_project,
+    transition_recommendation_action,
+)
 from .instagram_previews import InstagramPreviewExpired, previews
 from .instagram_dashboard import PERIOD_DAYS, TABLE_SORTS, build_instagram_dashboard
 from .instagram_taxonomy import (
@@ -310,6 +324,12 @@ def insights(project_id: UUID):
     period = request.args.get("period", "30d")
     if period not in PERIOD_DAYS:
         abort(400)
+    action_kind = request.args.get("action_kind", "all")
+    action_status = request.args.get("action_status", "all")
+    try:
+        actions = actions_for_project(project, action_kind=action_kind, status=action_status)
+    except InstagramActionError:
+        abort(400)
     run = latest_insight_run(project, period)
     recommendation_run = recommendation_run_for_insight(project, run.id) if run else None
     period_options = (("7d", "7 dias"), ("30d", "30 dias"), ("90d", "90 dias"),
@@ -322,7 +342,14 @@ def insights(project_id: UUID):
         recommendation_run=recommendation_run,
         recommendations=ordered_recommendations(recommendation_run),
         period=period, period_options=period_options, period_label=dict(period_options)[period],
+        actions=actions,
+        action_counts=action_counts(actions_for_project(project)),
+        action_kind=action_kind,
+        action_status=action_status,
+        action_kind_labels=ACTION_KIND_LABELS,
+        action_status_labels=ACTION_STATUS_LABELS,
         can_generate=project.status == "active" and project.archived_at is None,
+        can_mutate=project.status == "active" and project.archived_at is None,
     )
 
 
@@ -421,7 +448,147 @@ def recommendation_detail(project_id: UUID, recommendation_id: UUID):
         recommendation_run=recommendation.recommendation_run,
         insight_run=recommendation.recommendation_run.insight_run,
         findings=linked_findings(recommendation),
+        action_kind_labels=ACTION_KIND_LABELS,
+        action_status_labels=ACTION_STATUS_LABELS,
+        can_mutate=project.status == "active" and project.archived_at is None,
     )
+
+
+def _action_form_values(prefill, submitted: bool = False) -> dict[str, object]:
+    """Mantém valores submetidos na validação e usa o prefill determinístico no GET."""
+    if submitted:
+        return {
+            "title": request.form.get("title", ""),
+            "description": request.form.get("description", ""),
+            "objective": request.form.get("objective", ""),
+            "hypothesis": request.form.get("hypothesis", ""),
+            "target_metric": request.form.get("target_metric", ""),
+            "baseline_value": request.form.get("baseline_value", ""),
+            "target_value": request.form.get("target_value", ""),
+            "success_criterion": request.form.get("success_criterion", ""),
+            "planned_start_at": request.form.get("planned_start_at", ""),
+            "planned_end_at": request.form.get("planned_end_at", ""),
+        }
+    return {
+        "title": prefill.title,
+        "description": prefill.description,
+        "objective": prefill.objective,
+        "hypothesis": prefill.hypothesis,
+        "target_metric": prefill.target_metric or "",
+        "baseline_value": "" if prefill.baseline_value is None else prefill.baseline_value,
+        "target_value": "",
+        "success_criterion": "",
+        "planned_start_at": "",
+        "planned_end_at": "",
+    }
+
+
+@instagram_bp.route(
+    "/projects/<uuid:project_id>/insights/recommendations/<uuid:recommendation_id>/actions/<action_kind>/new",
+    methods=("GET", "POST"),
+)
+@login_required
+def new_recommendation_action(project_id: UUID, recommendation_id: UUID, action_kind: str):
+    project = _project_for_current_user(project_id, active=True)
+    recommendation = recommendation_for_project(project, str(recommendation_id))
+    if recommendation is None or action_kind not in ACTION_KIND_LABELS:
+        abort(404)
+    prefill = action_prefill(recommendation, action_kind)
+    if request.method == "POST":
+        values = _action_form_values(prefill, submitted=True)
+        try:
+            values["planned_start_at"] = parse_planned_datetime(
+                str(values["planned_start_at"]), current_app.config["PRESENTATION_TIMEZONE"],
+            )
+            values["planned_end_at"] = parse_planned_datetime(
+                str(values["planned_end_at"]), current_app.config["PRESENTATION_TIMEZONE"],
+            )
+            action = create_recommendation_action(
+                project, recommendation, action_kind, values, actor_id=current_user.id,
+            )
+        except InstagramActionError as error:
+            flash(str(error), "danger")
+            return render_template(
+                "platform/instagram/recommendation_action_form.html",
+                project=project, recommendation=recommendation, prefill=prefill,
+                form_values=_action_form_values(prefill, submitted=True),
+                action_kind=action_kind, action_kind_label=ACTION_KIND_LABELS[action_kind],
+            ), 400
+        except InstagramActionPersistenceError:
+            current_app.logger.exception("Falha ao criar ação/teste Instagram")
+            flash("Não foi possível criar a ação ou teste. Nenhum registro parcial foi gravado.", "danger")
+            return render_template(
+                "platform/instagram/recommendation_action_form.html",
+                project=project, recommendation=recommendation, prefill=prefill,
+                form_values=_action_form_values(prefill, submitted=True),
+                action_kind=action_kind, action_kind_label=ACTION_KIND_LABELS[action_kind],
+            ), 500
+        flash(f"{ACTION_KIND_LABELS[action_kind]} criada e vinculada à recomendação.", "success")
+        return redirect(url_for(
+            "instagram.recommendation_action_detail", project_id=project.id, action_id=action.id,
+        ))
+    return render_template(
+        "platform/instagram/recommendation_action_form.html",
+        project=project, recommendation=recommendation, prefill=prefill,
+        form_values=_action_form_values(prefill), action_kind=action_kind,
+        action_kind_label=ACTION_KIND_LABELS[action_kind],
+    )
+
+
+@instagram_bp.get("/projects/<uuid:project_id>/insights/actions/<uuid:action_id>")
+@login_required
+def recommendation_action_detail(project_id: UUID, action_id: UUID):
+    project = _project_for_current_user(project_id)
+    action = recommendation_action_for_project(project, str(action_id))
+    if action is None:
+        abort(404)
+    return render_template(
+        "platform/instagram/recommendation_action_detail.html",
+        project=project, action=action, recommendation=action.recommendation,
+        recommendation_run=action.recommendation.recommendation_run,
+        insight_run=action.recommendation.recommendation_run.insight_run,
+        findings=linked_findings(action.recommendation),
+        action_kind_labels=ACTION_KIND_LABELS, action_status_labels=ACTION_STATUS_LABELS,
+        action_outcome_labels=ACTION_OUTCOME_LABELS,
+        can_mutate=project.status == "active" and project.archived_at is None,
+    )
+
+
+def _transition_action_route(project_id: UUID, action_id: UUID, status: str):
+    project = _project_for_current_user(project_id, active=True)
+    action = recommendation_action_for_project(project, str(action_id))
+    if action is None:
+        abort(404)
+    try:
+        transition_recommendation_action(action, status, request.form)
+    except InstagramActionError as error:
+        abort(400, description=str(error))
+    except InstagramActionPersistenceError:
+        current_app.logger.exception("Falha ao atualizar ação/teste Instagram")
+        abort(500)
+    flash(f"Status atualizado para {ACTION_STATUS_LABELS[status].casefold()}.", "success")
+    return redirect(url_for(
+        "instagram.recommendation_action_detail", project_id=project.id, action_id=action.id,
+        _anchor="instagram-action-status",
+    ))
+
+
+@instagram_bp.post("/projects/<uuid:project_id>/insights/actions/<uuid:action_id>/start")
+@login_required
+def start_recommendation_action(project_id: UUID, action_id: UUID):
+    return _transition_action_route(project_id, action_id, "in_progress")
+
+
+@instagram_bp.post("/projects/<uuid:project_id>/insights/actions/<uuid:action_id>/complete")
+@login_required
+def complete_recommendation_action(project_id: UUID, action_id: UUID):
+    return _transition_action_route(project_id, action_id, "completed")
+
+
+@instagram_bp.post("/projects/<uuid:project_id>/insights/actions/<uuid:action_id>/cancel")
+@login_required
+def cancel_recommendation_action(project_id: UUID, action_id: UUID):
+    return _transition_action_route(project_id, action_id, "cancelled")
 
 
 def _taxonomy_dimension_anchor(dimension_id: UUID | str) -> str:

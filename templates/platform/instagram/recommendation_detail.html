@@ -13,7 +13,7 @@
       <h1 id="instagram-recommendation-detail-title" class="platform-page-title">{{ recommendation.title }}</h1>
       <p class="platform-muted mb-0">{{ project.name }} · Recomendação derivada de achados versionados.</p>
     </div>
-    <div class="d-flex flex-wrap align-items-center gap-2"><a class="btn btn-outline-primary btn-sm" href="{{ url_for('instagram.insights', project_id=project.id, period=insight_run.period_key, _anchor='instagram-recommendations') }}">Voltar aos insights</a>{{ tutorial_button(instagram_tutorial, label='Abrir tutorial de Insights') }}</div>
+    <div class="d-flex flex-wrap align-items-center gap-2">{% if can_mutate %}<a class="btn btn-outline-primary btn-sm" href="{{ url_for('instagram.new_recommendation_action', project_id=project.id, recommendation_id=recommendation.id, action_kind='action') }}">Transformar em ação</a><a class="btn btn-outline-primary btn-sm" href="{{ url_for('instagram.new_recommendation_action', project_id=project.id, recommendation_id=recommendation.id, action_kind='test') }}">Criar teste</a>{% endif %}<a class="btn btn-outline-primary btn-sm" href="{{ url_for('instagram.insights', project_id=project.id, period=insight_run.period_key, _anchor='instagram-recommendations') }}">Voltar aos insights</a>{{ tutorial_button(instagram_tutorial, label='Abrir tutorial de Insights') }}</div>
   </div>
 </section>
 {{ project_tabs(project, 'insights') }}
@@ -21,6 +21,10 @@
   <h2 id="instagram-recommendation-summary-title" class="h5">Orientação</h2>
   <p>{{ recommendation.summary }}</p>
   <div class="d-flex flex-wrap gap-2"><span class="platform-badge">Prioridade {{ {'low': 'baixa', 'medium': 'média', 'high': 'alta'}[recommendation.priority] }}</span><span class="platform-badge">Suporte {{ {'exploratory': 'exploratório', 'moderate': 'moderado', 'consistent': 'consistente'}[recommendation.support_level] }}</span><span class="platform-badge">{{ recommendation_type_labels[recommendation.recommendation_type] }}</span></div>
+</section>
+<section class="platform-panel mb-3" aria-labelledby="instagram-recommendation-actions-title">
+  <h2 id="instagram-recommendation-actions-title" class="h5">Ações/Testes derivados</h2>
+  {% if recommendation.actions %}<div class="platform-view-list">{% for action in recommendation.actions %}<article class="platform-list-item"><div><div class="platform-list-title">{{ action.title }}</div><div class="platform-list-meta">{{ action_kind_labels[action.action_kind] }} · {{ action_status_labels[action.status] }}</div></div><div class="platform-list-actions"><a class="btn btn-outline-primary btn-sm platform-action-button" href="{{ url_for('instagram.recommendation_action_detail', project_id=project.id, action_id=action.id) }}" title="Abrir {{ action_kind_labels[action.action_kind] | lower }}" aria-label="Abrir {{ action_kind_labels[action.action_kind] | lower }}">{{ icon('abrir') }}</a></div></article>{% endfor %}</div>{% else %}<p class="platform-muted mb-0">Esta recomendação ainda não originou ação ou teste.</p>{% endif %}
 </section>
 <section class="platform-panel mb-3" aria-labelledby="instagram-recommendation-rationale-title">
   <h2 id="instagram-recommendation-rationale-title" class="h5">Por que esta orientação foi registrada</h2>
