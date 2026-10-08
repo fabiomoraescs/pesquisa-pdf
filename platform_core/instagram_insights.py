@@ -31,6 +31,7 @@ from .instagram_dashboard import (
     dashboard_period_bounds,
     selected_media_rows,
 )
+from .instagram_cohorts import media_type_cohort, taxonomy_category_cohort
 from .instagram_metrics import DERIVED_METRICS_VERSION, normalized_content_type
 from .instagram_taxonomy import current_classifications
 from .models import (
@@ -114,6 +115,7 @@ class FindingDraft:
     support_explanation: str
     details: Mapping[str, object]
     evidence: tuple[EvidenceReference, ...]
+    cohort: Mapping[str, str] | None = None
 
 
 @dataclass(frozen=True)
@@ -244,7 +246,8 @@ def _performance_finding(*, rule_id: str, kind: str, group_label: str,
                          comparison_label: str, group_rows: Sequence[MediaRow],
                          comparison_rows: Sequence[MediaRow], metric_key: str, metric_label: str,
                          rate: bool, group_classifications: Mapping[str, Sequence[InstagramMediaClassification]] | None = None,
-                         comparison_classifications: Mapping[str, Sequence[InstagramMediaClassification]] | None = None) -> FindingDraft | None:
+                         comparison_classifications: Mapping[str, Sequence[InstagramMediaClassification]] | None = None,
+                         cohort: Mapping[str, str] | None = None) -> FindingDraft | None:
     group_values = [value for row in group_rows if (value := _metric_value(row, metric_key)) is not None]
     comparison_values = [value for row in comparison_rows if (value := _metric_value(row, metric_key)) is not None]
     group_n, comparison_n = len(group_values), len(comparison_values)
@@ -285,7 +288,7 @@ def _performance_finding(*, rule_id: str, kind: str, group_label: str,
             "group_publications": len(group_rows), "comparison_publications": len(comparison_rows),
             "metric_label": metric_label, "metric_is_rate": rate,
             "derived_metrics_version": DERIVED_METRICS_VERSION if rate else None,
-        }, evidence=_unique_evidence(evidence),
+        }, evidence=_unique_evidence(evidence), cohort=cohort,
     )
 
 
@@ -322,6 +325,9 @@ def _performance_by_editorial(rows: Sequence[MediaRow], project: AnalyticsProjec
                     comparison_label="demais publicações elegíveis", group_rows=group,
                     comparison_rows=comparison, metric_key=metric_key, metric_label=metric_label,
                     rate=rate, group_classifications=group_classes,
+                    cohort=taxonomy_category_cohort(
+                        dimension.id, category.id, dimension.name, category.name,
+                    ),
                 )
                 if finding is not None:
                     findings.append(finding)
@@ -335,7 +341,7 @@ def _performance_by_media_type(rows: Sequence[MediaRow]) -> list[FindingDraft]:
         if key != "unknown":
             by_type[(key, label)].append(row)
     findings: list[FindingDraft] = []
-    for (_key, label), group in sorted(by_type.items(), key=lambda item: (item[0][1], item[0][0])):
+    for (key, label), group in sorted(by_type.items(), key=lambda item: (item[0][1], item[0][0])):
         group_ids = {row.media.id for row in group}
         comparison = tuple(row for row in rows if row.media.id not in group_ids)
         for metric_key, metric_label, rate in PERFORMANCE_METRICS:
@@ -344,6 +350,7 @@ def _performance_by_media_type(rows: Sequence[MediaRow]) -> list[FindingDraft]:
                 group_label=f"Tipo de mídia: {label}", comparison_label="demais publicações elegíveis",
                 group_rows=group, comparison_rows=comparison, metric_key=metric_key,
                 metric_label=metric_label, rate=rate,
+                cohort=media_type_cohort(key, label),
             )
             if finding is not None:
                 findings.append(finding)
@@ -619,6 +626,7 @@ def generate_insights(project: AnalyticsProject, period: str, timezone_name: str
                 group_n=draft.group_n, comparison_n=draft.comparison_n, coverage=draft.coverage,
                 support_level=draft.support_level, support_explanation=draft.support_explanation,
                 details_json=dict(draft.details),
+                cohort_json=dict(draft.cohort) if draft.cohort else None,
             )
             db.session.add(finding)
             db.session.flush()

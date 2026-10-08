@@ -24,6 +24,7 @@ from .models import (
     InstagramInsightEvidence,
     InstagramInsightFinding,
     InstagramInsightRun,
+    InstagramLearning,
     InstagramRecommendation,
     InstagramRecommendationAction,
     InstagramRecommendationActionEvaluation,
@@ -35,6 +36,7 @@ from .models import (
     InstagramTaxonomyCategory,
     InstagramTaxonomyDimension,
     User,
+    instagram_learning_evaluations,
 )
 from .services import record_audit
 
@@ -113,6 +115,18 @@ def _delete_project_records(project_id: str) -> None:
     action_ids = select(InstagramRecommendationAction.id).where(or_(
         InstagramRecommendationAction.analytics_project_id == project_id,
         InstagramRecommendationAction.instagram_recommendation_id.in_(recommendation_ids),
+    ))
+    evaluation_ids = select(InstagramRecommendationActionEvaluation.id).where(or_(
+        InstagramRecommendationActionEvaluation.instagram_recommendation_action_id.in_(action_ids),
+        InstagramRecommendationActionEvaluation.analytics_run_id.in_(run_ids),
+    ))
+    # Aprendizados e seus vínculos precisam ser removidos antes dos snapshots
+    # de acompanhamento; a ordem não afeta a remoção individual de Learning.
+    db.session.execute(delete(instagram_learning_evaluations).where(
+        instagram_learning_evaluations.c.instagram_recommendation_action_evaluation_id.in_(evaluation_ids)
+    ))
+    db.session.execute(delete(InstagramLearning).where(
+        InstagramLearning.analytics_project_id == project_id
     ))
     db.session.execute(delete(InstagramRecommendationActionEvaluation).where(or_(
         InstagramRecommendationActionEvaluation.instagram_recommendation_action_id.in_(action_ids),

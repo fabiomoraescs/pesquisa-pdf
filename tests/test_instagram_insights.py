@@ -220,6 +220,10 @@ class InstagramInsightsTests(unittest.TestCase):
         ))
         self.assertEqual((finding.group_value, finding.comparison_value), (1000.0, 100.0))
         self.assertEqual((finding.group_n, finding.comparison_n), (3, 3))
+        self.assertEqual(finding.cohort, {
+            "version": "instagram-cohort-v1", "kind": "media_type", "media_type_key": "reel",
+            "label": "Tipo de mídia: Reels",
+        })
 
     def test_thresholds_coverage_zero_and_small_groups_do_not_create_performance_finding(self):
         run = self.analytics_run()

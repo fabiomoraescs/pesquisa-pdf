@@ -287,6 +287,7 @@ class AnalyticsProject(db.Model):
     recommendation_actions: Mapped[list[InstagramRecommendationAction]] = relationship(
         back_populates="analytics_project"
     )
+    learnings: Mapped[list[InstagramLearning]] = relationship(back_populates="analytics_project")
 
     __table_args__ = (
         CheckConstraint("length(trim(name)) > 0", name="ck_analytics_project_name"),
@@ -846,6 +847,8 @@ class InstagramInsightFinding(db.Model):
     support_level: Mapped[str] = mapped_column(db.String(16), nullable=False)
     support_explanation: Mapped[str] = mapped_column(db.String(500), nullable=False)
     details_json: Mapped[dict] = mapped_column(db.JSON, default=dict, nullable=False)
+    # A coorte é um snapshot estruturado, não uma interpretação do título livre.
+    cohort_json: Mapped[dict | None] = mapped_column(db.JSON)
     created_at: Mapped[datetime] = mapped_column(
         db.DateTime(timezone=True), default=utcnow, nullable=False
     )
@@ -1034,6 +1037,27 @@ class InstagramRecommendationFinding(db.Model):
     )
 
 
+instagram_learning_evaluations = db.Table(
+    "instagram_learning_evaluations",
+    db.Column(
+        "instagram_learning_id",
+        db.String(36),
+        db.ForeignKey("instagram_learnings.id"),
+        primary_key=True,
+    ),
+    db.Column(
+        "instagram_recommendation_action_evaluation_id",
+        db.String(36),
+        db.ForeignKey("instagram_recommendation_action_evaluations.id"),
+        primary_key=True,
+    ),
+    Index(
+        "ix_instagram_learning_evaluations_evaluation",
+        "instagram_recommendation_action_evaluation_id",
+    ),
+)
+
+
 class InstagramRecommendationAction(db.Model):
     """Ação ou teste operacional, sempre derivado de uma recomendação persistida."""
 
@@ -1052,6 +1076,8 @@ class InstagramRecommendationAction(db.Model):
     objective: Mapped[str] = mapped_column(db.Text, nullable=False)
     hypothesis: Mapped[str | None] = mapped_column(db.Text)
     target_metric: Mapped[str | None] = mapped_column(db.String(80))
+    cohort_json: Mapped[dict | None] = mapped_column(db.JSON)
+    cohort_signature: Mapped[str | None] = mapped_column(db.String(64))
     baseline_value: Mapped[float | None] = mapped_column(db.Float)
     target_value: Mapped[float | None] = mapped_column(db.Float)
     success_criterion: Mapped[str | None] = mapped_column(db.Text)
@@ -1134,6 +1160,8 @@ class InstagramRecommendationActionEvaluation(db.Model):
     analytics_run_id: Mapped[str] = mapped_column(db.ForeignKey("analytics_runs.id"), nullable=False)
     created_by_user_id: Mapped[str] = mapped_column(db.ForeignKey("users.id"), nullable=False)
     metric_key: Mapped[str | None] = mapped_column(db.String(80))
+    cohort_json: Mapped[dict | None] = mapped_column(db.JSON)
+    cohort_signature: Mapped[str | None] = mapped_column(db.String(64))
     baseline_value: Mapped[float | None] = mapped_column(db.Float)
     followup_value: Mapped[float | None] = mapped_column(db.Float)
     absolute_change: Mapped[float | None] = mapped_column(db.Float)
@@ -1157,6 +1185,9 @@ class InstagramRecommendationActionEvaluation(db.Model):
     action: Mapped[InstagramRecommendationAction] = relationship(back_populates="evaluations")
     analytics_run: Mapped[AnalyticsRun] = relationship(back_populates="action_evaluations")
     created_by: Mapped[User] = relationship(foreign_keys=[created_by_user_id])
+    learnings: Mapped[list[InstagramLearning]] = relationship(
+        secondary=instagram_learning_evaluations, back_populates="evaluations"
+    )
 
     __table_args__ = (
         CheckConstraint(
@@ -1207,12 +1238,58 @@ def _preserve_instagram_action_evaluation_snapshot(
     """Impede que uma edição interpretativa altere o snapshot quantitativo."""
     immutable_fields = (
         "instagram_recommendation_action_id", "analytics_run_id", "created_by_user_id", "metric_key",
+        "cohort_json", "cohort_signature",
         "baseline_value", "followup_value", "absolute_change", "relative_change",
         "baseline_sample_size", "baseline_coverage", "followup_sample_size",
         "followup_population_size", "followup_coverage", "limitations_json", "evaluation_version",
     )
     if any(inspect(evaluation).attrs[field].history.has_changes() for field in immutable_fields):
         raise ValueError("Os snapshots quantitativos do acompanhamento não podem ser alterados.")
+
+
+class InstagramLearning(db.Model):
+    """Síntese humana e rastreável baseada em avaliações comparáveis."""
+
+    __tablename__ = "instagram_learnings"
+    id: Mapped[str] = mapped_column(db.String(36), primary_key=True, default=lambda: str(uuid4()))
+    analytics_project_id: Mapped[str] = mapped_column(
+        db.ForeignKey("analytics_projects.id"), nullable=False
+    )
+    created_by_user_id: Mapped[str] = mapped_column(db.ForeignKey("users.id"), nullable=False)
+    title: Mapped[str] = mapped_column(db.String(320), nullable=False)
+    learning_summary: Mapped[str] = mapped_column(db.Text, nullable=False)
+    assessment: Mapped[str] = mapped_column(db.String(24), nullable=False)
+    metric_key: Mapped[str | None] = mapped_column(db.String(80))
+    cohort_json: Mapped[dict | None] = mapped_column(db.JSON)
+    cohort_signature: Mapped[str | None] = mapped_column(db.String(64))
+    learning_version: Mapped[str] = mapped_column(db.String(80), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        db.DateTime(timezone=True), default=utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        db.DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
+
+    analytics_project: Mapped[AnalyticsProject] = relationship(back_populates="learnings")
+    created_by: Mapped[User] = relationship(foreign_keys=[created_by_user_id])
+    evaluations: Mapped[list[InstagramRecommendationActionEvaluation]] = relationship(
+        secondary=instagram_learning_evaluations, back_populates="learnings"
+    )
+
+    __table_args__ = (
+        CheckConstraint("length(trim(title)) > 0", name="ck_instagram_learning_title"),
+        CheckConstraint(
+            "length(trim(learning_summary)) > 0 AND length(learning_summary) <= 4000",
+            name="ck_instagram_learning_summary",
+        ),
+        CheckConstraint(
+            "assessment IN ('consistent', 'not_consistent', 'mixed', 'inconclusive', 'not_evaluable')",
+            name="ck_instagram_learning_assessment",
+        ),
+        CheckConstraint("length(trim(learning_version)) > 0", name="ck_instagram_learning_version"),
+        Index("ix_instagram_learnings_project_created", "analytics_project_id", "created_at"),
+        Index("ix_instagram_learnings_project_cohort", "analytics_project_id", "cohort_signature"),
+    )
 
 
 def normalized_qualitative_code_name(name: str) -> str:

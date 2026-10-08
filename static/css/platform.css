@@ -539,10 +539,13 @@ legend.platform-form-section-title { float: none; }
 .platform-list-item .platform-list-detail { grid-column: 1 / -1; }
 .platform-action-button { display: inline-flex; align-items: center; justify-content: center; width: 2.25rem; min-width: 2.25rem; height: 2.25rem; padding: .3rem; border-radius: .55rem; line-height: 1; }
 .platform-action-button .platform-icon { width: 1rem; height: 1rem; flex-basis: 1rem; }
+.platform-action-button--disabled { cursor: not-allowed; opacity: .55; }
+.platform-action-button--disabled:focus-visible { outline: 2px solid var(--muted); outline-offset: 2px; }
 .platform-list-actions form { margin: 0; }
 .platform-action-set { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; }
 .platform-list-item .platform-list-meta .platform-badge { margin: 0; }
 .platform-list-item .platform-list-actions .btn { white-space: nowrap; }
+.platform-list-index { display: inline-block; margin-inline-end: .45rem; color: var(--muted); font-size: .75rem; font-weight: 400; font-variant-numeric: tabular-nums; }
 .platform-view-cardbox { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); gap: 1rem; }
 .platform-view-cardbox .platform-list-item { display: flex; flex-direction: column; align-items: stretch; gap: .6rem; padding: 1.2rem; border: 1px solid var(--border); border-radius: .85rem; background: var(--surface); box-shadow: 0 .2rem .7rem var(--shadow); }
 .platform-view-cardbox .platform-list-actions { justify-content: flex-start; margin-top: auto; }

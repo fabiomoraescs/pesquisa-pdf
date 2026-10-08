@@ -13,6 +13,7 @@ from sqlalchemy import func, inspect, select
 
 from platform_helpers import create_user, csrf_from, isolated_platform, login
 from platform_core.extensions import db
+from platform_core.instagram_cohorts import cohort_signature, media_type_cohort
 from platform_core.instagram_action_evaluations import (
     InstagramActionEvaluationDuplicateError,
     InstagramActionEvaluationError,
@@ -22,6 +23,13 @@ from platform_core.instagram_action_evaluations import (
     update_action_evaluation,
 )
 from platform_core.instagram_actions import InstagramActionError, delete_recommendation_action
+from platform_core.instagram_learnings import (
+    InstagramLearningError,
+    comparable_evaluations,
+    create_learning,
+    delete_learning,
+    learning_for_project,
+)
 from platform_core.instagram_lifecycle import delete_instagram_project_permanently
 from platform_core.models import (
     AnalyticsProject,
@@ -30,6 +38,7 @@ from platform_core.models import (
     InstagramInsightFinding,
     InstagramInsightEvidence,
     InstagramInsightRun,
+    InstagramLearning,
     InstagramMedia,
     InstagramMediaObservation,
     InstagramRecommendation,
@@ -62,7 +71,9 @@ class InstagramActionEvaluationsTests(unittest.TestCase):
         )
         db.session.add(self.account)
         db.session.flush()
-        self.media = InstagramMedia(instagram_account_id=self.account.id, external_id="post-1")
+        self.media = InstagramMedia(
+            instagram_account_id=self.account.id, external_id="post-1", media_type_raw="REELS",
+        )
         db.session.add(self.media)
         self.insight_run = InstagramInsightRun(
             analytics_project_id=self.project.id, period_key="30d", period_start=datetime(2025, 12, 1, tzinfo=UTC),
@@ -80,7 +91,8 @@ class InstagramActionEvaluationsTests(unittest.TestCase):
             comparison_label="Demais", group_value=42, comparison_value=31, absolute_difference=11,
             relative_difference=None, difference_unit="value", group_n=8, comparison_n=8, coverage=.9,
             support_level="consistent", support_explanation="Cobertura suficiente",
-            details_json={"metric_label": "Salvamentos"},
+            details_json={"metric_label": "Salvamentos", "group_publications": 8},
+            cohort_json=media_type_cohort("reel", "Reels"),
         )
         self.finding = finding
         db.session.add(finding)
@@ -114,6 +126,8 @@ class InstagramActionEvaluationsTests(unittest.TestCase):
             created_by_user_id=self.user.id, action_kind="test", title="Mais conteúdos educativos",
             description="", objective="Registrar novo período.", hypothesis="Hipótese sem causalidade.",
             target_metric="saves", baseline_value=42, status="completed",
+            cohort_json=media_type_cohort("reel", "Reels"),
+            cohort_signature=cohort_signature(media_type_cohort("reel", "Reels")),
             result_summary="Resultado operacional registrado.", outcome="inconclusive", completed_at=COMPLETED,
         )
         values.update(overrides)
@@ -188,6 +202,128 @@ class InstagramActionEvaluationsTests(unittest.TestCase):
         self.assertIsNone(missing_preview.relative_change)
         self.assertEqual(missing_preview.relative_display, "Não disponível")
 
+    def test_preview_reapplies_the_structured_media_type_cohort_not_the_whole_run(self):
+        # A publicação usada pelos demais testes não pertence ao fixture de nove
+        # posts; assim este cenário preserva exatamente 3 casos por coorte.
+        self.media.media_type_raw = "OTHER"
+        cohort_run = self.make_run(
+            "structured-cohort",
+            datetime(2026, 2, 16, tzinfo=UTC),
+            datetime(2026, 3, 15, tzinfo=UTC),
+        )
+        values = {
+            "REELS": (1610, 1965, 545),
+            "CAROUSEL": (1195, 1477, 536),
+            "IMAGES": (490, 618, 424),
+        }
+        for media_type, interactions in values.items():
+            for index, amount in enumerate(interactions):
+                media = InstagramMedia(
+                    instagram_account_id=self.account.id,
+                    external_id=f"{media_type}-{index}", media_type_raw=media_type,
+                )
+                db.session.add(media)
+                db.session.flush()
+                db.session.add(InstagramMediaObservation(
+                    instagram_media_id=media.id, analytics_run_id=cohort_run.id,
+                    observed_at=cohort_run.period_end, interactions=amount,
+                ))
+        # Este Reel faz parte da coorte do projeto, mas não possui observação
+        # neste run. Ele não pode ampliar o denominador de coverage.
+        db.session.add(InstagramMedia(
+            instagram_account_id=self.account.id,
+            external_id="REELS-without-observation", media_type_raw="REELS",
+        ))
+        db.session.commit()
+
+        def preview_for(key, label, baseline):
+            cohort = media_type_cohort(key, label)
+            action = self.make_action(
+                title=f"Coorte {label}", target_metric="interactions", baseline_value=baseline,
+                cohort_json=cohort, cohort_signature=cohort_signature(cohort),
+            )
+            return preview_action_evaluation(self.project, action, cohort_run.id)
+
+        reels = preview_for("reel", "Reels", 1560)
+        images = preview_for("image", "Imagens", 490)
+        carousel = preview_for("carousel", "Carrosséis", 1195)
+        self.assertEqual(reels.followup_value, 1610)
+        self.assertNotEqual(reels.followup_value, 618)
+        self.assertEqual(reels.absolute_change, 50)
+        self.assertAlmostEqual(reels.relative_change, 50 / 1560)
+        self.assertEqual(reels.relative_display, "+3,21%")
+        self.assertEqual((reels.followup_sample_size, reels.followup_population_size, reels.followup_coverage), (3, 3, 1))
+        self.assertEqual(images.followup_value, 490)
+        self.assertEqual(carousel.followup_value, 1195)
+
+    def test_followup_coverage_uses_only_run_observations_in_the_cohort(self):
+        coverage_run = self.make_run(
+            "cohort-coverage",
+            datetime(2026, 2, 16, tzinfo=UTC),
+            datetime(2026, 3, 15, tzinfo=UTC),
+        )
+        for index, saves in enumerate((480, None, 0)):
+            media = InstagramMedia(
+                instagram_account_id=self.account.id,
+                external_id=f"coverage-reel-{index}", media_type_raw="REELS",
+            )
+            db.session.add(media)
+            db.session.flush()
+            db.session.add(InstagramMediaObservation(
+                instagram_media_id=media.id, analytics_run_id=coverage_run.id,
+                observed_at=coverage_run.period_end, saves=saves,
+            ))
+        for media_type in ("IMAGES", "CAROUSEL"):
+            media = InstagramMedia(
+                instagram_account_id=self.account.id,
+                external_id=f"coverage-{media_type}", media_type_raw=media_type,
+            )
+            db.session.add(media)
+            db.session.flush()
+            db.session.add(InstagramMediaObservation(
+                instagram_media_id=media.id, analytics_run_id=coverage_run.id,
+                observed_at=coverage_run.period_end, saves=999,
+            ))
+        db.session.commit()
+
+        preview = preview_action_evaluation(self.project, self.action, coverage_run.id)
+
+        self.assertEqual(preview.followup_value, 240)
+        self.assertEqual(preview.followup_sample_size, 2)
+        self.assertEqual(preview.followup_population_size, 3)
+        self.assertAlmostEqual(preview.followup_coverage, 2 / 3)
+
+        no_known_run = self.make_run(
+            "cohort-no-known-values",
+            datetime(2026, 3, 16, tzinfo=UTC),
+            datetime(2026, 4, 15, tzinfo=UTC),
+        )
+        for index in range(3):
+            media = InstagramMedia(
+                instagram_account_id=self.account.id,
+                external_id=f"missing-reel-{index}", media_type_raw="REELS",
+            )
+            db.session.add(media)
+            db.session.flush()
+            db.session.add(InstagramMediaObservation(
+                instagram_media_id=media.id, analytics_run_id=no_known_run.id,
+                observed_at=no_known_run.period_end, saves=None,
+            ))
+        db.session.commit()
+
+        no_known_preview = preview_action_evaluation(self.project, self.action, no_known_run.id)
+        self.assertIsNone(no_known_preview.followup_value)
+        self.assertEqual(no_known_preview.followup_sample_size, 0)
+        self.assertEqual(no_known_preview.followup_population_size, 3)
+        self.assertEqual(no_known_preview.followup_coverage, 0)
+
+    def test_missing_structured_cohort_is_not_evaluable_and_never_uses_the_whole_run(self):
+        legacy = self.make_action(title="Legado", cohort_json=None, cohort_signature=None)
+        preview = preview_action_evaluation(self.project, legacy, self.followup_run.id)
+        self.assertFalse(preview.evaluable)
+        self.assertIsNone(preview.followup_value)
+        self.assertIn("A coorte original desta ação/teste não pôde ser reconstruída com segurança", preview.limitations[0])
+
     def test_unsupported_or_missing_metric_is_not_evaluable(self):
         unsupported = self.make_action(title="Sem métrica", target_metric="comment_proportion")
         preview = preview_action_evaluation(self.project, unsupported, self.followup_run.id)
@@ -208,7 +344,7 @@ class InstagramActionEvaluationsTests(unittest.TestCase):
         )
         self.assertEqual(evaluation.action.id, self.action.id)
         self.assertEqual(evaluation.analytics_run.id, self.followup_run.id)
-        self.assertEqual(evaluation.evaluation_version, "instagram-action-evaluation-v1")
+        self.assertEqual(evaluation.evaluation_version, "instagram-action-evaluation-v2")
         self.assertEqual(len(self.action.evaluations), 1)
         snapshot = (evaluation.metric_key, evaluation.baseline_value, evaluation.followup_value, evaluation.absolute_change, evaluation.relative_change)
         update_action_evaluation(self.project, evaluation, self.form_values(assessment="inconclusive", learning_summary="Leitura revista."))
@@ -218,6 +354,11 @@ class InstagramActionEvaluationsTests(unittest.TestCase):
         self.assertEqual(db.session.scalar(select(func.count()).select_from(InstagramRecommendationActionEvaluation)), 1)
 
     def test_delete_action_with_evaluation_is_blocked_without_removing_history_or_origins(self):
+        base = f"/analytics/instagram/projects/{self.project.id}/insights"
+        action_delete_url = base + f"/actions/{self.action.id}/delete"
+        active_page = self.client.get(base).get_data(as_text=True)
+        self.assertIn(action_delete_url, active_page)
+
         evaluation = create_action_evaluation(
             self.project, self.action, self.followup_run.id, self.form_values(), actor_id=self.user.id,
         )
@@ -229,17 +370,101 @@ class InstagramActionEvaluationsTests(unittest.TestCase):
         self.assertEqual(db.session.scalar(select(func.count()).select_from(InstagramRecommendation)), 1)
         self.assertEqual(db.session.scalar(select(func.count()).select_from(InstagramInsightFinding)), 1)
         self.assertEqual(db.session.scalar(select(func.count()).select_from(InstagramInsightEvidence)), 1)
-
-        base = f"/analytics/instagram/projects/{self.project.id}/insights"
-        action_delete_url = base + f"/actions/{self.action.id}/delete"
         page = self.client.get(base)
-        self.assertNotIn(action_delete_url, page.get_data(as_text=True))
+        page_html = page.get_data(as_text=True)
+        self.assertNotIn(action_delete_url, page_html)
+        self.assertIn("platform-action-button--disabled", page_html)
+        self.assertIn('aria-disabled="true"', page_html)
+        self.assertIn("Este teste possui acompanhamento registrado e não pode ser excluído.", page_html)
         rejected = self.client.post(action_delete_url, data={
             "csrf_token": csrf_from(page), "confirmation": "deletar",
         })
         self.assertEqual(rejected.status_code, 302)
         self.assertIn("possui acompanhamento registrado", self.client.get(rejected.headers["Location"]).get_data(as_text=True))
         self.assertIsNotNone(db.session.get(InstagramRecommendationActionEvaluation, evaluation.id))
+
+    def test_learning_consolidates_one_or_multiple_comparable_evaluations_without_mutating_origins(self):
+        first = create_action_evaluation(
+            self.project, self.action, self.followup_run.id, self.form_values(), actor_id=self.user.id,
+        )
+        second_action = self.make_action(title="Segundo ciclo", baseline_value=43)
+        second = create_action_evaluation(
+            self.project, second_action, self.followup_run.id,
+            self.form_values(assessment="not_consistent"), actor_id=self.user.id,
+        )
+        learning = create_learning(
+            self.project,
+            {"title": "Leitura de Reels", "learning_summary": "As avaliações são mantidas lado a lado.", "assessment": "mixed"},
+            (first.id, second.id), actor_id=self.user.id,
+        )
+        self.assertEqual({item.id for item in learning.evaluations}, {first.id, second.id})
+        self.assertEqual(learning.metric_key, "saves")
+        self.assertEqual(learning.cohort_signature, first.cohort_signature)
+        self.assertEqual(len(comparable_evaluations(self.project)), 2)
+        delete_learning(self.project, learning, "deletar")
+        self.assertIsNone(learning_for_project(self.project, learning.id))
+        self.assertIsNotNone(db.session.get(InstagramRecommendationActionEvaluation, first.id))
+        self.assertIsNotNone(db.session.get(InstagramRecommendation, self.recommendation.id))
+        self.assertIsNotNone(db.session.get(InstagramInsightFinding, self.finding.id))
+        self.assertIsNotNone(db.session.get(InstagramInsightEvidence, self.finding.evidence[0].id))
+
+    def test_learning_rejects_incompatible_or_archived_inputs_and_keeps_ownership_scoped(self):
+        first = create_action_evaluation(
+            self.project, self.action, self.followup_run.id, self.form_values(), actor_id=self.user.id,
+        )
+        incompatible_action = self.make_action(
+            title="Outra coorte", cohort_json=media_type_cohort("image", "Imagens"),
+            cohort_signature=cohort_signature(media_type_cohort("image", "Imagens")),
+        )
+        incompatible = InstagramRecommendationActionEvaluation(
+            instagram_recommendation_action_id=incompatible_action.id,
+            analytics_run_id=self.followup_run.id, created_by_user_id=self.user.id,
+            metric_key="saves", cohort_json=media_type_cohort("image", "Imagens"),
+            cohort_signature=cohort_signature(media_type_cohort("image", "Imagens")),
+            baseline_value=42, followup_value=51, absolute_change=9, relative_change=9 / 42,
+            baseline_sample_size=1, baseline_coverage=1, followup_sample_size=1,
+            followup_population_size=1, followup_coverage=1, assessment="consistent",
+            learning_summary="Outra leitura.", limitations_json=[], evaluation_version="instagram-action-evaluation-v2",
+        )
+        db.session.add(incompatible)
+        db.session.commit()
+        with self.assertRaisesRegex(InstagramLearningError, "mesma métrica e da mesma coorte"):
+            create_learning(
+                self.project,
+                {"title": "Incompatível", "learning_summary": "Não deve salvar.", "assessment": "mixed"},
+                (first.id, incompatible.id), actor_id=self.user.id,
+            )
+        learning = create_learning(
+            self.project,
+            {"title": "Legível", "learning_summary": "Síntese humana.", "assessment": "consistent"},
+            (first.id,), actor_id=self.user.id,
+        )
+        self.assertIsNone(learning_for_project(self.other_project, learning.id))
+        self.project.archived_at = COMPLETED
+        db.session.commit()
+        with self.assertRaisesRegex(InstagramLearningError, "arquivados"):
+            delete_learning(self.project, learning, "deletar")
+
+    def test_learning_routes_require_csrf_and_reuse_permanent_confirmation(self):
+        evaluation = create_action_evaluation(
+            self.project, self.action, self.followup_run.id, self.form_values(), actor_id=self.user.id,
+        )
+        url = f"/analytics/instagram/projects/{self.project.id}/insights/learnings/new"
+        form = self.client.get(url)
+        self.assertEqual(form.status_code, 200)
+        self.assertIn("Selecione acompanhamentos comparáveis", form.get_data(as_text=True))
+        self.assertEqual(self.client.post(url, data={}).status_code, 400)
+        created = self.client.post(url, data={
+            "csrf_token": csrf_from(form), "title": "Ciclo", "assessment": "consistent",
+            "learning_summary": "Síntese humana rastreável.", "evaluation_ids": evaluation.id,
+        })
+        self.assertEqual(created.status_code, 302)
+        learning = db.session.scalar(select(InstagramLearning))
+        confirmation_url = f"/analytics/instagram/projects/{self.project.id}/insights/learnings/{learning.id}/delete"
+        confirmation = self.client.get(confirmation_url)
+        self.assertIn("Confirmar exclusão permanente", confirmation.get_data(as_text=True))
+        self.assertIn("Digite <strong>deletar</strong> para confirmar", confirmation.get_data(as_text=True))
+        self.assertEqual(self.client.post(confirmation_url, data={}).status_code, 400)
 
     def test_noncompleted_archived_foreign_or_ineligible_runs_are_rejected(self):
         planned = self.make_action(title="Planejada", status="planned", result_summary=None, outcome=None, completed_at=None)
@@ -288,12 +513,20 @@ class InstagramActionEvaluationsTests(unittest.TestCase):
         self.assertEqual(self.client.get(new_url).status_code, 404)
 
     def test_lifecycle_removes_evaluations_before_actions_and_runs(self):
-        create_action_evaluation(self.project, self.action, self.followup_run.id, self.form_values(), actor_id=self.user.id)
+        evaluation = create_action_evaluation(
+            self.project, self.action, self.followup_run.id, self.form_values(), actor_id=self.user.id,
+        )
+        create_learning(
+            self.project,
+            {"title": "Ciclo", "learning_summary": "Será removido com o projeto.", "assessment": "consistent"},
+            (evaluation.id,), actor_id=self.user.id,
+        )
         self.project.status = "archived"
         self.project.archived_at = COMPLETED
         db.session.commit()
         delete_instagram_project_permanently(self.project, self.user, "deletar")
         self.assertEqual(db.session.scalar(select(func.count()).select_from(InstagramRecommendationActionEvaluation)), 0)
+        self.assertEqual(db.session.scalar(select(func.count()).select_from(InstagramLearning)), 0)
 
     def test_insights_tutorial_explains_followup_learning_and_noncausality(self):
         catalog = json.loads(
@@ -312,7 +545,7 @@ class InstagramActionEvaluationsTests(unittest.TestCase):
 
 
 class InstagramActionEvaluationsMigrationTests(unittest.TestCase):
-    def test_evaluation_migration_is_reversible_child_of_actions_head(self):
+    def test_evaluation_and_learning_migrations_are_reversible_children_of_actions_head(self):
         from app import create_app
 
         migrations = str(Path(__file__).resolve().parents[1] / "migrations")
@@ -334,8 +567,16 @@ class InstagramActionEvaluationsMigrationTests(unittest.TestCase):
                 self.assertIn("ck_instagram_action_evaluation_assessment", {
                     item["name"] for item in inspector.get_check_constraints("instagram_recommendation_action_evaluations")
                 })
+                upgrade(directory=migrations, revision="e2f3a4b5c6d")
+                inspector = inspect(db.engine)
+                self.assertIn("instagram_learnings", inspector.get_table_names())
+                self.assertIn("instagram_learning_evaluations", inspector.get_table_names())
+                self.assertIn("cohort_json", {
+                    item["name"] for item in inspector.get_columns("instagram_recommendation_action_evaluations")
+                })
                 downgrade(directory=migrations, revision="c0d1e2f3a4b5")
                 self.assertNotIn("instagram_recommendation_action_evaluations", inspect(db.engine).get_table_names())
+                self.assertNotIn("instagram_learnings", inspect(db.engine).get_table_names())
                 db.session.remove()
                 db.engine.dispose()
 

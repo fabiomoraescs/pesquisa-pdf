@@ -7,7 +7,7 @@
 {% set instagram_tutorial = platform_help_for('instagram_insights') %}
 <section class="platform-panel mb-3" aria-labelledby="instagram-action-evaluation-title">
   <div class="d-flex flex-wrap align-items-start justify-content-between gap-2">
-    <div class="flex-grow-1"><h1 id="instagram-action-evaluation-title" class="platform-page-title">Acompanhamento</h1><p class="platform-muted mb-0"><span>Ampliar a base de observação para {{ action.title }}.</span><span class="d-block">Escolha explicitamente o novo período de dados antes de registrar o aprendizado.</span></p></div>
+    <div class="flex-grow-1"><h1 id="instagram-action-evaluation-title" class="platform-page-title">Acompanhamento</h1><p class="platform-muted mb-0"><span>{{ action.title.rstrip('.') }}.</span><span class="d-block">Escolha explicitamente o novo período de dados antes de registrar o aprendizado.</span></p></div>
     <div class="d-flex flex-wrap align-items-center gap-2 flex-shrink-0"><a class="btn btn-outline-primary btn-sm" href="{{ url_for('instagram.recommendation_action_detail', project_id=project.id, action_id=action.id, _anchor='instagram-action-follow-up') }}">Voltar à ação/teste</a>{{ tutorial_button(instagram_tutorial, label='Abrir tutorial de Insights') }}</div>
   </div>
 </section>
@@ -30,7 +30,7 @@
   <section class="platform-panel mt-3" aria-labelledby="instagram-evaluation-preview-title">
     <h3 id="instagram-evaluation-preview-title" class="h6">Prévia observacional</h3>
     <p class="platform-muted">Os números abaixo serão congelados ao salvar. A classificação e o aprendizado são registrados por uma pessoa; não há inferência causal automática.</p>
-    <dl class="row mb-0"><dt class="col-sm-4">Métrica</dt><dd class="col-sm-8">{{ preview.metric_label }}</dd><dt class="col-sm-4">Baseline</dt><dd class="col-sm-8">{{ preview.baseline_display }}</dd><dt class="col-sm-4">Follow-up</dt><dd class="col-sm-8">{{ preview.followup_display }}</dd><dt class="col-sm-4">Variação absoluta</dt><dd class="col-sm-8">{{ preview.absolute_display }}</dd><dt class="col-sm-4">Variação relativa</dt><dd class="col-sm-8">{{ preview.relative_display }}</dd><dt class="col-sm-4">Contexto do follow-up</dt><dd class="col-sm-8">{{ preview.followup_context_display }}</dd><dt class="col-sm-4">Versão do cálculo</dt><dd class="col-sm-8">{{ preview.evaluation_version }}</dd></dl>
+    <dl class="row mb-0"><dt class="col-sm-4">Métrica</dt><dd class="col-sm-8">{{ preview.metric_label }}</dd><dt class="col-sm-4">Coorte</dt><dd class="col-sm-8">{{ preview.cohort_display }}</dd><dt class="col-sm-4">Baseline</dt><dd class="col-sm-8">{{ preview.baseline_display }}</dd><dt class="col-sm-4">Follow-up</dt><dd class="col-sm-8">{{ preview.followup_display }}</dd><dt class="col-sm-4">Variação absoluta</dt><dd class="col-sm-8">{{ preview.absolute_display }}</dd><dt class="col-sm-4">Variação relativa</dt><dd class="col-sm-8">{{ preview.relative_display }}</dd><dt class="col-sm-4">Contexto do follow-up</dt><dd class="col-sm-8">{{ preview.followup_context_display }}</dd><dt class="col-sm-4">Versão do cálculo</dt><dd class="col-sm-8">{{ preview.evaluation_version }}</dd></dl>
     {% if preview.limitations %}<h4 class="h6 mt-3">Limitações para leitura</h4><ul class="mb-0">{% for limitation in preview.limitations %}<li>{{ limitation }}</li>{% endfor %}</ul>{% endif %}
   </section>
   <form class="platform-form-grid mt-3" method="post" action="{{ url_for('instagram.create_recommendation_action_evaluation', project_id=project.id, action_id=action.id) }}">

@@ -18,6 +18,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import joinedload, selectinload
 
 from .extensions import db
+from .instagram_cohorts import cohort_signature, normalize_cohort_snapshot
 from .models import (
     AnalyticsProject,
     InstagramInsightFinding,
@@ -235,6 +236,8 @@ def create_recommendation_action(
     if planned_start_at and planned_end_at and planned_end_at < planned_start_at:
         raise InstagramActionError("A data final planejada não pode ser anterior à data inicial.")
 
+    source_finding = _primary_finding(recommendation)
+    cohort = normalize_cohort_snapshot(source_finding.cohort_json if source_finding is not None else None)
     action = InstagramRecommendationAction(
         analytics_project_id=project.id,
         instagram_recommendation_id=recommendation.id,
@@ -245,6 +248,8 @@ def create_recommendation_action(
         objective=objective,
         hypothesis=hypothesis or None,
         target_metric=target_metric,
+        cohort_json=cohort,
+        cohort_signature=cohort_signature(cohort),
         baseline_value=_number(values, "baseline_value", "a baseline"),
         target_value=_number(values, "target_value", "o valor-alvo"),
         success_criterion=success_criterion,

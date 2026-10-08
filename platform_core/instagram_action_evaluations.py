@@ -18,6 +18,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import joinedload
 
 from .extensions import db
+from .instagram_cohorts import cohort_label, cohort_media_ids, cohort_signature, normalize_cohort_snapshot
 from .instagram_metrics import DERIVED_METRICS_BY_ID, calculate_derived_metrics
 from .models import (
     AnalyticsProject,
@@ -28,7 +29,7 @@ from .models import (
 )
 
 
-INSTAGRAM_ACTION_EVALUATION_VERSION = "instagram-action-evaluation-v1"
+INSTAGRAM_ACTION_EVALUATION_VERSION = "instagram-action-evaluation-v2"
 ASSESSMENTS = frozenset({"consistent", "not_consistent", "inconclusive", "not_evaluable"})
 ASSESSMENT_LABELS = {
     "consistent": "Consistente com a expectativa",
@@ -64,6 +65,8 @@ class ActionEvaluationPreview:
     action: InstagramRecommendationAction
     analytics_run: AnalyticsRun
     metric_key: str | None
+    cohort_json: Mapping[str, str] | None
+    cohort_signature: str | None
     metric_label: str
     unit: str | None
     baseline_value: float | None
@@ -80,7 +83,16 @@ class ActionEvaluationPreview:
 
     @property
     def evaluable(self) -> bool:
-        return self.metric_key is not None and self.baseline_value is not None and self.followup_value is not None
+        return (
+            self.metric_key is not None
+            and self.cohort_signature is not None
+            and self.baseline_value is not None
+            and self.followup_value is not None
+        )
+
+    @property
+    def cohort_display(self) -> str:
+        return cohort_label(self.cohort_json) or "Coorte não disponível"
 
     @property
     def baseline_display(self) -> str:
@@ -129,6 +141,12 @@ def _metric_metadata(metric_key: str | None) -> tuple[str, str | None] | None:
     if definition is None:
         return None
     return definition.name, definition.unit
+
+
+def metric_label(metric_key: str | None) -> str | None:
+    """Retorna o rótulo humano canônico de uma métrica para apresentação."""
+    metadata = _metric_metadata(metric_key)
+    return metadata[0] if metadata is not None else None
 
 
 def format_metric_value(
@@ -220,20 +238,39 @@ def evaluations_for_action(
     return tuple(sorted(items, key=lambda item: (item.analytics_run.period_start or datetime.min.replace(tzinfo=timezone.utc), item.id)))
 
 
-def _source_baseline_context(action: InstagramRecommendationAction) -> tuple[int | None, float | None, datetime | None, datetime | None]:
+def _source_baseline_context(
+    action: InstagramRecommendationAction, cohort: Mapping[str, str] | None,
+) -> tuple[int | None, float | None, datetime | None, datetime | None]:
     links = action.recommendation.finding_links if action.recommendation is not None else ()
     findings = sorted((link.finding for link in links if link.finding is not None), key=lambda item: item.id)
-    finding = findings[0] if findings else None
-    if finding is None or finding.metric_key != action.target_metric:
+    signature = cohort_signature(cohort)
+    finding = next((item for item in findings if item.metric_key == action.target_metric
+                    and cohort_signature(item.cohort_json) == signature), None)
+    if finding is None:
         return None, None, None, None
     run = finding.insight_run
-    return finding.group_n, finding.coverage, run.period_start, run.period_end
+    population = (finding.details_json or {}).get("group_publications")
+    coverage = finding.group_n / population if isinstance(population, int) and population > 0 else None
+    return finding.group_n, coverage, run.period_start, run.period_end
 
 
-def _followup_values(run: AnalyticsRun, metric_key: str) -> tuple[float | None, int, int, float | None]:
+def _followup_values(
+    project: AnalyticsProject, run: AnalyticsRun, metric_key: str, cohort: Mapping[str, str] | None,
+) -> tuple[float | None, int | None, int | None, float | None]:
+    media_ids = cohort_media_ids(project, cohort)
+    if media_ids is None:
+        return None, None, None, None
+    if not media_ids:
+        return None, 0, 0, None
     observations = db.session.scalars(
-        select(InstagramMediaObservation).where(InstagramMediaObservation.analytics_run_id == run.id)
+        select(InstagramMediaObservation).where(
+            InstagramMediaObservation.analytics_run_id == run.id,
+            InstagramMediaObservation.instagram_media_id.in_(media_ids),
+        )
     ).all()
+    # O denominador é o universo de observações do run selecionado que pertence
+    # à coorte. Mídia da mesma coorte sem observação neste run não entra na
+    # cobertura; NULL nunca vira zero.
     population = len(observations)
     values: list[int | float] = []
     for observation in observations:
@@ -265,22 +302,30 @@ def preview_action_evaluation(
         raise InstagramActionEvaluationError("O período selecionado não é elegível para acompanhamento posterior.")
 
     metric_key = action.target_metric
+    cohort = normalize_cohort_snapshot(action.cohort_json)
+    cohort_sig = cohort_signature(cohort)
     metadata = _metric_metadata(metric_key)
-    baseline_n, baseline_coverage, source_start, source_end = _source_baseline_context(action)
+    baseline_n, baseline_coverage, source_start, source_end = _source_baseline_context(action, cohort)
     limitations: list[str] = []
+    if cohort is None:
+        limitations.append(
+            "A coorte original desta ação/teste não pôde ser reconstruída com segurança para o período selecionado."
+        )
     if metadata is None:
         limitations.append("A métrica registrada na ação/teste não possui cálculo canônico de follow-up nesta versão.")
         metric_label, unit = "Métrica não avaliável", None
         followup_value, followup_n, followup_population, followup_coverage = None, 0, 0, None
     else:
         metric_label, unit = metadata
-        followup_value, followup_n, followup_population, followup_coverage = _followup_values(run, metric_key)
+        followup_value, followup_n, followup_population, followup_coverage = _followup_values(
+            project, run, metric_key, cohort,
+        )
     baseline = action.baseline_value
     if action.target_metric is None:
         limitations.append("A ação/teste não registrou uma métrica-alvo.")
     if baseline is None:
         limitations.append("A baseline registrada na ação/teste não está disponível.")
-    if followup_value is None:
+    if cohort is not None and followup_value is None:
         limitations.append("Não há valor conhecido da métrica no período de follow-up selecionado.")
     if followup_n and followup_n < _SMALL_SAMPLE:
         limitations.append(f"O follow-up possui amostra pequena (n = {followup_n}).")
@@ -298,7 +343,8 @@ def preview_action_evaluation(
     if baseline_duration and followup_duration and max(baseline_duration, followup_duration) / min(baseline_duration, followup_duration) >= 2:
         limitations.append("Os períodos de baseline e follow-up têm durações substancialmente diferentes.")
     return ActionEvaluationPreview(
-        action=action, analytics_run=run, metric_key=metric_key, metric_label=metric_label, unit=unit,
+        action=action, analytics_run=run, metric_key=metric_key, cohort_json=cohort,
+        cohort_signature=cohort_sig, metric_label=metric_label, unit=unit,
         baseline_value=baseline, followup_value=followup_value, absolute_change=absolute,
         relative_change=relative, baseline_sample_size=baseline_n, baseline_coverage=baseline_coverage,
         followup_sample_size=followup_n, followup_population_size=followup_population,
@@ -343,6 +389,8 @@ def create_action_evaluation(
         analytics_run_id=preview.analytics_run.id,
         created_by_user_id=actor_id,
         metric_key=preview.metric_key,
+        cohort_json=dict(preview.cohort_json) if preview.cohort_json else None,
+        cohort_signature=preview.cohort_signature,
         baseline_value=preview.baseline_value,
         followup_value=preview.followup_value,
         absolute_change=preview.absolute_change,
@@ -385,6 +433,7 @@ def update_action_evaluation(
         raise InstagramActionEvaluationError("Selecione uma avaliação válida.")
     evaluable = not (
         _metric_metadata(evaluation.metric_key) is None
+        or evaluation.cohort_signature is None
         or evaluation.baseline_value is None
         or evaluation.followup_value is None
     )
@@ -405,15 +454,20 @@ def update_action_evaluation(
 def evaluation_view(evaluation: InstagramRecommendationActionEvaluation) -> ActionEvaluationPreview:
     metadata = _metric_metadata(evaluation.metric_key)
     label, unit = metadata if metadata is not None else ("Métrica não avaliável", None)
+    cohort = normalize_cohort_snapshot(evaluation.cohort_json)
+    limitations = list(evaluation.limitations_json or ())
+    if cohort is None and "A coorte original desta ação/teste não pôde ser reconstruída com segurança para o período selecionado." not in limitations:
+        limitations.append("Acompanhamento legado: a coorte original não foi registrada e o snapshot histórico foi preservado sem recálculo.")
     return ActionEvaluationPreview(
         action=evaluation.action, analytics_run=evaluation.analytics_run, metric_key=evaluation.metric_key,
+        cohort_json=cohort, cohort_signature=evaluation.cohort_signature,
         metric_label=label, unit=unit, baseline_value=evaluation.baseline_value,
         followup_value=evaluation.followup_value, absolute_change=evaluation.absolute_change,
         relative_change=evaluation.relative_change, baseline_sample_size=evaluation.baseline_sample_size,
         baseline_coverage=evaluation.baseline_coverage, followup_sample_size=evaluation.followup_sample_size,
         followup_population_size=evaluation.followup_population_size,
         followup_coverage=evaluation.followup_coverage,
-        limitations=tuple(evaluation.limitations_json or ()), evaluation_version=evaluation.evaluation_version,
+        limitations=tuple(limitations), evaluation_version=evaluation.evaluation_version,
     )
 
 
@@ -422,5 +476,6 @@ __all__ = [
     "ActionEvaluationPreview", "InstagramActionEvaluationDuplicateError", "InstagramActionEvaluationError",
     "InstagramActionEvaluationPersistenceError", "create_action_evaluation", "eligible_followup_runs",
     "evaluation_for_action_run", "evaluation_view", "evaluations_for_action", "format_metric_value",
+    "metric_label",
     "preview_action_evaluation", "update_action_evaluation",
 ]

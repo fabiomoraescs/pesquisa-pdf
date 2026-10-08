@@ -109,8 +109,21 @@ from .instagram_action_evaluations import (
     eligible_followup_runs,
     evaluation_view,
     evaluations_for_action,
+    metric_label,
     preview_action_evaluation,
     update_action_evaluation,
+)
+from .instagram_learnings import (
+    LEARNING_ASSESSMENT_LABELS,
+    InstagramLearningError,
+    InstagramLearningPersistenceError,
+    comparable_evaluations,
+    create_learning,
+    delete_learning,
+    learning_cohort_label,
+    learning_for_project,
+    learnings_for_project,
+    update_learning,
 )
 from .instagram_previews import InstagramPreviewExpired, previews
 from .instagram_dashboard import PERIOD_DAYS, TABLE_SORTS, build_instagram_dashboard
@@ -350,6 +363,8 @@ def insights(project_id: UUID):
         abort(400)
     run = latest_insight_run(project, period)
     recommendation_run = recommendation_run_for_insight(project, run.id) if run else None
+    learnings = learnings_for_project(project)
+    eligible_learning_evaluations = comparable_evaluations(project)
     period_options = (("7d", "7 dias"), ("30d", "30 dias"), ("90d", "90 dias"),
                       ("all", "Todo o histórico"))
     return render_template(
@@ -366,6 +381,11 @@ def insights(project_id: UUID):
         action_status=action_status,
         action_kind_labels=ACTION_KIND_LABELS,
         action_status_labels=ACTION_STATUS_LABELS,
+        learnings=learnings,
+        eligible_learning_evaluations=eligible_learning_evaluations,
+        learning_assessment_labels=LEARNING_ASSESSMENT_LABELS,
+        learning_cohort_label=learning_cohort_label,
+        metric_label=metric_label,
         can_generate=project.status == "active" and project.archived_at is None,
         can_mutate=project.status == "active" and project.archived_at is None,
     )
@@ -697,6 +717,125 @@ def update_recommendation_action_evaluation(project_id: UUID, action_id: UUID, e
         "instagram.recommendation_action_evaluation_detail", project_id=project.id,
         action_id=action.id, evaluation_id=evaluation.id,
         _anchor="instagram-evaluation-learning",
+    ))
+
+
+@instagram_bp.route("/projects/<uuid:project_id>/insights/learnings/new", methods=("GET", "POST"))
+@login_required
+def new_learning(project_id: UUID):
+    """Cria uma síntese humana a partir de snapshots comparáveis selecionados."""
+    project = _project_for_current_user(project_id, active=True)
+    period = request.values.get("period", "30d")
+    if period not in PERIOD_DAYS:
+        abort(400)
+    evaluations = comparable_evaluations(project)
+    selected_ids = request.form.getlist("evaluation_ids") if request.method == "POST" else request.args.getlist("evaluation_id")
+    form_values = {
+        "title": request.form.get("title", "") if request.method == "POST" else "",
+        "learning_summary": request.form.get("learning_summary", "") if request.method == "POST" else "",
+        "assessment": request.form.get("assessment", "inconclusive") if request.method == "POST" else "inconclusive",
+    }
+    if request.method == "POST":
+        try:
+            learning = create_learning(project, request.form, selected_ids, actor_id=current_user.id)
+        except InstagramLearningError as error:
+            flash(str(error), "danger")
+            return render_template(
+                "platform/instagram/learning_form.html", project=project, evaluations=evaluations,
+                selected_ids=set(selected_ids), form_values=form_values,
+                learning_assessment_labels=LEARNING_ASSESSMENT_LABELS, metric_label=metric_label, period=period,
+            ), 400
+        except InstagramLearningPersistenceError:
+            current_app.logger.exception("Falha ao criar aprendizado consolidado Instagram")
+            flash("Não foi possível salvar o aprendizado consolidado. Nenhum registro parcial foi gravado.", "danger")
+            return render_template(
+                "platform/instagram/learning_form.html", project=project, evaluations=evaluations,
+                selected_ids=set(selected_ids), form_values=form_values,
+                learning_assessment_labels=LEARNING_ASSESSMENT_LABELS, metric_label=metric_label, period=period,
+            ), 500
+        flash("Aprendizado consolidado registrado.", "success")
+        return redirect(url_for(
+            "instagram.learning_detail", project_id=project.id, learning_id=learning.id,
+        ))
+    return render_template(
+        "platform/instagram/learning_form.html", project=project, evaluations=evaluations,
+        selected_ids=set(selected_ids), form_values=form_values,
+        learning_assessment_labels=LEARNING_ASSESSMENT_LABELS, metric_label=metric_label, period=period,
+    )
+
+
+@instagram_bp.get("/projects/<uuid:project_id>/insights/learnings/<uuid:learning_id>")
+@login_required
+def learning_detail(project_id: UUID, learning_id: UUID):
+    project = _project_for_current_user(project_id)
+    learning = learning_for_project(project, str(learning_id))
+    if learning is None:
+        abort(404)
+    return render_template(
+        "platform/instagram/learning_detail.html", project=project, learning=learning,
+        learning_assessment_labels=LEARNING_ASSESSMENT_LABELS,
+        learning_cohort_label=learning_cohort_label,
+        metric_label=metric_label,
+        can_mutate=project.status == "active" and project.archived_at is None,
+    )
+
+
+@instagram_bp.post("/projects/<uuid:project_id>/insights/learnings/<uuid:learning_id>")
+@login_required
+def update_learning_route(project_id: UUID, learning_id: UUID):
+    project = _project_for_current_user(project_id, active=True)
+    learning = learning_for_project(project, str(learning_id))
+    if learning is None:
+        abort(404)
+    try:
+        update_learning(project, learning, request.form)
+    except InstagramLearningError as error:
+        flash(str(error), "danger")
+    except InstagramLearningPersistenceError:
+        current_app.logger.exception("Falha ao atualizar aprendizado consolidado Instagram")
+        flash("Não foi possível atualizar o aprendizado consolidado.", "danger")
+    else:
+        flash("Aprendizado consolidado atualizado.", "success")
+    return redirect(url_for(
+        "instagram.learning_detail", project_id=project.id, learning_id=learning.id,
+        _anchor="instagram-learning-summary",
+    ))
+
+
+@instagram_bp.route(
+    "/projects/<uuid:project_id>/insights/learnings/<uuid:learning_id>/delete",
+    methods=("GET", "POST"),
+)
+@login_required
+def delete_learning_route(project_id: UUID, learning_id: UUID):
+    """Reutiliza a confirmação permanente compartilhada para um Learning."""
+    project = _project_for_current_user(project_id, active=True)
+    learning = learning_for_project(project, str(learning_id))
+    if learning is None:
+        abort(404)
+    period = request.values.get("period", "30d")
+    if period not in PERIOD_DAYS:
+        abort(400)
+    if request.method == "GET":
+        return render_template(
+            "platform/instagram/learning_delete.html", project=project, learning=learning, period=period,
+        )
+    try:
+        delete_learning(project, learning, request.form.get("confirmation", ""))
+    except InstagramLearningError as error:
+        flash(str(error), "danger")
+        return render_template(
+            "platform/instagram/learning_delete.html", project=project, learning=learning, period=period,
+        ), 400
+    except InstagramLearningPersistenceError:
+        current_app.logger.exception("Falha ao excluir aprendizado consolidado Instagram")
+        flash("Não foi possível excluir o aprendizado consolidado.", "danger")
+        return render_template(
+            "platform/instagram/learning_delete.html", project=project, learning=learning, period=period,
+        ), 500
+    flash("Aprendizado consolidado excluído com sucesso.", "success")
+    return redirect(url_for(
+        "instagram.insights", project_id=project.id, period=period, _anchor="instagram-learnings",
     ))
 
 

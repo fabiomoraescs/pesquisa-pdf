@@ -15,6 +15,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from platform_helpers import create_user, csrf_from, isolated_platform, login
 from platform_core.extensions import db
+from platform_core.instagram_cohorts import cohort_signature, taxonomy_category_cohort
 from platform_core.instagram_actions import (
     InstagramActionError,
     InstagramActionPersistenceError,
@@ -73,6 +74,7 @@ class InstagramActionsTests(unittest.TestCase):
             relative_difference=None, difference_unit="value", group_n=8, comparison_n=8,
             coverage=.95, support_level="consistent", support_explanation="Teste",
             details_json={"metric_label": "Salvamentos"},
+            cohort_json=taxonomy_category_cohort("fixture-dimension", "fixture-category", "Objetivo comunicacional", "Educar"),
         )
         db.session.add(self.finding)
         db.session.flush()
@@ -137,6 +139,8 @@ class InstagramActionsTests(unittest.TestCase):
         )
         self.assertEqual(action.analytics_project_id, self.project.id)
         self.assertEqual(test.instagram_recommendation_id, self.recommendation.id)
+        self.assertEqual(action.cohort_json, self.finding.cohort_json)
+        self.assertEqual(action.cohort_signature, cohort_signature(self.finding.cohort_json))
         self.assertEqual(db.session.scalar(select(func.count()).select_from(InstagramRecommendationAction)), 2)
         self.assertEqual({item.action_kind for item in self.recommendation.actions}, {"action", "test"})
 
@@ -317,6 +321,9 @@ class InstagramActionsTests(unittest.TestCase):
         self.assertIn('<input type="hidden" name="period" value="30d">', filtered_html)
         self.assertIn('<option value="action" selected>Tipo: Ação</option>', filtered_html)
         self.assertIn('<option value="completed" selected>Status: Concluída</option>', filtered_html)
+        filtered_actions_section = filtered_html[filtered_html.index('id="instagram-actions"'):]
+        self.assertIn('<span class="platform-list-index" aria-hidden="true">01</span>', filtered_actions_section)
+        self.assertNotIn('<span class="platform-list-index" aria-hidden="true">02</span>', filtered_actions_section)
         empty_filtered_html = self.client.get(
             base + "?period=30d&action_kind=test&action_status=completed"
         ).get_data(as_text=True)

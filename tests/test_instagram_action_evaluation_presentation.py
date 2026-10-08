@@ -3,7 +3,8 @@ from __future__ import annotations
 from html.parser import HTMLParser
 from pathlib import Path
 
-from platform_core.instagram_action_evaluations import ActionEvaluationPreview, format_metric_value
+from platform_core.instagram_action_evaluations import ActionEvaluationPreview, format_metric_value, metric_label
+from platform_core.instagram_learnings import LEARNING_ASSESSMENT_LABELS
 
 
 _DETAIL_HEADER_LAYOUT = "d-flex flex-wrap align-items-start justify-content-between gap-2"
@@ -57,6 +58,8 @@ def test_relative_change_formats_decimal_ratio_as_brazilian_percentage():
         action=None,
         analytics_run=None,
         metric_key="saves",
+        cohort_json={"version": "instagram-cohort-v1", "kind": "media_type", "media_type_key": "reel", "label": "Tipo de mídia: Reels"},
+        cohort_signature="cohort",
         metric_label="Salvamentos",
         unit="contagem",
         baseline_value=1560,
@@ -132,6 +135,60 @@ def test_evaluation_header_keeps_text_and_actions_as_shared_header_siblings():
     )
 
 
+def test_evaluation_traceability_keeps_copy_and_open_action_as_flex_siblings():
+    template = (
+        Path(__file__).parents[1]
+        / "templates"
+        / "platform"
+        / "instagram"
+        / "recommendation_action_evaluation_detail.html"
+    ).read_text(encoding="utf-8")
+    traceability = template.split('aria-labelledby="instagram-evaluation-traceability-title"', 1)[1].split(
+        "</section>", 1
+    )[0]
+
+    assert _detail_header_children(traceability) == [
+        ("div", _DETAIL_HEADER_COPY),
+        ("div", "platform-list-actions flex-shrink-0"),
+    ]
+    assert 'title="Abrir ação/teste"' in traceability
+    assert 'aria-label="Abrir ação/teste"' in traceability
+
+
+def test_learning_presentation_uses_human_metric_and_assessment_labels():
+    root = Path(__file__).parents[1] / "templates" / "platform" / "instagram"
+    learning_detail = (root / "learning_detail.html").read_text(encoding="utf-8")
+    learning_form = (root / "learning_form.html").read_text(encoding="utf-8")
+
+    assert metric_label("interactions") == "Interações"
+    assert metric_label("saves") == "Salvamentos"
+    assert metric_label("comments_count") == "Comentários"
+    assert LEARNING_ASSESSMENT_LABELS["consistent"] == "Consistente com a expectativa"
+    assert LEARNING_ASSESSMENT_LABELS["not_consistent"] == "Não consistente com a expectativa"
+    assert LEARNING_ASSESSMENT_LABELS["mixed"] == "Misto"
+    assert LEARNING_ASSESSMENT_LABELS["inconclusive"] == "Inconclusivo"
+    assert LEARNING_ASSESSMENT_LABELS["not_evaluable"] == "Não avaliável"
+    assert "metric_label(learning.metric_key)" in learning_detail
+    assert "metric_label(evaluation.metric_key)" in learning_detail
+    assert "learning_assessment_labels.get(evaluation.assessment, evaluation.assessment)" in learning_detail
+    assert "metric_label(evaluation.metric_key)" in learning_form
+
+
+def test_insights_lists_use_indexes_and_analytical_finding_presentation_only():
+    template = (
+        Path(__file__).parents[1]
+        / "templates"
+        / "platform"
+        / "instagram"
+        / "insights.html"
+    ).read_text(encoding="utf-8")
+
+    assert "{{ 'Achados analíticos' if group == 'Tipo de mídia' else group }}" in template
+    assert "finding.summary.removesuffix(' O padrão é descritivo e não causal.')" in template
+    assert template.count("platform-list-index") == 4
+    assert template.count("'%02d' | format(loop.index)") == 4
+
+
 def test_evaluation_form_splits_the_dynamic_description_into_two_real_lines():
     template = (
         Path(__file__).parents[1]
@@ -144,6 +201,21 @@ def test_evaluation_form_splits_the_dynamic_description_into_two_real_lines():
         "</section>", 1
     )[0]
 
-    assert "Ampliar a base de observação para {{ action.title }}." in header
+    assert "{{ action.title.rstrip('.') }}." in header
+    assert "Ampliar a base de observação para {{ action.title }}." not in header
     assert '<span class="d-block">Escolha explicitamente o novo período de dados antes de registrar o aprendizado.</span>' in header
     assert " · escolha explicitamente" not in header
+
+
+def test_insights_keeps_learnings_after_actions_without_a_new_project_tab():
+    root = Path(__file__).parents[1] / "templates" / "platform" / "instagram"
+    insights = (root / "insights.html").read_text(encoding="utf-8")
+    tabs = (root / "_project_tabs.html").read_text(encoding="utf-8")
+    learning_detail = (root / "learning_detail.html").read_text(encoding="utf-8")
+    learning_delete = (root / "learning_delete.html").read_text(encoding="utf-8")
+
+    assert insights.index('id="instagram-actions"') < insights.index('id="instagram-learnings"')
+    assert "Novo aprendizado" in insights
+    assert "learnings" not in tabs
+    assert "platform-action-button" in learning_detail
+    assert "platform/_permanent_delete_confirmation.html" in learning_delete
