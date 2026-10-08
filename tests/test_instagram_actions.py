@@ -20,6 +20,7 @@ from platform_core.instagram_actions import (
     InstagramActionPersistenceError,
     action_prefill,
     create_recommendation_action,
+    delete_recommendation_action,
     parse_planned_datetime,
     transition_recommendation_action,
 )
@@ -27,6 +28,7 @@ from platform_core.instagram_lifecycle import delete_instagram_project_permanent
 from platform_core.instagram_recommendations import generate_recommendations
 from platform_core.models import (
     AnalyticsProject,
+    InstagramInsightEvidence,
     InstagramInsightFinding,
     InstagramInsightRun,
     InstagramRecommendation,
@@ -73,6 +75,15 @@ class InstagramActionsTests(unittest.TestCase):
             details_json={"metric_label": "Salvamentos"},
         )
         db.session.add(self.finding)
+        db.session.flush()
+        self.evidence = InstagramInsightEvidence(
+            instagram_insight_finding_id=self.finding.id,
+            source_type="media",
+            source_id="action-fixture-media",
+            role="principal",
+            details_json={"label": "Evidência de origem"},
+        )
+        db.session.add(self.evidence)
         db.session.commit()
         self.recommendation = generate_recommendations(self.project, self.insight_run).recommendations[0]
         login(self.client)
@@ -188,6 +199,46 @@ class InstagramActionsTests(unittest.TestCase):
                 )
         self.assertEqual(db.session.scalar(select(func.count()).select_from(InstagramRecommendationAction)), 0)
 
+    def test_delete_actions_without_evaluations_allows_every_status_and_preserves_origins(self):
+        planned_action = create_recommendation_action(
+            self.project, self.recommendation, "action", self.values(hypothesis=""), actor_id=self.user.id,
+        )
+        planned_test = create_recommendation_action(
+            self.project, self.recommendation, "test", self.values(title="Teste planejado"), actor_id=self.user.id,
+        )
+        in_progress = create_recommendation_action(
+            self.project, self.recommendation, "action", self.values(title="Ação em andamento", hypothesis=""), actor_id=self.user.id,
+        )
+        transition_recommendation_action(in_progress, "in_progress")
+        completed = create_recommendation_action(
+            self.project, self.recommendation, "test", self.values(title="Teste concluído"), actor_id=self.user.id,
+        )
+        transition_recommendation_action(completed, "in_progress")
+        transition_recommendation_action(completed, "completed", {
+            "result_summary": "Registro concluído sem inferência causal.",
+            "outcome": "inconclusive",
+        })
+        cancelled = create_recommendation_action(
+            self.project, self.recommendation, "action", self.values(title="Ação cancelada", hypothesis=""), actor_id=self.user.id,
+        )
+        transition_recommendation_action(cancelled, "cancelled")
+
+        for action in (planned_action, planned_test, in_progress, completed, cancelled):
+            delete_recommendation_action(self.project, action, "deletar")
+            self.assertIsNone(db.session.get(InstagramRecommendationAction, action.id))
+
+        self.assertEqual(db.session.scalar(select(func.count()).select_from(InstagramRecommendation)), 1)
+        self.assertEqual(db.session.scalar(select(func.count()).select_from(InstagramInsightFinding)), 1)
+        self.assertEqual(db.session.scalar(select(func.count()).select_from(InstagramInsightEvidence)), 1)
+
+    def test_delete_action_rejects_a_project_mismatch(self):
+        action = create_recommendation_action(
+            self.project, self.recommendation, "action", self.values(hypothesis=""), actor_id=self.user.id,
+        )
+        with self.assertRaisesRegex(InstagramActionError, "não pertence"):
+            delete_recommendation_action(self.other_project, action, "deletar")
+        self.assertIsNotNone(db.session.get(InstagramRecommendationAction, action.id))
+
     def test_templates_cover_all_recommendation_families_without_generating_targets(self):
         for recommendation_type in (
             "content_mix", "media_format", "information_clarity", "community_response",
@@ -205,6 +256,10 @@ class InstagramActionsTests(unittest.TestCase):
         section = next(item for item in tutorial["sections"] if item["id"] == "acoes-e-testes-derivados")
         self.assertIn("Ação/Teste → Recomendação → Achado → Evidência", " ".join(section["body"]))
         self.assertIn("não prova causalidade", " ".join(section["body"]))
+        self.assertIn("Cancelar preserva", " ".join(section["body"]))
+        self.assertIn("Excluir remove definitivamente", " ".join(section["body"]))
+        self.assertIn("digitar “deletar”", " ".join(section["body"]))
+        self.assertIn("digitar “deletar”", " ".join(section["body"]))
 
     def test_routes_csrf_ownership_archived_and_traceability(self):
         base = f"/analytics/instagram/projects/{self.project.id}/insights"
@@ -285,6 +340,86 @@ class InstagramActionsTests(unittest.TestCase):
             detail_url + "/start", data={"csrf_token": csrf_from(self.client.get(detail_url))},
         ).status_code, 404)
 
+    def test_delete_route_uses_global_confirmation_before_post_and_preserves_filters(self):
+        action = create_recommendation_action(
+            self.project, self.recommendation, "test", self.values(title="Teste a excluir"), actor_id=self.user.id,
+        )
+        base = f"/analytics/instagram/projects/{self.project.id}/insights"
+        page = self.client.get(base + "?period=30d&action_kind=test&action_status=planned")
+        html = page.get_data(as_text=True)
+        delete_url = base + f"/actions/{action.id}/delete"
+        self.assertIn(delete_url, html)
+        self.assertIn('title="Excluir teste"', html)
+        self.assertIn('aria-label="Excluir teste"', html)
+        self.assertIn("btn-outline-danger btn-sm platform-action-button", html)
+        self.assertLess(html.index(f"/actions/{action.id}\""), html.index(delete_url))
+        self.assertNotIn("onsubmit=\"return confirm(", html)
+
+        confirmation_url = delete_url + "?period=30d&action_kind=test&action_status=planned"
+        confirmation = self.client.get(confirmation_url)
+        self.assertEqual(confirmation.status_code, 200)
+        confirmation_html = confirmation.get_data(as_text=True)
+        self.assertIn("Confirmar exclusão permanente", confirmation_html)
+        self.assertIn("Você está prestes a excluir permanentemente este teste.", confirmation_html)
+        self.assertIn(action.title, confirmation_html)
+        self.assertIn('data-delete-confirm="final-delete-button"', confirmation_html)
+        self.assertIn("Digite <strong>deletar</strong> para confirmar", confirmation_html)
+        self.assertIn("Excluir permanentemente", confirmation_html)
+        self.assertIn("Cancelar", confirmation_html)
+        self.assertIsNotNone(db.session.get(InstagramRecommendationAction, action.id))
+        self.assertEqual(self.client.post(confirmation_url, data={}).status_code, 400)
+
+        invalid = self.client.post(confirmation_url, data={
+            "csrf_token": csrf_from(confirmation), "confirmation": "excluir",
+        })
+        self.assertEqual(invalid.status_code, 400)
+        self.assertIn('Digite exatamente &#34;deletar&#34;', invalid.get_data(as_text=True))
+        self.assertIsNotNone(db.session.get(InstagramRecommendationAction, action.id))
+
+        deleted = self.client.post(confirmation_url, data={
+            "csrf_token": csrf_from(confirmation), "confirmation": "deletar",
+        })
+        self.assertEqual(deleted.status_code, 302)
+        self.assertIn("period=30d", deleted.headers["Location"])
+        self.assertIn("action_kind=test", deleted.headers["Location"])
+        self.assertIn("action_status=planned", deleted.headers["Location"])
+        self.assertIn("#instagram-actions", deleted.headers["Location"])
+        self.assertIsNone(db.session.get(InstagramRecommendationAction, action.id))
+        self.assertEqual(db.session.scalar(select(func.count()).select_from(InstagramRecommendation)), 1)
+        self.assertEqual(db.session.scalar(select(func.count()).select_from(InstagramInsightFinding)), 1)
+        self.assertEqual(db.session.scalar(select(func.count()).select_from(InstagramInsightEvidence)), 1)
+        self.assertIn(
+            "Ainda não há ações ou testes derivados das recomendações deste projeto.",
+            self.client.get(base).get_data(as_text=True),
+        )
+
+        protected_action = create_recommendation_action(
+            self.project, self.recommendation, "action", self.values(hypothesis=""), actor_id=self.user.id,
+        )
+        protected_url = base + f"/actions/{protected_action.id}/delete"
+        action_confirmation = self.client.get(protected_url)
+        self.assertEqual(action_confirmation.status_code, 200)
+        self.assertIn(
+            "Você está prestes a excluir permanentemente esta ação.",
+            action_confirmation.get_data(as_text=True),
+        )
+        self.assertIsNotNone(db.session.get(InstagramRecommendationAction, protected_action.id))
+        self.client.post("/logout", data={"csrf_token": csrf_from(self.client.get("/"))})
+        login(self.client, self.other.email)
+        self.assertEqual(
+            self.client.post(protected_url, data={"csrf_token": csrf_from(self.client.get("/"))}).status_code,
+            404,
+        )
+        self.client.post("/logout", data={"csrf_token": csrf_from(self.client.get("/"))})
+        login(self.client)
+        self.project.status = "archived"
+        self.project.archived_at = WHEN
+        db.session.commit()
+        self.assertEqual(
+            self.client.post(protected_url, data={"csrf_token": csrf_from(self.client.get(base))}).status_code,
+            404,
+        )
+
     def test_insights_template_reuses_distinct_global_icons_for_action_and_test(self):
         template = (
             Path(__file__).resolve().parents[1] / "templates" / "platform" / "instagram" / "insights.html"
@@ -292,9 +427,21 @@ class InstagramActionsTests(unittest.TestCase):
         self.assertIn("platform-action-button", template)
         self.assertIn("icon('ativar')", template)
         self.assertIn("icon('analytics')", template)
+        self.assertIn("icon('lixeira')", template)
+        self.assertIn("delete_recommendation_action_route", template)
         self.assertIn('title="Transformar em ação"', template)
         self.assertIn('title="Criar teste"', template)
         self.assertIn('data-partial-target="#instagram-actions"', template)
+
+    def test_permanent_action_delete_reuses_the_shared_confirmation_component(self):
+        root = Path(__file__).resolve().parents[1] / "templates" / "platform"
+        for template_name in (
+            "project_delete.html",
+            "instagram/project_delete.html",
+            "instagram/recommendation_action_delete.html",
+        ):
+            template = (root / template_name).read_text(encoding="utf-8")
+            self.assertIn("platform/_permanent_delete_confirmation.html", template)
 
     def test_lifecycle_removes_actions_before_recommendation_chain(self):
         create_recommendation_action(

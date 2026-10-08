@@ -2,15 +2,10 @@
 {% block title %}Confirmar exclusão permanente — Instagram{% endblock %}
 {% block page_intro %}<div class="platform-page-heading"><h1>Confirmar exclusão permanente</h1></div>{% endblock %}
 {% block body %}
-<section class="platform-panel">
-  <p class="platform-danger-note"><strong>Esta ação não pode ser desfeita.</strong> Você está prestes a excluir permanentemente este projeto, sua conta Instagram associada, coletas, publicações, observações históricas, snapshots, taxonomias, categorias, classificações atuais e históricas e prévias temporárias exclusivas do projeto.</p>
-  <ul><li>{{ project.name }}</li></ul>
-  <form method="post" action="{{ url_for('instagram.delete_project', project_id=project.id) }}">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <label class="form-label" for="delete-confirmation">Digite <strong>deletar</strong> para confirmar</label>
-    <input class="form-control mb-3" id="delete-confirmation" name="confirmation" type="text" required autocomplete="off" data-delete-confirm="final-delete-button" aria-describedby="delete-rule">
-    <p class="form-text" id="delete-rule">Aceita-se somente “deletar”, com espaços antes ou depois ignorados.</p>
-    <div class="d-flex flex-wrap gap-2"><button class="btn btn-danger" id="final-delete-button" type="submit" disabled>Excluir permanentemente</button><a class="btn btn-outline-primary" href="{{ url_for('instagram.archived_projects') }}">Cancelar</a></div>
-  </form>
-</section>
+{% set permanent_delete_action = url_for('instagram.delete_project', project_id=project.id) %}
+{% set permanent_delete_cancel_url = url_for('instagram.archived_projects') %}
+{% set permanent_delete_warning %}Você está prestes a excluir permanentemente este projeto, sua conta Instagram associada, coletas, publicações, observações históricas, snapshots, taxonomias, categorias, classificações atuais e históricas e prévias temporárias exclusivas do projeto.{% endset %}
+{% set permanent_delete_items = [project.name] %}
+{% set permanent_delete_batch_projects = () %}
+{% include 'platform/_permanent_delete_confirmation.html' %}
 {% endblock %}

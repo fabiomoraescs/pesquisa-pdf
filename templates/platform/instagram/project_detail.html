@@ -20,7 +20,7 @@
   <h2 id="instagram-project-imports-title" class="h5">Importações</h2>
   <dl class="row mb-0"><dt class="col-sm-4">Conta</dt><dd class="col-sm-8">{% if account %}@{{ account.username }}{% else %}Será definida na primeira importação.{% endif %}</dd><dt class="col-sm-4">Execuções registradas</dt><dd class="col-sm-8">{{ run_count }}</dd>{% if last_run %}<dt class="col-sm-4">Última importação</dt><dd class="col-sm-8">{{ last_run.completed_at | data_hora_local if last_run.completed_at else 'Em processamento' }}</dd>{% endif %}</dl>
 </section>
-<section class="platform-panel" aria-labelledby="instagram-run-history-title">
+<section id="instagram-run-history" class="platform-panel" aria-labelledby="instagram-run-history-title">
   <h2 id="instagram-run-history-title" class="h5">Histórico de importações</h2>
   {% if runs %}
   <div class="table-responsive">

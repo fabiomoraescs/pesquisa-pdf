@@ -13,6 +13,7 @@ from openpyxl.comments import Comment
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 from sqlalchemy import select
+from sqlalchemy.orm import joinedload
 
 from .extensions import db
 from .instagram_import import (
@@ -82,8 +83,10 @@ from .instagram_recommendations import (
     recommendation_run_for_insight,
 )
 from .instagram_actions import (
+    ACTION_KINDS,
     ACTION_KIND_LABELS,
     ACTION_OUTCOME_LABELS,
+    ACTION_STATUSES,
     ACTION_STATUS_LABELS,
     InstagramActionError,
     InstagramActionPersistenceError,
@@ -91,9 +94,23 @@ from .instagram_actions import (
     action_prefill,
     actions_for_project,
     create_recommendation_action,
+    delete_recommendation_action,
     parse_planned_datetime,
     recommendation_action_for_project,
+    recommendation_action_has_evaluation,
     transition_recommendation_action,
+)
+from .instagram_action_evaluations import (
+    ASSESSMENT_LABELS,
+    InstagramActionEvaluationDuplicateError,
+    InstagramActionEvaluationError,
+    InstagramActionEvaluationPersistenceError,
+    create_action_evaluation,
+    eligible_followup_runs,
+    evaluation_view,
+    evaluations_for_action,
+    preview_action_evaluation,
+    update_action_evaluation,
 )
 from .instagram_previews import InstagramPreviewExpired, previews
 from .instagram_dashboard import PERIOD_DAYS, TABLE_SORTS, build_instagram_dashboard
@@ -124,6 +141,7 @@ from .models import (
     InstagramCommentTextVersion,
     InstagramInsightRun,
     InstagramMedia,
+    InstagramRecommendationActionEvaluation,
     InstagramTaxonomyCategory,
     InstagramTaxonomyDimension,
 )
@@ -550,8 +568,136 @@ def recommendation_action_detail(project_id: UUID, action_id: UUID):
         findings=linked_findings(action.recommendation),
         action_kind_labels=ACTION_KIND_LABELS, action_status_labels=ACTION_STATUS_LABELS,
         action_outcome_labels=ACTION_OUTCOME_LABELS,
+        evaluations=evaluations_for_action(project, action),
+        eligible_followup_runs=eligible_followup_runs(project, action),
+        assessment_labels=ASSESSMENT_LABELS,
         can_mutate=project.status == "active" and project.archived_at is None,
     )
+
+
+@instagram_bp.get("/projects/<uuid:project_id>/insights/actions/<uuid:action_id>/evaluations/new")
+@login_required
+def new_recommendation_action_evaluation(project_id: UUID, action_id: UUID):
+    """Escolha explícita do período e preview sem persistência."""
+    project = _project_for_current_user(project_id, active=True)
+    action = recommendation_action_for_project(project, str(action_id))
+    if action is None:
+        abort(404)
+    if action.status != "completed":
+        abort(400, description="Acompanhamento formal só está disponível após a conclusão.")
+    runs = eligible_followup_runs(project, action)
+    selected_run_id = request.args.get("analytics_run_id", "")
+    preview = None
+    if selected_run_id:
+        try:
+            preview = preview_action_evaluation(project, action, selected_run_id)
+        except InstagramActionEvaluationError as error:
+            abort(400, description=str(error))
+    return render_template(
+        "platform/instagram/recommendation_action_evaluation_form.html",
+        project=project, action=action, runs=runs, selected_run_id=selected_run_id,
+        preview=preview, assessment_labels=ASSESSMENT_LABELS,
+    )
+
+
+@instagram_bp.post("/projects/<uuid:project_id>/insights/actions/<uuid:action_id>/evaluations")
+@login_required
+def create_recommendation_action_evaluation(project_id: UUID, action_id: UUID):
+    project = _project_for_current_user(project_id, active=True)
+    action = recommendation_action_for_project(project, str(action_id))
+    if action is None:
+        abort(404)
+    run_id = request.form.get("analytics_run_id", "")
+    try:
+        evaluation = create_action_evaluation(
+            project, action, run_id, request.form, actor_id=current_user.id,
+        )
+    except InstagramActionEvaluationDuplicateError as error:
+        flash("Este período já possui acompanhamento para esta ação/teste.", "info")
+        return redirect(url_for(
+            "instagram.recommendation_action_evaluation_detail", project_id=project.id,
+            action_id=action.id, evaluation_id=error.evaluation_id,
+        ))
+    except InstagramActionEvaluationError as error:
+        flash(str(error), "danger")
+        return redirect(url_for(
+            "instagram.new_recommendation_action_evaluation", project_id=project.id,
+            action_id=action.id, analytics_run_id=run_id,
+        ))
+    except InstagramActionEvaluationPersistenceError:
+        current_app.logger.exception("Falha ao criar acompanhamento de ação/teste Instagram")
+        flash("Não foi possível salvar o acompanhamento. Nenhum registro parcial foi gravado.", "danger")
+        return redirect(url_for(
+            "instagram.new_recommendation_action_evaluation", project_id=project.id,
+            action_id=action.id, analytics_run_id=run_id,
+        ))
+    flash("Acompanhamento posterior registrado.", "success")
+    return redirect(url_for(
+        "instagram.recommendation_action_evaluation_detail", project_id=project.id,
+        action_id=action.id, evaluation_id=evaluation.id,
+    ))
+
+
+def _evaluation_for_project_action(
+    project: AnalyticsProject, action, evaluation_id: UUID,
+) -> InstagramRecommendationActionEvaluation | None:
+    return db.session.scalar(
+        select(InstagramRecommendationActionEvaluation)
+        .join(AnalyticsRun)
+        .where(
+            InstagramRecommendationActionEvaluation.id == str(evaluation_id),
+            InstagramRecommendationActionEvaluation.instagram_recommendation_action_id == action.id,
+            AnalyticsRun.analytics_project_id == project.id,
+        )
+        .options(
+            joinedload(InstagramRecommendationActionEvaluation.analytics_run),
+            joinedload(InstagramRecommendationActionEvaluation.action),
+        )
+    )
+
+
+@instagram_bp.get("/projects/<uuid:project_id>/insights/actions/<uuid:action_id>/evaluations/<uuid:evaluation_id>")
+@login_required
+def recommendation_action_evaluation_detail(project_id: UUID, action_id: UUID, evaluation_id: UUID):
+    project = _project_for_current_user(project_id)
+    action = recommendation_action_for_project(project, str(action_id))
+    if action is None:
+        abort(404)
+    evaluation = _evaluation_for_project_action(project, action, evaluation_id)
+    if evaluation is None:
+        abort(404)
+    return render_template(
+        "platform/instagram/recommendation_action_evaluation_detail.html",
+        project=project, action=action, evaluation=evaluation,
+        view=evaluation_view(evaluation), assessment_labels=ASSESSMENT_LABELS,
+        can_mutate=project.status == "active" and project.archived_at is None,
+    )
+
+
+@instagram_bp.post("/projects/<uuid:project_id>/insights/actions/<uuid:action_id>/evaluations/<uuid:evaluation_id>")
+@login_required
+def update_recommendation_action_evaluation(project_id: UUID, action_id: UUID, evaluation_id: UUID):
+    project = _project_for_current_user(project_id, active=True)
+    action = recommendation_action_for_project(project, str(action_id))
+    if action is None:
+        abort(404)
+    evaluation = _evaluation_for_project_action(project, action, evaluation_id)
+    if evaluation is None:
+        abort(404)
+    try:
+        update_action_evaluation(project, evaluation, request.form)
+    except InstagramActionEvaluationError as error:
+        flash(str(error), "danger")
+    except InstagramActionEvaluationPersistenceError:
+        current_app.logger.exception("Falha ao atualizar aprendizado Instagram")
+        flash("Não foi possível atualizar o aprendizado registrado.", "danger")
+    else:
+        flash("Aprendizado atualizado sem alterar o snapshot quantitativo.", "success")
+    return redirect(url_for(
+        "instagram.recommendation_action_evaluation_detail", project_id=project.id,
+        action_id=action.id, evaluation_id=evaluation.id,
+        _anchor="instagram-evaluation-learning",
+    ))
 
 
 def _transition_action_route(project_id: UUID, action_id: UUID, status: str):
@@ -589,6 +735,77 @@ def complete_recommendation_action(project_id: UUID, action_id: UUID):
 @login_required
 def cancel_recommendation_action(project_id: UUID, action_id: UUID):
     return _transition_action_route(project_id, action_id, "cancelled")
+
+
+@instagram_bp.route(
+    "/projects/<uuid:project_id>/insights/actions/<uuid:action_id>/delete",
+    methods=("GET", "POST"),
+)
+@login_required
+def delete_recommendation_action_route(project_id: UUID, action_id: UUID):
+    """Confirma e executa a exclusão definitiva de uma ação/teste elegível."""
+    project = _project_for_current_user(project_id, active=True)
+    action = recommendation_action_for_project(project, str(action_id))
+    if action is None:
+        abort(404)
+    period = request.values.get("period", "30d")
+    action_kind = request.values.get("action_kind", "all")
+    action_status = request.values.get("action_status", "all")
+    if (
+        period not in PERIOD_DAYS
+        or action_kind not in {*ACTION_KINDS, "all"}
+        or action_status not in {*ACTION_STATUSES, "all"}
+    ):
+        abort(400)
+
+    def insights_return_url() -> str:
+        return url_for(
+            "instagram.insights",
+            project_id=project.id,
+            period=period,
+            action_kind=action_kind,
+            action_status=action_status,
+            _anchor="instagram-actions",
+        )
+
+    if recommendation_action_has_evaluation(action):
+        flash("Esta ação/teste possui acompanhamento registrado e não pode ser excluída.", "danger")
+        return redirect(insights_return_url())
+    if request.method == "GET":
+        return render_template(
+            "platform/instagram/recommendation_action_delete.html",
+            project=project,
+            action=action,
+            period=period,
+            action_kind=action_kind,
+            action_status=action_status,
+        )
+    try:
+        delete_recommendation_action(project, action, request.form.get("confirmation", ""))
+    except InstagramActionError as error:
+        flash(str(error), "danger")
+        return render_template(
+            "platform/instagram/recommendation_action_delete.html",
+            project=project,
+            action=action,
+            period=period,
+            action_kind=action_kind,
+            action_status=action_status,
+        ), 400
+    except InstagramActionPersistenceError:
+        current_app.logger.exception("Falha ao excluir ação/teste Instagram")
+        flash("Não foi possível excluir a ação ou teste. Nenhum registro relacionado foi removido.", "danger")
+        return render_template(
+            "platform/instagram/recommendation_action_delete.html",
+            project=project,
+            action=action,
+            period=period,
+            action_kind=action_kind,
+            action_status=action_status,
+        ), 500
+    else:
+        flash(f"{ACTION_KIND_LABELS[action.action_kind]} excluída com sucesso.", "success")
+    return redirect(insights_return_url())
 
 
 def _taxonomy_dimension_anchor(dimension_id: UUID | str) -> str:

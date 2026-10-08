@@ -23,6 +23,7 @@ from .models import (
     InstagramInsightFinding,
     InstagramRecommendation,
     InstagramRecommendationAction,
+    InstagramRecommendationActionEvaluation,
     InstagramRecommendationFinding,
     InstagramRecommendationRun,
 )
@@ -285,6 +286,39 @@ def recommendation_action_for_project(
     )
 
 
+def delete_recommendation_action(
+    project: AnalyticsProject, action: InstagramRecommendationAction, confirmation: str,
+) -> None:
+    """Remove uma ação/teste criada por engano, sem apagar acompanhamento histórico."""
+    if project.status != "active" or project.archived_at is not None:
+        raise InstagramActionError("Projetos arquivados não podem alterar ações ou testes.")
+    if action.analytics_project_id != project.id:
+        raise InstagramActionError("A ação/teste não pertence a este projeto.")
+    if confirmation.strip() != "deletar":
+        raise InstagramActionError('Digite exatamente "deletar" para confirmar a exclusão.')
+    if recommendation_action_has_evaluation(action):
+        raise InstagramActionError(
+            "Esta ação/teste possui acompanhamento registrado e não pode ser excluída."
+        )
+    try:
+        db.session.delete(action)
+        db.session.commit()
+    except (SQLAlchemyError, ValueError) as error:
+        db.session.rollback()
+        raise InstagramActionPersistenceError(
+            "Não foi possível excluir a ação ou teste. Nenhum registro relacionado foi removido."
+        ) from error
+
+
+def recommendation_action_has_evaluation(action: InstagramRecommendationAction) -> bool:
+    """Informa se o histórico da ação/teste impede sua exclusão definitiva."""
+    return db.session.scalar(
+        select(InstagramRecommendationActionEvaluation.id)
+        .where(InstagramRecommendationActionEvaluation.instagram_recommendation_action_id == action.id)
+        .limit(1)
+    ) is not None
+
+
 def actions_for_project(
     project: AnalyticsProject, *, action_kind: str = "all", status: str = "all",
 ) -> tuple[InstagramRecommendationAction, ...]:
@@ -296,6 +330,7 @@ def actions_for_project(
         .options(
             joinedload(InstagramRecommendationAction.recommendation)
             .joinedload(InstagramRecommendation.recommendation_run),
+            selectinload(InstagramRecommendationAction.evaluations),
         )
     )
     if action_kind != "all":
@@ -353,6 +388,7 @@ __all__ = [
     "ACTION_KINDS", "ACTION_KIND_LABELS", "ACTION_OUTCOMES", "ACTION_OUTCOME_LABELS",
     "ACTION_STATUSES", "ACTION_STATUS_LABELS", "ActionPrefill", "InstagramActionError",
     "InstagramActionPersistenceError", "action_counts", "action_prefill", "actions_for_project",
-    "create_recommendation_action", "parse_planned_datetime", "recommendation_action_for_project",
+    "create_recommendation_action", "delete_recommendation_action", "parse_planned_datetime",
+    "recommendation_action_for_project", "recommendation_action_has_evaluation",
     "transition_recommendation_action",
 ]

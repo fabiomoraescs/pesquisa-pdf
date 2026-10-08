@@ -1,0 +1,12 @@
+<section class="platform-panel">
+  <p class="platform-danger-note"><strong>Esta ação não pode ser desfeita.</strong> {{ permanent_delete_warning }}</p>
+  <ul>{% for item_label in permanent_delete_items %}<li>{{ item_label }}</li>{% endfor %}</ul>
+  <form method="post" action="{{ permanent_delete_action }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% if permanent_delete_batch_projects %}{% for project in permanent_delete_batch_projects %}<input type="hidden" name="project_ids" value="{{ project.id }}">{% endfor %}{% endif %}
+    <label class="form-label" for="delete-confirmation">Digite <strong>deletar</strong> para confirmar</label>
+    <input class="form-control mb-3" id="delete-confirmation" name="confirmation" type="text" required autocomplete="off" data-delete-confirm="final-delete-button" aria-describedby="delete-rule">
+    <p class="form-text" id="delete-rule">Aceita-se somente “deletar”, com espaços antes ou depois ignorados.</p>
+    <div class="d-flex flex-wrap gap-2"><button class="btn btn-danger" id="final-delete-button" type="submit" disabled>Excluir permanentemente</button><a class="btn btn-outline-primary" href="{{ permanent_delete_cancel_url }}">Cancelar</a></div>
+  </form>
+</section>

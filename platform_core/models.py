@@ -322,6 +322,9 @@ class AnalyticsRun(db.Model):
     media_observations: Mapped[list[InstagramMediaObservation]] = relationship(back_populates="analytics_run")
     account_snapshots: Mapped[list[InstagramAccountSnapshot]] = relationship(back_populates="analytics_run")
     comment_observations: Mapped[list[InstagramCommentObservation]] = relationship(back_populates="analytics_run")
+    action_evaluations: Mapped[list[InstagramRecommendationActionEvaluation]] = relationship(
+        back_populates="analytics_run"
+    )
 
     __table_args__ = (
         CheckConstraint("record_count >= 0", name="ck_analytics_run_record_count"),
@@ -1071,6 +1074,9 @@ class InstagramRecommendationAction(db.Model):
     )
     recommendation: Mapped[InstagramRecommendation] = relationship(back_populates="actions")
     created_by: Mapped[User] = relationship(foreign_keys=[created_by_user_id])
+    evaluations: Mapped[list[InstagramRecommendationActionEvaluation]] = relationship(
+        back_populates="action"
+    )
 
     __table_args__ = (
         CheckConstraint("action_kind IN ('action', 'test')", name="ck_instagram_action_kind"),
@@ -1110,6 +1116,103 @@ class InstagramRecommendationAction(db.Model):
             "instagram_recommendation_id", "created_at",
         ),
     )
+
+
+class InstagramRecommendationActionEvaluation(db.Model):
+    """Snapshot observacional de um período posterior para uma ação/teste concluída.
+
+    Os valores quantitativos são congelados quando o acompanhamento é criado.
+    Apenas a leitura humana (assessment e learning_summary) pode ser ajustada
+    depois, sem reprocessar a cadeia de Insights/Recomendações.
+    """
+
+    __tablename__ = "instagram_recommendation_action_evaluations"
+    id: Mapped[str] = mapped_column(db.String(36), primary_key=True, default=lambda: str(uuid4()))
+    instagram_recommendation_action_id: Mapped[str] = mapped_column(
+        db.ForeignKey("instagram_recommendation_actions.id"), nullable=False
+    )
+    analytics_run_id: Mapped[str] = mapped_column(db.ForeignKey("analytics_runs.id"), nullable=False)
+    created_by_user_id: Mapped[str] = mapped_column(db.ForeignKey("users.id"), nullable=False)
+    metric_key: Mapped[str | None] = mapped_column(db.String(80))
+    baseline_value: Mapped[float | None] = mapped_column(db.Float)
+    followup_value: Mapped[float | None] = mapped_column(db.Float)
+    absolute_change: Mapped[float | None] = mapped_column(db.Float)
+    relative_change: Mapped[float | None] = mapped_column(db.Float)
+    baseline_sample_size: Mapped[int | None] = mapped_column(db.Integer)
+    baseline_coverage: Mapped[float | None] = mapped_column(db.Float)
+    followup_sample_size: Mapped[int | None] = mapped_column(db.Integer)
+    followup_population_size: Mapped[int | None] = mapped_column(db.Integer)
+    followup_coverage: Mapped[float | None] = mapped_column(db.Float)
+    assessment: Mapped[str] = mapped_column(db.String(24), nullable=False)
+    learning_summary: Mapped[str] = mapped_column(db.Text, nullable=False)
+    limitations_json: Mapped[list] = mapped_column(db.JSON, default=list, nullable=False)
+    evaluation_version: Mapped[str] = mapped_column(db.String(80), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        db.DateTime(timezone=True), default=utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        db.DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
+
+    action: Mapped[InstagramRecommendationAction] = relationship(back_populates="evaluations")
+    analytics_run: Mapped[AnalyticsRun] = relationship(back_populates="action_evaluations")
+    created_by: Mapped[User] = relationship(foreign_keys=[created_by_user_id])
+
+    __table_args__ = (
+        CheckConstraint(
+            "assessment IN ('consistent', 'not_consistent', 'inconclusive', 'not_evaluable')",
+            name="ck_instagram_action_evaluation_assessment",
+        ),
+        CheckConstraint(
+            "baseline_sample_size IS NULL OR baseline_sample_size >= 0",
+            name="ck_instagram_action_evaluation_baseline_n",
+        ),
+        CheckConstraint(
+            "followup_sample_size IS NULL OR followup_sample_size >= 0",
+            name="ck_instagram_action_evaluation_followup_n",
+        ),
+        CheckConstraint(
+            "followup_population_size IS NULL OR followup_population_size >= 0",
+            name="ck_instagram_action_evaluation_followup_population",
+        ),
+        CheckConstraint(
+            "baseline_coverage IS NULL OR (baseline_coverage >= 0 AND baseline_coverage <= 1)",
+            name="ck_instagram_action_evaluation_baseline_coverage",
+        ),
+        CheckConstraint(
+            "followup_coverage IS NULL OR (followup_coverage >= 0 AND followup_coverage <= 1)",
+            name="ck_instagram_action_evaluation_followup_coverage",
+        ),
+        CheckConstraint(
+            "length(trim(learning_summary)) > 0 AND length(learning_summary) <= 4000",
+            name="ck_instagram_action_evaluation_learning_summary",
+        ),
+        CheckConstraint("length(trim(evaluation_version)) > 0", name="ck_instagram_action_evaluation_version"),
+        UniqueConstraint(
+            "instagram_recommendation_action_id", "analytics_run_id",
+            name="uq_instagram_action_evaluation_action_run",
+        ),
+        Index(
+            "ix_instagram_action_evaluations_action_created",
+            "instagram_recommendation_action_id", "created_at",
+        ),
+        Index("ix_instagram_action_evaluations_run", "analytics_run_id"),
+    )
+
+
+@event.listens_for(InstagramRecommendationActionEvaluation, "before_update")
+def _preserve_instagram_action_evaluation_snapshot(
+    _mapper, _connection, evaluation: InstagramRecommendationActionEvaluation,
+) -> None:
+    """Impede que uma edição interpretativa altere o snapshot quantitativo."""
+    immutable_fields = (
+        "instagram_recommendation_action_id", "analytics_run_id", "created_by_user_id", "metric_key",
+        "baseline_value", "followup_value", "absolute_change", "relative_change",
+        "baseline_sample_size", "baseline_coverage", "followup_sample_size",
+        "followup_population_size", "followup_coverage", "limitations_json", "evaluation_version",
+    )
+    if any(inspect(evaluation).attrs[field].history.has_changes() for field in immutable_fields):
+        raise ValueError("Os snapshots quantitativos do acompanhamento não podem ser alterados.")
 
 
 def normalized_qualitative_code_name(name: str) -> str:

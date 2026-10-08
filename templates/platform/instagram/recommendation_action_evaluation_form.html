@@ -1,0 +1,47 @@
+{% extends "platform/base.html" %}
+{% from 'platform/_tutorial_info.html' import tutorial_button, tutorial_dialog with context %}
+{% from 'platform/instagram/_project_tabs.html' import project_tabs %}
+
+{% block title %}Acompanhar {{ action.title }} — {{ project.name }} — Instagram{% endblock %}
+{% block body %}
+{% set instagram_tutorial = platform_help_for('instagram_insights') %}
+<section class="platform-panel mb-3" aria-labelledby="instagram-action-evaluation-title">
+  <div class="d-flex flex-wrap align-items-start justify-content-between gap-2">
+    <div class="flex-grow-1"><h1 id="instagram-action-evaluation-title" class="platform-page-title">Acompanhamento</h1><p class="platform-muted mb-0"><span>Ampliar a base de observação para {{ action.title }}.</span><span class="d-block">Escolha explicitamente o novo período de dados antes de registrar o aprendizado.</span></p></div>
+    <div class="d-flex flex-wrap align-items-center gap-2 flex-shrink-0"><a class="btn btn-outline-primary btn-sm" href="{{ url_for('instagram.recommendation_action_detail', project_id=project.id, action_id=action.id, _anchor='instagram-action-follow-up') }}">Voltar à ação/teste</a>{{ tutorial_button(instagram_tutorial, label='Abrir tutorial de Insights') }}</div>
+  </div>
+</section>
+{{ project_tabs(project, 'insights') }}
+<section id="instagram-evaluation-form-content" class="platform-panel" aria-labelledby="instagram-evaluation-period-title">
+  <h2 id="instagram-evaluation-period-title" class="h5">Novo período de dados</h2>
+  <p class="platform-muted">São exibidos apenas runs concluídos, do mesmo projeto e inteiramente posteriores à conclusão da ação/teste. Períodos sobrepostos ou sem datas são excluídos nesta versão.</p>
+  {% if not runs %}
+  <div class="platform-empty-state"><p class="mb-0">Ainda não há um período posterior disponível para avaliação. <a href="{{ url_for('instagram.new_import', project_id=project.id) }}">Importe dados</a> e retorne quando a nova execução estiver concluída.</p></div>
+  {% else %}
+  <form class="platform-filter-control-row platform-filter-control-row--start mb-3" method="get" action="{{ url_for('instagram.new_recommendation_action_evaluation', project_id=project.id, action_id=action.id, _anchor='instagram-evaluation-form-content') }}" data-partial-update data-partial-target="#instagram-evaluation-form-content" data-partial-history="replace">
+    <label class="visually-hidden" for="instagram-evaluation-run">Período de follow-up</label>
+    <select class="form-select platform-filter-select" id="instagram-evaluation-run" name="analytics_run_id" data-auto-submit>
+      <option value="">Período: Selecione</option>
+      {% for run in runs %}<option value="{{ run.id }}"{% if selected_run_id == run.id %} selected{% endif %}>Período: {{ run.period_start | data_hora_local }} até {{ run.period_end | data_hora_local }}</option>{% endfor %}
+    </select>
+    <noscript><button class="btn btn-outline-primary btn-sm" type="submit">Atualizar</button></noscript>
+  </form>
+  {% if preview %}
+  <section class="platform-panel mt-3" aria-labelledby="instagram-evaluation-preview-title">
+    <h3 id="instagram-evaluation-preview-title" class="h6">Prévia observacional</h3>
+    <p class="platform-muted">Os números abaixo serão congelados ao salvar. A classificação e o aprendizado são registrados por uma pessoa; não há inferência causal automática.</p>
+    <dl class="row mb-0"><dt class="col-sm-4">Métrica</dt><dd class="col-sm-8">{{ preview.metric_label }}</dd><dt class="col-sm-4">Baseline</dt><dd class="col-sm-8">{{ preview.baseline_display }}</dd><dt class="col-sm-4">Follow-up</dt><dd class="col-sm-8">{{ preview.followup_display }}</dd><dt class="col-sm-4">Variação absoluta</dt><dd class="col-sm-8">{{ preview.absolute_display }}</dd><dt class="col-sm-4">Variação relativa</dt><dd class="col-sm-8">{{ preview.relative_display }}</dd><dt class="col-sm-4">Contexto do follow-up</dt><dd class="col-sm-8">{{ preview.followup_context_display }}</dd><dt class="col-sm-4">Versão do cálculo</dt><dd class="col-sm-8">{{ preview.evaluation_version }}</dd></dl>
+    {% if preview.limitations %}<h4 class="h6 mt-3">Limitações para leitura</h4><ul class="mb-0">{% for limitation in preview.limitations %}<li>{{ limitation }}</li>{% endfor %}</ul>{% endif %}
+  </section>
+  <form class="platform-form-grid mt-3" method="post" action="{{ url_for('instagram.create_recommendation_action_evaluation', project_id=project.id, action_id=action.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="analytics_run_id" value="{{ preview.analytics_run.id }}">
+    <div class="platform-form-group"><label class="visually-hidden" for="instagram-evaluation-assessment">Avaliação</label><select class="form-select" id="instagram-evaluation-assessment" name="assessment" required>{% if preview.evaluable %}{% for key, label in assessment_labels.items() if key != 'not_evaluable' %}<option value="{{ key }}">Avaliação: {{ label }}</option>{% endfor %}{% else %}<option value="not_evaluable">Avaliação: Não avaliável</option>{% endif %}</select></div>
+    <div class="platform-form-group" style="grid-column: 1 / -1"><label class="form-label" for="instagram-evaluation-learning-summary">Aprendizado</label><textarea class="form-control" id="instagram-evaluation-learning-summary" name="learning_summary" rows="4" maxlength="4000" required></textarea><div class="form-text">Descreva a leitura humana do período posterior, incluindo limites observados. O texto não altera os números calculados.</div></div>
+    <div style="grid-column: 1 / -1"><button class="btn btn-primary" type="submit">Registrar acompanhamento</button></div>
+  </form>
+  {% endif %}
+  {% endif %}
+</section>
+{{ tutorial_dialog(instagram_tutorial) }}
+<script defer src="{{ url_for('static', filename='js/platform_tutorial.js') }}"></script><script defer src="{{ url_for('static', filename='js/platform_auto_submit.js') }}"></script>
+{% endblock %}

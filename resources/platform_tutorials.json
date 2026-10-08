@@ -1209,12 +1209,30 @@
               "Uma recomendação não é uma obrigação nem executa nenhuma mudança fora da plataforma. Ao escolher Transformar em ação, você registra uma decisão operacional humana; ao escolher Criar teste, registra uma intervenção que pretende acompanhar em novo ciclo. A cadeia Ação/Teste → Recomendação → Achado → Evidência preserva o contexto analítico de origem.",
               "O formulário pode sugerir título, objetivo, hipótese e métrica com base na recomendação e nos achados já persistidos. Revise tudo antes de salvar. Baseline é um snapshot opcional do valor registrado na origem; zero continua sendo um valor válido. O Análysis não inventa meta numérica: use valor-alvo apenas quando você o definir ou descreva um critério de sucesso textual.",
               "Concluir um teste permite registrar resultado observado e uma conclusão consistente, não consistente, inconclusiva ou não aplicável. Mesmo uma melhora antes/depois não prova causalidade: período, público, distribuição, assunto e outras mudanças podem influenciar. Resultado inconclusivo é um registro legítimo quando há amostra baixa, dados insuficientes, período curto ou fatores simultâneos.",
-              "Exemplo: um achado registra que conteúdos educativos tiveram mais salvamentos; a recomendação sugere testar maior presença; o teste registra essa presença em próximo ciclo e acompanha a mediana de salvamentos. Se ela aumentar, isso orienta uma nova leitura dos dados, mas não demonstra por si só que a intervenção causou o aumento."
+              "Exemplo: um achado registra que conteúdos educativos tiveram mais salvamentos; a recomendação sugere testar maior presença; o teste registra essa presença em próximo ciclo e acompanha a mediana de salvamentos. Se ela aumentar, isso orienta uma nova leitura dos dados, mas não demonstra por si só que a intervenção causou o aumento.",
+              "Cancelar preserva uma ação ou teste que existiu no histórico. Excluir remove definitivamente um registro criado por engano, mas somente enquanto ele não possuir acompanhamento registrado; acompanhamentos nunca são removidos por essa ação. A exclusão permanente exige digitar “deletar” para confirmar."
             ],
             "items": [
               {"name": "Ação", "description": "Escolha operacional registrada pelo usuário, como revisar clareza, organizar acompanhamento humano ou ampliar cobertura de dados."},
               {"name": "Teste", "description": "Intervenção delimitada com hipótese e métrica acompanhada; não é automaticamente um experimento causal controlado."},
               {"name": "Rastreabilidade", "description": "Ação/Teste → Recomendação → Achado → Evidência permite recuperar o contexto analítico sem recalcular o motor."}
+            ]
+          },
+          {
+            "id": "acompanhar-acao-ou-teste-em-novo-periodo",
+            "title": "Como acompanhar uma ação ou teste em um novo período",
+            "keywords": ["acompanhamento", "aprendizado", "follow-up", "baseline", "variação", "coverage", "causalidade"],
+            "body": [
+              "O acompanhamento posterior só fica disponível para uma ação ou teste concluído. Escolha explicitamente um AnalyticsRun posterior do mesmo projeto. A versão inicial exclui períodos sem início e fim conhecidos e períodos que se sobrepõem à conclusão da ação/teste, para não apresentar uma comparação ambígua como se fosse limpa.",
+              "Baseline é o valor registrado na ação/teste; follow-up é a mediana da métrica canônica nas publicações conhecidas do run escolhido. O sistema registra também diferença absoluta (follow-up − baseline), diferença relativa quando a baseline não é zero, n e cobertura quando existem. NULL continua sendo ausência de dado, e zero é um valor válido: com baseline zero, a diferença relativa não é calculada.",
+              "Exemplo: um achado aponta maior mediana de salvamentos para conteúdos educativos; a recomendação sugere considerar testá-los com maior presença; o teste registra baseline 42 e, em um período posterior selecionado, follow-up 51. A leitura adequada é: “No período posterior, a mediana foi maior e o resultado foi considerado consistente com a expectativa registrada.” Isso não demonstra que a mudança editorial causou o aumento.",
+              "A pessoa usuária escolhe a avaliação — consistente com a expectativa, não consistente, inconclusivo ou não avaliável — e registra o aprendizado. Amostra pequena, cobertura insuficiente, baseline ou follow-up ausente, baseline zero e durações de período muito diferentes aparecem como limitações objetivas. Inconclusivo e não avaliável são resultados legítimos.",
+              "Criar um acompanhamento não gera automaticamente novos achados, recomendações ou ações e não altera o resultado registrado ao concluir a ação/teste. Para iniciar novo ciclo analítico, importe os dados, gere um novo run de Insights e siga o fluxo normal de achados, recomendações e ações."
+            ],
+            "items": [
+              {"name": "Acompanhamento", "description": "Snapshot observacional de um AnalyticsRun posterior escolhido explicitamente, ligado à ação/teste concluído."},
+              {"name": "Aprendizado", "description": "Interpretação humana registrada sem modificar baseline, follow-up, variações ou a versão do cálculo."},
+              {"name": "Correlação não é causalidade", "description": "Uma diferença entre períodos pode coexistir com sazonalidade, pauta, distribuição, audiência, cobertura e outras mudanças simultâneas."}
             ]
           },
           {

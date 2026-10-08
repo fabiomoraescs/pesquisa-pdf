@@ -26,6 +26,7 @@ from .models import (
     InstagramInsightRun,
     InstagramRecommendation,
     InstagramRecommendationAction,
+    InstagramRecommendationActionEvaluation,
     InstagramRecommendationFinding,
     InstagramRecommendationRun,
     InstagramMedia,
@@ -107,6 +108,16 @@ def _delete_project_records(project_id: str) -> None:
         InstagramTaxonomyDimension.analytics_project_id == project_id
     )
 
+    # Acompanhamentos dependem de Action/Test e de AnalyticsRun: precisam sair
+    # antes de ambos na exclusão definitiva do projeto.
+    action_ids = select(InstagramRecommendationAction.id).where(or_(
+        InstagramRecommendationAction.analytics_project_id == project_id,
+        InstagramRecommendationAction.instagram_recommendation_id.in_(recommendation_ids),
+    ))
+    db.session.execute(delete(InstagramRecommendationActionEvaluation).where(or_(
+        InstagramRecommendationActionEvaluation.instagram_recommendation_action_id.in_(action_ids),
+        InstagramRecommendationActionEvaluation.analytics_run_id.in_(run_ids),
+    )))
     # Actions/Testes dependem de Recommendation; removemos essa extensão da
     # cadeia antes dos vínculos Recommendation -> Finding e dos runs.
     db.session.execute(delete(InstagramRecommendationAction).where(or_(
