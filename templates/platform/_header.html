@@ -19,17 +19,17 @@
 } %}
 {% if endpoint == 'home' %}{% set section_title = 'Dashboard' %}
 {% elif endpoint == 'profile.my_profile' or endpoint in ('profile.photo', 'profile.upload_photo', 'profile.remove_photo') %}{% set section_title = 'Perfil' %}
-{% elif endpoint in ('projects.archived_projects', 'projects.archived_free_projects', 'projects.archived_qualitative_projects') %}{% set section_title = 'Projetos arquivados de ' ~ ('Busca por termos' if free_context else 'Busca estruturada' if systematic_context else 'Análise quali-dados') %}
-{% elif endpoint.startswith('projects.') %}{% set section_title = 'Projetos de ' ~ ('Busca por termos' if free_context else 'Busca estruturada' if systematic_context else 'Análise quali-dados') %}
+{% elif endpoint in ('projects.archived_projects', 'projects.archived_free_projects', 'projects.archived_qualitative_projects') %}{% set section_title = 'Projetos arquivados de ' ~ ('Raspagem por termos' if free_context else 'Raspagem estruturada' if systematic_context else 'Análise Documental') %}
+{% elif endpoint.startswith('projects.') %}{% set section_title = 'Projetos de ' ~ ('Raspagem por termos' if free_context else 'Raspagem estruturada' if systematic_context else 'Análise Documental') %}
 {% elif endpoint in ('qualitative.base', 'qualitative.page', 'qualitative.upload_pending', 'qualitative.project_workspace') and project is defined %}{% set section_title = '' %}
-{% elif endpoint.startswith('qualitative.') %}{% set section_title = 'Análise quali-dados' %}
+{% elif endpoint.startswith('qualitative.') %}{% set section_title = 'Análise Documental' %}
 {% elif endpoint == 'instagram.archived_projects' %}{% set section_title = 'Projetos arquivados' %}
-{% elif instagram_context %}{% set section_title = 'Análysis Instagram' %}
-{% elif endpoint == 'inicio' or endpoint in ('resultado', 'download', 'progresso') %}{% set section_title = 'Busca por termos' %}
+{% elif instagram_context %}{% set section_title = 'Instagram' %}
+{% elif endpoint == 'inicio' or endpoint in ('resultado', 'download', 'progresso') %}{% set section_title = 'Raspagem por termos' %}
 {% elif endpoint in ('analyses.standard_history', 'analyses.free_history', 'analyses.systematic_history', 'analyses.project_history') %}{% set section_title = 'Bases de análise' %}
 {% elif endpoint.startswith('analyses.') %}{% set section_title = 'Base de análise' %}
 {% elif endpoint == 'auth.change_password' %}{% set section_title = 'Alterar senha' %}
-{% elif request.blueprint == 'user_libraries' %}{% set section_title = 'Bibliotecas — Busca estruturada' %}
+{% elif request.blueprint == 'user_libraries' %}{% set section_title = 'Bibliotecas — Raspagem estruturada' %}
 {% elif request.blueprint == 'admin' %}{% set section_title = admin_sections.get(endpoint, 'Gerenciar') %}
 {% elif project is defined %}{% set section_title = project.name %}
 {% else %}{% set section_title = 'Análysis' %}{% endif %}
@@ -37,17 +37,30 @@
   <div class="platform-section-title" aria-label="Nome da plataforma">{{ brand_mark() }}</div>
   <nav class="platform-nav" aria-label="Navegação principal">
     <a class="{{ 'is-current' if endpoint == 'home' else '' }}" {% if endpoint == 'home' %}aria-current="page"{% endif %} href="{{ url_for('home') }}">{{ icon('grade') }}<span>Dashboard</span></a>
-    <details class="platform-nav-dropdown" {% if free_context or systematic_context %}open{% endif %}>
-      <summary>{{ icon('pdf') }}<span>Raspagem de dados</span></summary>
-      {% if free_access %}<a class="platform-nav-tool-link{{ ' is-current' if free_context else '' }}" href="{{ url_for('projects.list_free_projects') }}" {% if free_context %}aria-current="location"{% endif %}>Busca por termos</a>{% else %}<span class="platform-nav-tool-unavailable" aria-disabled="true">Busca por termos</span>{% endif %}
-      {% if systematic_access %}<a class="platform-nav-tool-link{{ ' is-current' if systematic_context else '' }}" href="{{ url_for('projects.list_projects') }}" {% if systematic_context %}aria-current="location"{% endif %}>Busca estruturada</a>{% else %}<span class="platform-nav-tool-unavailable" aria-disabled="true">Busca estruturada</span>{% endif %}
+    <details class="platform-nav-dropdown" {% if free_context or systematic_context or qualitative_context %}open{% endif %}>
+      <summary class="{{ 'is-current' if free_context or systematic_context or qualitative_context else '' }}">{{ icon('qualitativa') }}<span>Pesquisa Quali</span></summary>
+      <div class="platform-admin-submenu platform-nav-dropdown-menu">
+        {% if free_access %}<a class="platform-nav-tool-link{{ ' is-current' if free_context else '' }}" href="{{ url_for('projects.list_free_projects') }}" {% if free_context %}aria-current="location"{% endif %}>Raspagem por termos</a>{% else %}<span class="platform-nav-tool-unavailable" aria-disabled="true">Raspagem por termos</span>{% endif %}
+        {% if systematic_access %}<a class="platform-nav-tool-link{{ ' is-current' if systematic_context else '' }}" href="{{ url_for('projects.list_projects') }}" {% if systematic_context %}aria-current="location"{% endif %}>Raspagem estruturada</a>{% else %}<span class="platform-nav-tool-unavailable" aria-disabled="true">Raspagem estruturada</span>{% endif %}
+        {% if qualitative_access %}<a class="platform-nav-tool-link{{ ' is-current' if qualitative_context else '' }}" href="{{ url_for('projects.list_qualitative_projects') }}" {% if qualitative_context %}aria-current="location"{% endif %}>Análise Documental</a>{% else %}<span class="platform-nav-tool-unavailable" aria-disabled="true">Análise Documental</span>{% endif %}
+        <span class="platform-nav-tool-unavailable" aria-disabled="true">Análise de Comentários</span>
+      </div>
     </details>
-    {% if qualitative_access %}<a class="{{ 'is-current' if qualitative_context else '' }}" href="{{ url_for('projects.list_qualitative_projects') }}" {% if qualitative_context %}aria-current="location"{% endif %}>{{ icon('qualitativa') }}<span>Análise quali-dados</span></a>{% else %}<span class="platform-nav-unavailable" aria-disabled="true">{{ icon('qualitativa') }}<span>Análise quali-dados</span></span>{% endif %}
+    {% for tool in unavailable_tools if tool.id == 'quantitative_analysis' %}<span class="platform-nav-unavailable" aria-disabled="true">{{ icon(tool.icon) }}<span>{{ tool.name }}</span></span>{% endfor %}
+    <details class="platform-nav-dropdown">
+      <summary>{{ icon('ficha') }}<span>Editorial</span></summary>
+      <div class="platform-admin-submenu platform-nav-dropdown-menu">
+        <span class="platform-nav-tool-unavailable" aria-disabled="true">ChatDoc</span>
+        <span class="platform-nav-tool-unavailable" aria-disabled="true">Diagramador</span>
+      </div>
+    </details>
     {% if instagram_access %}<details class="platform-nav-dropdown" {% if instagram_context %}open{% endif %}>
-      <summary>{{ icon('analytics') }}<span>Analytics</span></summary>
-      <a class="platform-nav-tool-link{{ ' is-current' if instagram_context else '' }}" href="{{ url_for('instagram.home') }}" {% if instagram_context %}aria-current="location"{% endif %}>Análysis Instagram</a>
+      <summary class="{{ 'is-current' if instagram_context else '' }}">{{ icon('analytics') }}<span>Analytics</span></summary>
+      <div class="platform-admin-submenu platform-nav-dropdown-menu">
+        <a class="platform-nav-tool-link{{ ' is-current' if instagram_context else '' }}" href="{{ url_for('instagram.home') }}" {% if instagram_context %}aria-current="location"{% endif %}>Instagram</a>
+        <span class="platform-nav-tool-unavailable" aria-disabled="true">SEO</span>
+      </div>
     </details>{% endif %}
-    {% for tool in unavailable_tools %}<span class="platform-nav-unavailable" aria-disabled="true">{{ icon(tool.icon) }}<span>{{ tool.name }}</span></span>{% endfor %}
     {% if current_user.role == 'admin' %}
     <button class="platform-admin-toggle{{ ' is-current' if request.blueprint == 'admin' else '' }}" id="platform-admin-toggle" type="button" aria-expanded="{{ 'true' if request.blueprint == 'admin' else 'false' }}" aria-controls="platform-admin-submenu">{{ icon('gerenciar') }}<span>Gerenciar</span><span class="platform-admin-chevron" aria-hidden="true">▾</span></button>
     <div class="platform-admin-submenu" id="platform-admin-submenu" {% if request.blueprint != 'admin' %}hidden{% endif %}>

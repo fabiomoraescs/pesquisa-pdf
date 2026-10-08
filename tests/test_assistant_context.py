@@ -90,7 +90,7 @@ class AssistantContextTests(unittest.TestCase):
         self.assertNotIn("help_button(", reader)
         qualitative_intro = (ROOT / "templates/platform/_qualitative_page_intro.html").read_text(encoding="utf-8")
         self.assertIn("tutorial_button", qualitative_intro)
-        self.assertIn("Como funciona a Análise quali-dados", qualitative_intro)
+        self.assertIn("Como funciona a Análise Documental", qualitative_intro)
 
 
 class AssistantPageTests(unittest.TestCase):

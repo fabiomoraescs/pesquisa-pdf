@@ -3,7 +3,7 @@
 {% block heading %}{{ library.name }}{% endblock %}
 {% block page_intro %}<div class="platform-page-heading"><h1>{{ library.name }}</h1></div>{% endblock %}
 {% block body %}
-<p><a href="{{ library_url('libraries') }}">{{ '← Voltar à Busca estruturada' if private_library_flow else '← Bibliotecas oficiais' }}</a></p>
+<p><a href="{{ library_url('libraries') }}">{{ '← Voltar à Raspagem estruturada' if private_library_flow else '← Bibliotecas oficiais' }}</a></p>
 {% if private_library_flow %}<p class="platform-muted">Esta biblioteca pertence somente a você e não será disponibilizada a outros usuários.</p>{% endif %}
 <section class="platform-panel mb-3">
   <div class="d-flex flex-wrap justify-content-between gap-2"><h2 class="h5">{{ 'Biblioteca privada' if library.owner_user_id else 'Biblioteca oficial' }} · {{ library.version }}</h2><span class="platform-badge">{{ library.status | rotulo }}</span></div>

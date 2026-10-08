@@ -23,7 +23,7 @@ class SidebarHeaderTests(unittest.TestCase):
         icons = re.findall(r'<svg class="platform-icon"[^>]*>(.*?)</svg>', nav, re.S)
         self.assertGreaterEqual(len(icons), 6)
         self.assertEqual(len(icons), len(set(icons)))
-        analytics = re.search(r'<summary>(<svg.*?</svg>)<span>Analytics</span></summary>', nav, re.S)
+        analytics = re.search(r'<summary[^>]*>(<svg.*?</svg>)<span>Analytics</span></summary>', nav, re.S)
         self.assertIsNotNone(analytics)
         self.assertIn('M5 16l5-5 4 3 5-8', analytics.group(1))
 
@@ -31,9 +31,9 @@ class SidebarHeaderTests(unittest.TestCase):
         pages = (
             ("/", "Dashboard"),
             ("/perfil", "Perfil"),
-            ("/projetos", "Projetos de Busca estruturada"),
-            ("/projetos/arquivados", "Projetos arquivados de Busca estruturada"),
-            ("/raspagem-livre", "Busca por termos"),
+            ("/projetos", "Projetos de Raspagem estruturada"),
+            ("/projetos/arquivados", "Projetos arquivados de Raspagem estruturada"),
+            ("/raspagem-livre", "Raspagem por termos"),
             ("/admin", "Visão geral"),
             ("/admin/usuarios", "Usuários"),
             ("/admin/planos", "Planos"),
@@ -63,13 +63,15 @@ class SidebarHeaderTests(unittest.TestCase):
         self.assertNotIn("ferramentas para pesquisa", footer)
         self.assertEqual(re.findall(r"<button[^>]*>(.*?)</button>", footer), ["Sair"])
 
-    def test_navigation_order_and_admin_submenu_are_unchanged(self):
+    def test_navigation_order_and_admin_submenu_are_preserved(self):
         html = self.client.get("/admin/usuarios").get_data(as_text=True)
         nav = html.split('<nav class="platform-nav"', 1)[1].split("</nav>", 1)[0]
         positions = [nav.index(marker) for marker in (
-            'href="/"', '<span>Raspagem de dados</span>',
-            '<span>Análise quali-dados</span>', '<span>Analytics</span>',
-            '<span>Análise quantitativa</span>',
+            'href="/"', '<span>Pesquisa Quali</span>',
+            '>Raspagem por termos<', '>Raspagem estruturada<', '>Análise Documental<',
+            '>Análise de Comentários<', '<span>Pesquisa Quanti</span>',
+            '<span>Editorial</span>', '>ChatDoc<', '>Diagramador<',
+            '<span>Analytics</span>', '>Instagram<', '>SEO<',
             'id="platform-admin-toggle"',
         )]
         self.assertEqual(positions, sorted(positions))
@@ -80,14 +82,34 @@ class SidebarHeaderTests(unittest.TestCase):
         self.assertEqual(nav.count('>Projetos</a>'), 0)
         self.assertIn('href="/projetos/livres"', nav)
         self.assertIn('href="/projetos"', nav)
-        self.assertIn('Busca por termos', nav)
-        self.assertIn('Busca estruturada', nav)
+        self.assertIn('Raspagem por termos', nav)
+        self.assertIn('Raspagem estruturada', nav)
+        self.assertIn('Análise Documental', nav)
+        self.assertIn('Análise de Comentários', nav)
+        self.assertIn('Pesquisa Quanti', nav)
+        self.assertIn('Editorial', nav)
+        self.assertIn('ChatDoc', nav)
+        self.assertIn('Diagramador', nav)
+        self.assertIn('Instagram', nav)
+        self.assertIn('SEO', nav)
         self.assertNotIn('>Bases de análise</a>', nav)
         self.assertNotIn('Projetos arquivados', nav)
-        self.assertNotIn('Em breve', nav)
+        self.assertNotIn('href="/chatdoc"', nav)
+        self.assertNotIn('href="/diagramador"', nav)
+        self.assertNotIn('href="/analytics/seo"', nav)
+        for legacy_name in (
+            "Busca por termos",
+            "Busca estruturada",
+            "Análise quali-dados",
+            "Análysis Instagram",
+            "Análysis SEO",
+        ):
+            self.assertNotIn(legacy_name, nav)
         self.assertNotIn('class="platform-nav-subdropdown"', nav)
         self.assertIn('aria-disabled="true"', nav)
         self.assertIn('aria-expanded="true"', nav)
+        self.assertEqual(nav.count('class="platform-admin-submenu platform-nav-dropdown-menu"'), 3)
+        self.assertNotIn('platform-nav-dropdown-menu">\n      <span class="platform-nav-unavailable"', nav)
         self.assertIn('aria-controls="platform-admin-submenu"', nav)
         self.assertIn('id="platform-admin-submenu"', nav)
         self.assertIn('id="platform-menu-toggle"', html)
@@ -109,11 +131,34 @@ class SidebarHeaderTests(unittest.TestCase):
         self.assertIsNotNone(theme)
         self.assertIn('<circle cx="12" cy="12" r="3"/>', manage.group(0))
         self.assertNotEqual(manage.group(0), theme.group(0))
-        for path, title in (("/projetos/livres", "Projetos de Busca por termos"),
-                            ("/projetos", "Projetos de Busca estruturada"),
-                            ("/projetos/qualitativos", "Projetos de Análise quali-dados")):
+        for path, title in (("/projetos/livres", "Projetos de Raspagem por termos"),
+                            ("/projetos", "Projetos de Raspagem estruturada"),
+                            ("/projetos/qualitativos", "Projetos de Análise Documental")):
             with self.subTest(path=path):
                 self.assertIn(title, self.client.get(path).get_data(as_text=True))
+
+    def test_active_tool_keeps_its_area_visibly_current(self):
+        cases = (
+            ("/raspagem-livre", "Pesquisa Quali", "Raspagem por termos"),
+            ("/projetos", "Pesquisa Quali", "Raspagem estruturada"),
+            ("/projetos/qualitativos", "Pesquisa Quali", "Análise Documental"),
+            ("/analytics/instagram", "Analytics", "Instagram"),
+        )
+        for path, area, tool in cases:
+            with self.subTest(path=path):
+                html = self.client.get(path).get_data(as_text=True)
+                nav = html.split('<nav class="platform-nav"', 1)[1].split("</nav>", 1)[0]
+                group = re.search(
+                    rf'<details class="platform-nav-dropdown" open>\s*'
+                    rf'<summary class="is-current">.*?<span>{re.escape(area)}</span></summary>(.*?)</details>',
+                    nav,
+                    re.S,
+                )
+                self.assertIsNotNone(group)
+                self.assertRegex(
+                    group.group(1),
+                    rf'<a class="platform-nav-tool-link is-current"[^>]*aria-current="location"[^>]*>{re.escape(tool)}</a>',
+                )
 
 
 if __name__ == "__main__":

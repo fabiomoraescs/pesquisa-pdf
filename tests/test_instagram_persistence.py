@@ -1,4 +1,4 @@
-"""Persistência histórica da fundação Análysis Instagram."""
+"""Persistência histórica da fundação Instagram."""
 
 import tempfile
 import unittest

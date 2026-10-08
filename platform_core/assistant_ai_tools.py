@@ -35,13 +35,13 @@ _UI_FACTS = {
     "home": {"location": "Dashboard", "tool": None, "navigation": "Use o menu para abrir uma modalidade disponível."},
     "projects": {"location": "área de projetos", "tool": None, "navigation": "Abra um projeto para acessar suas bases e documentos."},
     "project": {"location": "projeto aberto", "tool": None, "navigation": "Use a modalidade do projeto para organizar análises e documentos."},
-    "term_search": {"location": "Busca por termos", "tool": "pdf_scraper", "navigation": "Use o fluxo do projeto para criar ou reabrir uma Base de análise."},
-    "term_analysis": {"location": "análise de Busca por termos", "tool": "pdf_scraper", "navigation": "Consulte resultados e exportações da análise aberta."},
-    "structured_search": {"location": "Busca estruturada", "tool": "document_analysis", "navigation": "Use o projeto para associar bibliotecas e abrir suas Bases."},
-    "structured_analysis": {"location": "análise de Busca estruturada", "tool": "document_analysis", "navigation": "Consulte os critérios e resultados registrados na análise aberta."},
-    "qualitative": {"location": "ambiente da Análise quali-dados", "tool": "qualitative_analysis", "navigation": "Abra uma Base para trabalhar com documentos, códigos e memos."},
-    "qualitative_reader": {"location": "leitor da Análise quali-dados", "tool": "qualitative_analysis", "navigation": "O Explorador reúne documentos, códigos e memos; o relatório de codificação fica na área da Base."},
-    "qualitative_search": {"location": "pesquisa do leitor Quali-dados", "tool": "qualitative_analysis", "navigation": "Escolha Literal, Regex, Lexical ou Semântica conforme a necessidade da busca."},
+    "term_search": {"location": "Raspagem por termos", "tool": "pdf_scraper", "navigation": "Use o fluxo do projeto para criar ou reabrir uma Base de análise."},
+    "term_analysis": {"location": "análise de Raspagem por termos", "tool": "pdf_scraper", "navigation": "Consulte resultados e exportações da análise aberta."},
+    "structured_search": {"location": "Raspagem estruturada", "tool": "document_analysis", "navigation": "Use o projeto para associar bibliotecas e abrir suas Bases."},
+    "structured_analysis": {"location": "análise de Raspagem estruturada", "tool": "document_analysis", "navigation": "Consulte os critérios e resultados registrados na análise aberta."},
+    "qualitative": {"location": "ambiente da Análise Documental", "tool": "qualitative_analysis", "navigation": "Abra uma Base para trabalhar com documentos, códigos e memos."},
+    "qualitative_reader": {"location": "leitor da Análise Documental", "tool": "qualitative_analysis", "navigation": "O Explorador reúne documentos, códigos e memos; o relatório de codificação fica na área da Base."},
+    "qualitative_search": {"location": "pesquisa no leitor da Análise Documental", "tool": "qualitative_analysis", "navigation": "Escolha Literal, Regex, Lexical ou Semântica conforme a necessidade da busca."},
     "coding_report": {"location": "Relatório de codificação", "tool": "qualitative_analysis", "navigation": "Os links de codificação abrem o documento e a página correspondentes no leitor."},
     "libraries": {"location": "bibliotecas", "tool": "document_analysis", "navigation": "Organize os termos da biblioteca antes de associá-la a um projeto."},
     "admin_ai_settings": {"location": "configuração de IA", "tool": None, "navigation": "Revise provider, modelo e estratégia antes de salvar a configuração."},
@@ -57,20 +57,20 @@ _PLATFORM_HELP = {
     ],
     "gestao": [
         "Projetos organizam o trabalho por modalidade. Bases registram execuções e documentos conforme a ferramenta usada.",
-        "Bibliotecas são associadas a projetos de Busca estruturada; essa associação não prova uso em uma execução específica sem registro correspondente.",
+        "Bibliotecas são associadas a projetos de Raspagem estruturada; essa associação não prova uso em uma execução específica sem registro correspondente.",
         "Relatórios e exportações ajudam a revisar e documentar resultados fora da interface.",
     ],
 }
 
 _TOOL_HELP_FACTS = {
     "pdf_scraper": [
-        "Busca por termos localiza termos e expressões em PDFs e registra execuções como Bases de análise.",
+        "Raspagem por termos localiza termos e expressões em PDFs e registra execuções como Bases de análise.",
     ],
     "document_analysis": [
-        "Busca estruturada trabalha com bibliotecas de termos associadas ao projeto.",
+        "Raspagem estruturada trabalha com bibliotecas de termos associadas ao projeto.",
     ],
     "qualitative_analysis": [
-        "A Análise quali-dados permite ler PDFs, marcar trechos, associar códigos, registrar memos e consultar o relatório de codificação.",
+        "A Análise Documental permite ler PDFs, marcar trechos, associar códigos, registrar memos e consultar o relatório de codificação.",
         "A Margem analítica apresenta etiquetas dos códigos relacionados aos trechos; o Explorador reúne documentos, códigos e memos.",
         "Autocodificação e busca não substituem a revisão do contexto pelo pesquisador.",
     ],

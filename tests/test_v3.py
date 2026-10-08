@@ -717,7 +717,7 @@ class TesteV3(unittest.TestCase):
                     html_inicio = inicio.get_data(as_text=True)
                     for trecho in (
                         "Método de raspagem", "Literal", "Lexical", "Híbrido", "Regex",
-                        "O que a Busca por termos faz", "Quando usar Busca por termos",
+                        "O que a Raspagem por termos faz", "Quando usar Raspagem por termos",
                         "Método Literal e Literal + Regex", "Método Lexical",
                         "controle-limiar-semantico",
                         "Use ponto e vírgula ou coloque um termo por linha.",

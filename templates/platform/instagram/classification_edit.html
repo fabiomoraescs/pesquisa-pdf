@@ -3,7 +3,7 @@
 {% from 'platform/_tutorial_info.html' import tutorial_button, tutorial_dialog with context %}
 {% set instagram_tutorial = platform_help_for('instagram_classifications') %}
 
-{% block title %}Classificar conteúdo — {{ project.name }} — Análysis Instagram{% endblock %}
+{% block title %}Classificar conteúdo — {{ project.name }} — Instagram{% endblock %}
 {% block body %}
 <section class="platform-panel mb-3" aria-labelledby="instagram-classification-edit-title"><div class="d-flex flex-wrap align-items-start justify-content-between gap-2"><div><h1 id="instagram-classification-edit-title" class="h4 mb-1">Classificar conteúdo</h1><p class="platform-muted mb-0">{{ project.name }} · {{ media.media_type_raw or 'Tipo não informado' }}{% if media.published_at %} · {{ media.published_at | data_hora_local }}{% endif %}</p></div><div class="d-flex flex-wrap align-items-center gap-2"><a class="btn btn-outline-primary btn-sm" href="{{ url_for('instagram.classifications', project_id=project.id) }}">Voltar à lista</a>{{ tutorial_button(instagram_tutorial, label='Abrir tutorial de Classificação de conteúdos') }}</div></div><p class="mt-3 mb-0" style="white-space: pre-wrap">{{ media.caption_original or 'Publicação sem legenda.' }}</p>{% if media.permalink %}<p class="mb-0 mt-2"><a href="{{ media.permalink }}" target="_blank" rel="noopener noreferrer">Abrir publicação no Instagram</a></p>{% endif %}</section>
 {{ project_tabs(project, 'classifications') }}

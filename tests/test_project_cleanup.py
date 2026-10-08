@@ -62,7 +62,7 @@ class ProjectCleanupTests(unittest.TestCase):
         html = self.client.get(f"/analise-documental/projetos/{project_id}").get_data(as_text=True)
         legacy = self.client.get("/raspagem-livre").get_data(as_text=True)
         self.assertIn("info-icon-button", html)
-        self.assertIn('aria-label="Abrir tutorial da Busca estruturada"', html)
+        self.assertIn('aria-label="Abrir tutorial da Raspagem estruturada"', html)
         self.assertIn('id="platform-tutorial-dialog"', html)
         self.assertEqual(html.count('data-platform-tutorial-open'), 1)
         for term in ("Grupo → Entidade → Variante ativa", "Entidades e variantes",

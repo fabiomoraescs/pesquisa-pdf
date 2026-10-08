@@ -1,10 +1,12 @@
 {% extends "platform/base.html" %}
+{% from 'platform/_icons.html' import icon %}
 {% from 'platform/_tutorial_info.html' import tutorial_button, tutorial_dialog with context %}
 {% from 'platform/instagram/_project_tabs.html' import project_tabs %}
 
-{% block title %}Insights — {{ project.name }} — Análysis Instagram{% endblock %}
+{% block title %}Insights — {{ project.name }} — Instagram{% endblock %}
 {% block body %}
 {% set instagram_tutorial = platform_help_for('instagram_insights') %}
+{% set recommendation_type_labels = {'content_mix': 'Míx de conteúdo', 'editorial_strategy': 'Estratégia editorial', 'media_format': 'Formato de mídia', 'information_clarity': 'Clareza informacional', 'community_response': 'Resposta à comunidade', 'risk_review': 'Revisão de risco', 'measurement_quality': 'Qualidade da medição'} %}
 <section class="platform-panel mb-3" aria-labelledby="instagram-insights-title">
   <div class="d-flex flex-wrap align-items-start justify-content-between gap-2">
     <div>
@@ -37,12 +39,12 @@
   {% if not insight_run %}
   <section class="platform-empty-state" aria-labelledby="instagram-insights-empty-title">
     <h2 id="instagram-insights-empty-title" class="h5">Ainda não há insights gerados para este projeto.</h2>
-    <p>Gere uma execução para registrar achados descritivos e suas evidências rastreáveis no período selecionado.</p>
+    <p>Gere primeiro os Insights do projeto para registrar achados descritivos e suas evidências rastreáveis no período selecionado.</p>
     {% if can_generate %}<form method="post" action="{{ url_for('instagram.generate_project_insights', project_id=project.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="period" value="{{ period }}"><button class="btn btn-primary" type="submit">Gerar insights</button></form>{% else %}<p class="platform-muted mb-0">Projeto arquivado: o histórico pode ser consultado, mas não recebe novas execuções.</p>{% endif %}
   </section>
   {% else %}
   <section class="platform-panel mb-3" aria-labelledby="instagram-insights-run-title">
-    <div class="d-flex flex-wrap align-items-start justify-content-between gap-2"><div><h2 id="instagram-insights-run-title" class="h5 mb-1">Última execução do recorte</h2><p class="platform-muted mb-0">Gerada em {{ insight_run.generated_at | data_hora_local }} · referência dos dados: {{ insight_run.reference_at | data_hora_local if insight_run.reference_at else 'Não informada' }}</p></div><span class="platform-badge">{{ insight_run.engine_version }}</span></div>
+    <div class="d-flex flex-wrap align-items-start justify-content-between gap-2"><div><h2 id="instagram-insights-run-title" class="h5 mb-1">Última execução do recorte</h2><p class="platform-muted mb-0">Gerada em {{ insight_run.generated_at | data_hora_local }} · referência dos dados: {{ insight_run.reference_at | data_hora_local if insight_run.reference_at else 'Não informada' }}</p></div><div class="d-flex flex-wrap align-items-center gap-2"><span class="platform-badge">{{ insight_run.engine_version }}</span>{% if can_generate %}<form method="post" action="{{ url_for('instagram.generate_project_recommendations', project_id=project.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="insight_run_id" value="{{ insight_run.id }}"><button class="btn btn-outline-primary btn-sm" type="submit">Gerar recomendações</button></form>{% endif %}</div></div>
     <dl class="row mb-0 mt-3"><dt class="col-sm-4">Período</dt><dd class="col-sm-8">{{ period_label }}</dd><dt class="col-sm-4">Publicações analisadas</dt><dd class="col-sm-8">{{ insight_run.publication_count }}</dd><dt class="col-sm-4">Comentários analisados</dt><dd class="col-sm-8">{{ insight_run.comment_count }}</dd><dt class="col-sm-4">Achados gerados</dt><dd class="col-sm-8">{{ insight_run.finding_count }}</dd></dl>
   </section>
   {% if findings_by_group %}
@@ -54,7 +56,7 @@
         <article class="platform-list-item">
           <div><div class="platform-list-title">{{ finding.title }}</div><div class="platform-list-meta">{{ finding.summary }}</div></div>
           <div class="platform-list-meta"><span class="platform-badge">Suporte {{ {'exploratory': 'exploratório', 'moderate': 'moderado', 'consistent': 'consistente'}[finding.support_level] }}</span><div class="mt-1">n = {{ finding.group_n }} · cobertura {{ '%.0f' | format(finding.coverage * 100) }}%{% if finding.absolute_difference is not none %} · diferença {{ '%+.2f' | format(finding.absolute_difference) }}{% endif %}</div></div>
-          <div class="platform-list-actions"><a class="btn btn-outline-primary btn-sm" href="{{ url_for('instagram.insight_detail', project_id=project.id, finding_id=finding.id) }}">Ver evidências</a></div>
+          <div class="platform-list-actions"><a class="btn btn-outline-primary btn-sm platform-action-button" href="{{ url_for('instagram.insight_detail', project_id=project.id, finding_id=finding.id) }}" title="Ver evidências" aria-label="Ver evidências">{{ icon('abrir') }}</a></div>
         </article>
       {% endfor %}
       </div>
@@ -63,6 +65,29 @@
   {% else %}
   <section class="platform-empty-state" aria-labelledby="instagram-insights-insufficient-title"><h2 id="instagram-insights-insufficient-title" class="h5">Os dados atuais ainda são insuficientes para gerar achados com os critérios desta versão.</h2><p>O motor exige tamanho mínimo de grupo, cobertura conhecida e diferenças descritivas antes de registrar um achado.</p></section>
   {% endif %}
+  <section id="instagram-recommendations" class="platform-panel mb-3" aria-labelledby="instagram-recommendations-title">
+    <div class="d-flex flex-wrap align-items-start justify-content-between gap-2"><div><h2 id="instagram-recommendations-title" class="h5 mb-1">Recomendações</h2><p class="platform-muted mb-0">Orientações de teste derivadas dos achados deste run; não são ordens nem relações causais.</p></div>{% if recommendation_run %}<span class="platform-badge">{{ recommendation_run.engine_version }}</span>{% endif %}</div>
+    {% if recommendation_run %}
+      <p class="platform-list-meta mt-3">{{ recommendation_run.number_of_findings_considered }} achado(s) considerado(s) · {{ recommendation_run.number_of_recommendations_generated }} recomendação(ões) gerada(s) · {{ recommendation_run.parameters_json.get('findings_ignored_by_rules', 0) }} achado(s) sem recomendação nesta versão.</p>
+      {% if recommendation_run.parameters_json.get('converged_source_findings', 0) %}<p class="platform-muted">{{ recommendation_run.parameters_json.get('converged_source_findings') }} achado(s) compatível(is) foram reunidos em recomendações únicas.</p>{% endif %}
+      {% if recommendation_run.parameters_json.get('truncated_by_limit') %}<p class="platform-muted">A execução aplicou o limite de {{ recommendation_run.parameters_json.get('rules', {}).get('max_recommendations_per_run') }} recomendações desta versão.</p>{% endif %}
+      {% if recommendations %}
+      <div class="platform-view-list">
+        {% for recommendation in recommendations %}
+        <article class="platform-list-item">
+          <div><div class="platform-list-title">{{ recommendation.title }}</div><div class="platform-list-meta">{{ recommendation.summary }}</div></div>
+          <div class="platform-list-meta"><span class="platform-badge">Prioridade {{ {'low': 'baixa', 'medium': 'média', 'high': 'alta'}[recommendation.priority] }}</span><span class="platform-badge ms-1">Suporte {{ {'exploratory': 'exploratório', 'moderate': 'moderado', 'consistent': 'consistente'}[recommendation.support_level] }}</span><div class="mt-1">{{ recommendation_type_labels[recommendation.recommendation_type] }} · {{ recommendation.finding_links | length }} achado(s) de origem</div></div>
+          <div class="platform-list-actions"><a class="btn btn-outline-primary btn-sm platform-action-button" href="{{ url_for('instagram.recommendation_detail', project_id=project.id, recommendation_id=recommendation.id) }}" title="Ver recomendação" aria-label="Ver recomendação">{{ icon('abrir') }}</a></div>
+        </article>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="platform-empty-state mt-3"><p class="mb-0">Os achados deste período ainda não sustentam recomendações segundo os critérios desta versão.</p></div>
+      {% endif %}
+    {% else %}
+      <div class="platform-empty-state mt-3"><p class="mb-0">Gere recomendações a partir deste run de Insights para registrar orientações rastreáveis.</p></div>
+    {% endif %}
+  </section>
   {% endif %}
 </section>
 {{ tutorial_dialog(instagram_tutorial) }}

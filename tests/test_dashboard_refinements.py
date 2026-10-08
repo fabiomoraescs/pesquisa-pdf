@@ -84,10 +84,10 @@ class DashboardRefinementsTests(unittest.TestCase):
             tool_id=QUALITATIVE_TOOL, tool_version="manual-v1", parameters={}, name="Leitura qualitativa")
         systematic_project = self._project(owner, "Projeto estruturado", "systematic")
         expected = (
-            (self._base(owner, "Busca de termos", "pdf_scraper", status="processando"), "Busca por termos"),
+            (self._base(owner, "Busca de termos", "pdf_scraper", status="processando"), "Raspagem por termos"),
             (self._base(owner, "Busca de entidades", "document_analysis", project=systematic_project,
-                        status="processando"), "Busca estruturada"),
-            (qualitative, "Análise quali-dados"),
+                        status="processando"), "Raspagem estruturada"),
+            (qualitative, "Análise Documental"),
         )
         login(self.client)
         response = self.client.get("/")
@@ -137,7 +137,7 @@ class DashboardRefinementsTests(unittest.TestCase):
             r'<section[^>]+aria-labelledby="continue-working-heading">(.*?)</section>', html, re.DOTALL
         )[1]
         self.assertIn("Base concluída", continuation)
-        self.assertIn("Busca por termos", continuation)
+        self.assertIn("Raspagem por termos", continuation)
         self.assertIn("8 documento(s)", continuation)
         self.assertNotIn(">Continuar<", continuation)
         self.assertNotIn("Concluída · Concluída em", continuation)
@@ -342,8 +342,8 @@ class DashboardRefinementsTests(unittest.TestCase):
         self.assertNotIn("Ações rápidas", html)
         self.assertNotIn("Atividade recente", html)
         self.assertNotIn("Bases concluídas por ferramenta", html)
-        self.assertIn("Busca por termos", html)
-        self.assertIn("Busca estruturada", html)
+        self.assertIn("Raspagem por termos", html)
+        self.assertIn("Raspagem estruturada", html)
         self.assertNotIn("Projeto sigiloso alheio", html)
         self.assertNotIn("Base em projeto alheio", html)
         self.assertNotIn("Base secreta", html)
@@ -363,9 +363,9 @@ class DashboardRefinementsTests(unittest.TestCase):
         db.session.commit()
         login(self.client)
         for kind, path, label in (
-            ("free", "/projetos/livres", "Busca por termos"),
-            ("systematic", "/projetos", "Busca estruturada"),
-            ("qualitative", "/projetos/qualitativos", "Análise quali-dados"),
+            ("free", "/projetos/livres", "Raspagem por termos"),
+            ("systematic", "/projetos", "Raspagem estruturada"),
+            ("qualitative", "/projetos/qualitativos", "Análise Documental"),
         ):
             with self.subTest(kind=kind):
                 project = self._project(owner, f"Projeto {label}", kind)
@@ -526,9 +526,10 @@ class DashboardRefinementsTests(unittest.TestCase):
         self.assertEqual(admin_html.count('id="dashboard-chart-usage"'), 1)
         self.assertNotIn("dashboard-chart-workspace", admin_html)
         self.assertEqual(chart_data(admin_html, "dashboard-admin-chart-data")["usage"], {
-            "labels": ["Busca por termos", "Busca estruturada", "Análise quali-dados",
-                       "Análysis Instagram", "Análise quantitativa", "ChatDoc"],
-            "values": [1, 1, 0, 0, 0, 0],
+            "labels": ["Raspagem por termos", "Raspagem estruturada", "Análise Documental",
+                       "Análise de Comentários", "Pesquisa Quanti", "ChatDoc", "Diagramador",
+                       "Instagram", "SEO"],
+            "values": [1, 1, 0, 0, 0, 0, 0, 0, 0],
         })
 
     def assert_recent_records_have_no_chart(self, html):
@@ -545,7 +546,7 @@ class DashboardRefinementsTests(unittest.TestCase):
         self.assertNotIn('cdn.plot.ly', html)
         for label in ("Projetos", "Bases", "Documentos nas Bases", "Bases concluídas"):
             self.assertRegex(html, rf'<strong>0</strong>\s*<span>{re.escape(label)}</span>')
-        for name in ("Análise quantitativa", "ChatDoc"):
+        for name in ("Pesquisa Quanti",):
             self.assertRegex(html, r'(?s)<span class="platform-nav-unavailable" aria-disabled="true">\s*<svg[^>]*>.*?</svg>\s*<span>' + name + r'</span></span>')
         self.assertFalse(any("chatdoc" in rule.rule.lower() for rule in self.app.url_map.iter_rules()))
         self.assertFalse(any("chatdoc" in name.lower() for name in db.metadata.tables))
@@ -609,7 +610,7 @@ const charts={
   'dashboard-chart-users':chart(),
   'dashboard-chart-usage':chart(),
 };
-const admin={registrations:{labels:['2026-09','2026-10'],values:[1,2]},usage:{labels:['Busca por termos','Busca estruturada'],values:[2,1]}};
+const admin={registrations:{labels:['2026-09','2026-10'],values:[1,2]},usage:{labels:['Raspagem por termos','Raspagem estruturada'],values:[2,1]}};
 const document={getElementById:id=>id==='dashboard-admin-chart-data'?{textContent:JSON.stringify(admin)}:charts[id]||null,
   addEventListener:(name,fn)=>handlers[name]=fn,querySelectorAll:()=>[]};
 const Plotly={react:(...args)=>calls.push(args),Plots:{resize(){}}};
@@ -620,7 +621,7 @@ assert.deepEqual(calls[0][1][0].x,['09/2026','10/2026']);
 assert.deepEqual(calls[0][1][0].y,[1,2]);
 assert.equal(calls[0][1][0].orientation,'v');
 assert.deepEqual(calls[1][1][0].x,[2,1]);
-assert.deepEqual(calls[1][1][0].y,['Busca por termos','Busca estruturada']);
+assert.deepEqual(calls[1][1][0].y,['Raspagem por termos','Raspagem estruturada']);
 assert.equal(calls[1][1][0].orientation,'h');
 assert.match(calls[1][1][0].hovertemplate,/Base\(s\) concluída\(s\)/);
 assert.equal(calls[1][3].responsive,true);
@@ -641,7 +642,7 @@ const cards=[{}, {}]; let observed=[], serial=0;
 const chart=()=>({classList:{contains:x=>classes.has(x),add:x=>classes.add(x),remove:x=>classes.delete(x)}});
 const charts=[chart(), chart()];
 const document = {
-  getElementById:id=>id==='dashboard-admin-chart-data'?{textContent:JSON.stringify({registrations:{labels:['2026-10'],values:[1]},usage:{labels:['Busca por termos'],values:[1]}})}:
+  getElementById:id=>id==='dashboard-admin-chart-data'?{textContent:JSON.stringify({registrations:{labels:['2026-10'],values:[1]},usage:{labels:['Raspagem por termos'],values:[1]}})}:
     id==='dashboard-chart-users'?charts[0]:id==='dashboard-chart-usage'?charts[1]:null,
   addEventListener:(name,fn)=>handlers[name]=fn,
   querySelectorAll:selector=>selector.endsWith('.js-plotly-plot')?charts:selector.endsWith('.platform-panel')?cards:[],

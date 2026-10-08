@@ -1,4 +1,4 @@
-"""Contrato matemático das métricas derivadas do Análysis Instagram."""
+"""Contrato matemático das métricas derivadas do Instagram."""
 
 from __future__ import annotations
 

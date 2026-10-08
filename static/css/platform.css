@@ -80,8 +80,8 @@
 .platform-nav-dropdown summary::-webkit-details-marker { display: none; }
 .platform-nav-dropdown summary::after { content: '▾'; margin-left: auto; }
 .platform-nav-dropdown[open] summary::after { transform: rotate(180deg); }
-.platform-nav-dropdown summary:hover, .platform-nav-dropdown summary:focus-visible { background: var(--soft-blue); color: var(--blue); }
-.platform-nav-dropdown > .platform-nav-tool-link, .platform-nav-dropdown > .platform-nav-tool-unavailable { margin-left: 1rem; padding: .5rem .65rem; font-size: .85rem; font-weight: 500; }
+.platform-nav-dropdown summary:hover, .platform-nav-dropdown summary:focus-visible, .platform-nav-dropdown > summary.is-current { background: var(--soft-blue); color: var(--blue); }
+.platform-nav-dropdown-menu > .platform-nav-tool-link, .platform-nav-dropdown-menu > .platform-nav-tool-unavailable { padding: .5rem .65rem; font-size: .85rem; font-weight: 500; }
 .platform-nav-tool-unavailable { display: block; color: var(--muted); cursor: not-allowed; }
 .platform-nav-subdropdown { margin-left: .7rem; border-left: 1px solid var(--border); }
 .platform-nav-subdropdown > summary { margin-left: .2rem; padding: .5rem .55rem; font-size: .85rem; }
@@ -488,7 +488,8 @@ legend.platform-form-section-title { float: none; }
 .platform-project-card h2 { font-size: 1.1rem; margin: 0; }
 .platform-project-card p { margin: 0; }
 .platform-project-card .platform-card-actions { margin-top: auto; display: flex; flex-wrap: wrap; gap: .5rem; }
-.platform-badge { display: inline-flex; align-items: center; border: 1px solid var(--border); border-radius: 999px; background: var(--surface-muted); color: var(--ink); padding: .15rem .6rem; font-size: .78rem; font-weight: 650; }
+.badge, .platform-badge { display: inline-flex; align-items: center; padding: .055rem .396rem; font-size: .6875rem; font-weight: 400; line-height: 1; }
+.platform-badge { border: 1px solid var(--border); border-radius: 999px; background: var(--surface-muted); color: var(--ink); }
 .platform-badge-inactive { color: var(--muted); }
 .platform-empty-state { text-align: center; padding: clamp(2rem, 5vw, 4rem); border: 1px dashed var(--border); border-radius: 1rem; background: var(--surface); }
 .platform-empty-state p { color: var(--muted); }

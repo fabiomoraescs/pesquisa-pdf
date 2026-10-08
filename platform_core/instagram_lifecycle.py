@@ -24,6 +24,9 @@ from .models import (
     InstagramInsightEvidence,
     InstagramInsightFinding,
     InstagramInsightRun,
+    InstagramRecommendation,
+    InstagramRecommendationFinding,
+    InstagramRecommendationRun,
     InstagramMedia,
     InstagramMediaClassification,
     InstagramMediaObservation,
@@ -93,10 +96,27 @@ def _delete_project_records(project_id: str) -> None:
     insight_finding_ids = select(InstagramInsightFinding.id).where(
         InstagramInsightFinding.instagram_insight_run_id.in_(insight_run_ids)
     )
+    recommendation_run_ids = select(InstagramRecommendationRun.id).where(
+        InstagramRecommendationRun.analytics_project_id == project_id
+    )
+    recommendation_ids = select(InstagramRecommendation.id).where(
+        InstagramRecommendation.instagram_recommendation_run_id.in_(recommendation_run_ids)
+    )
     dimension_ids = select(InstagramTaxonomyDimension.id).where(
         InstagramTaxonomyDimension.analytics_project_id == project_id
     )
 
+    # A cadeia Recommendation -> Finding -> Evidence e os demais dependentes
+    # precisam ser apagados antes dos runs e, por fim, do projeto.
+    db.session.execute(delete(InstagramRecommendationFinding).where(
+        InstagramRecommendationFinding.instagram_recommendation_id.in_(recommendation_ids)
+    ))
+    db.session.execute(delete(InstagramRecommendation).where(
+        InstagramRecommendation.instagram_recommendation_run_id.in_(recommendation_run_ids)
+    ))
+    db.session.execute(delete(InstagramRecommendationRun).where(
+        InstagramRecommendationRun.analytics_project_id == project_id
+    ))
     # Evidências polimórficas não têm FK para as fontes, mas os achados e runs
     # têm FK real entre si; apagamos nessa ordem antes do projeto.
     db.session.execute(delete(InstagramInsightEvidence).where(

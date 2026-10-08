@@ -23,7 +23,7 @@
       </div>
     </div>
 
-    {% if analysis is defined %}<section class="download-card mb-4"><p class="text-secondary mb-2">Busca por termos · {{ analysis.document_count }} PDF(s) · {{ analysis.result_count }} resultado(s) · {{ analysis | metodo_base }} · {{ analysis.created_at.strftime('%d/%m/%Y %H:%M') }}{% if analysis.project_id %} · Vinculada a projeto{% endif %}</p><p class="text-secondary mb-2"><strong>Documentos:</strong> {{ documents|map(attribute='original_name')|join(', ') }} · <strong>Termos:</strong> {{ analysis.parameters_json.termos|map(attribute='termo')|join(', ') }}</p>{% include 'platform/_analysis_actions.html' %}</section>{% endif %}
+    {% if analysis is defined %}<section class="download-card mb-4"><p class="text-secondary mb-2">Raspagem por termos · {{ analysis.document_count }} PDF(s) · {{ analysis.result_count }} resultado(s) · {{ analysis | metodo_base }} · {{ analysis.created_at.strftime('%d/%m/%Y %H:%M') }}{% if analysis.project_id %} · Vinculada a projeto{% endif %}</p><p class="text-secondary mb-2"><strong>Documentos:</strong> {{ documents|map(attribute='original_name')|join(', ') }} · <strong>Termos:</strong> {{ analysis.parameters_json.termos|map(attribute='termo')|join(', ') }}</p>{% include 'platform/_analysis_actions.html' %}</section>{% endif %}
 
     {% if resultado.erros %}
       <div class="alert alert-warning">
@@ -43,7 +43,7 @@
       <div class="col-6 col-lg"><div class="metric-card"><span>Consultas</span><strong id="indicador-v3-consultas">0</strong></div></div>
     </section>
 
-    <section class="row g-4 mb-4 dashboard-grid" aria-label="Visualizações analíticas da busca por termos">
+    <section class="row g-4 mb-4 dashboard-grid" aria-label="Visualizações analíticas da Raspagem por termos">
       <div class="col-12"><div class="chart-card"><div class="chart-header"><h2>Termos × documentos</h2><span class="chart-subtitle">Ocorrências lexicais por documento</span></div><div class="analysis-chart-scroll"><div id="grafico-termos-documentos" class="chart"></div></div></div></div>
       <div class="col-12"><div class="chart-card"><div class="chart-header"><h2>Frequência relativa por documento</h2><span class="chart-subtitle">Ocorrências lexicais por 1.000 palavras</span></div><div class="analysis-chart-scroll"><div id="grafico-frequencia-relativa" class="chart"></div></div></div></div>
     </section>
@@ -55,7 +55,7 @@
       <div class="col-6 col-lg-3"><div class="metric-card"><span>Páginas com OCR</span><strong id="indicador-ocr">0</strong></div></div>
     </section>
 
-    <section class="row g-4 mb-4 dashboard-grid" aria-label="Visualizações analíticas da busca por termos">
+    <section class="row g-4 mb-4 dashboard-grid" aria-label="Visualizações analíticas da Raspagem por termos">
       <div class="col-12"><div class="chart-card"><div class="chart-header"><h2>Termos × documentos</h2><span class="chart-subtitle">Ocorrências por documento</span></div><div class="analysis-chart-scroll"><div id="grafico-termos-documentos" class="chart"></div></div></div></div>
       <div class="col-12"><div class="chart-card"><div class="chart-header"><h2>Frequência relativa por documento</h2><span class="chart-subtitle">Ocorrências por 1.000 palavras</span></div><div class="analysis-chart-scroll"><div id="grafico-frequencia-relativa" class="chart"></div></div></div></div>
     </section>

@@ -433,7 +433,7 @@ class RemainingRefinementsTests(unittest.TestCase):
         self.assertIn('id="admin-users-list" data-view-container', users_html)
         self.assertIn('class="btn btn-outline-primary btn-sm platform-action-button"', users_html)
         self.assertIn(f"/admin/usuarios/{target.id}/redefinir-senha", users_html)
-        self.assertIn("Busca por termos", self.client.get("/raspagem-livre").get_data(as_text=True))
+        self.assertIn("Raspagem por termos", self.client.get("/raspagem-livre").get_data(as_text=True))
 
 
 if __name__ == "__main__":

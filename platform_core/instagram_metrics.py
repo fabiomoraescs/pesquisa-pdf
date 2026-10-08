@@ -1,4 +1,4 @@
-"""Métricas derivadas reproduzíveis do Análysis Instagram.
+"""Métricas derivadas reproduzíveis do Instagram.
 
 Os valores deste módulo são calculados sob demanda a partir da última
 observação selecionada pelo dashboard. Nenhum valor derivado é persistido.

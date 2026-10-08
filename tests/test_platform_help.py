@@ -104,7 +104,7 @@ class PlatformHelpRegistryTests(unittest.TestCase):
         for fact in (
             "Grupo → Entidade → Variante ativa", "0,50 a 0,90", "limites de palavra",
             "OCR é acionado automaticamente", "Validação pendente", "não preenche pares automaticamente",
-            "não possui integração automática que envie ocorrências para Quali-dados",
+            "não possui integração automática que envie ocorrências para Análise Documental",
         ):
             with self.subTest(fact=fact):
                 self.assertIn(fact, content)
@@ -292,12 +292,12 @@ class PlatformHelpAssistantIntegrationTests(unittest.TestCase):
         term_html = term_response.get_data(as_text=True)
         self.assertEqual(term_html.count('id="platform-tutorial-dialog"'), 1)
         self.assertEqual(term_html.count("data-platform-tutorial-open"), 1)
-        self.assertIn('aria-label="Abrir tutorial da Busca por termos"', term_html)
+        self.assertIn('aria-label="Abrir tutorial da Raspagem por termos"', term_html)
 
         main_entries = {
-            ROOT / "templates" / "index.html": "Abrir tutorial da Busca por termos",
-            ROOT / "templates" / "historico_racial" / "index.html": "Abrir tutorial da Busca estruturada",
-            ROOT / "templates" / "platform" / "_qualitative_page_intro.html": "Como funciona a Análise quali-dados",
+            ROOT / "templates" / "index.html": "Abrir tutorial da Raspagem por termos",
+            ROOT / "templates" / "historico_racial" / "index.html": "Abrir tutorial da Raspagem estruturada",
+            ROOT / "templates" / "platform" / "_qualitative_page_intro.html": "Como funciona a Análise Documental",
         }
         for template_path, label in main_entries.items():
             with self.subTest(template=template_path.name):

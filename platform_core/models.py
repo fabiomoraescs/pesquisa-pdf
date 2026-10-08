@@ -281,6 +281,9 @@ class AnalyticsProject(db.Model):
     insight_runs: Mapped[list[InstagramInsightRun]] = relationship(
         back_populates="analytics_project"
     )
+    recommendation_runs: Mapped[list[InstagramRecommendationRun]] = relationship(
+        back_populates="analytics_project"
+    )
 
     __table_args__ = (
         CheckConstraint("length(trim(name)) > 0", name="ck_analytics_project_name"),
@@ -789,6 +792,9 @@ class InstagramInsightRun(db.Model):
 
     analytics_project: Mapped[AnalyticsProject] = relationship(back_populates="insight_runs")
     findings: Mapped[list[InstagramInsightFinding]] = relationship(back_populates="insight_run")
+    recommendation_runs: Mapped[list[InstagramRecommendationRun]] = relationship(
+        back_populates="insight_run"
+    )
 
     __table_args__ = (
         CheckConstraint("period_key IN ('7d', '30d', '90d', 'all')", name="ck_instagram_insight_run_period"),
@@ -891,6 +897,131 @@ class InstagramInsightEvidence(db.Model):
         ),
         Index("ix_instagram_insight_evidence_finding_role", "instagram_insight_finding_id", "role"),
         Index("ix_instagram_insight_evidence_source", "source_type", "source_id"),
+    )
+
+
+class InstagramRecommendationRun(db.Model):
+    """Execução histórica do motor de recomendações derivada de um run de Insights."""
+
+    __tablename__ = "instagram_recommendation_runs"
+    id: Mapped[str] = mapped_column(db.String(36), primary_key=True, default=lambda: str(uuid4()))
+    analytics_project_id: Mapped[str] = mapped_column(
+        db.ForeignKey("analytics_projects.id"), nullable=False
+    )
+    instagram_insight_run_id: Mapped[str] = mapped_column(
+        db.ForeignKey("instagram_insight_runs.id"), nullable=False
+    )
+    engine_version: Mapped[str] = mapped_column(db.String(80), nullable=False)
+    parameters_json: Mapped[dict] = mapped_column(db.JSON, default=dict, nullable=False)
+    number_of_findings_considered: Mapped[int] = mapped_column(
+        db.BigInteger, nullable=False, default=0
+    )
+    number_of_recommendations_generated: Mapped[int] = mapped_column(
+        db.BigInteger, nullable=False, default=0
+    )
+    generated_at: Mapped[datetime] = mapped_column(
+        db.DateTime(timezone=True), default=utcnow, nullable=False
+    )
+
+    analytics_project: Mapped[AnalyticsProject] = relationship(back_populates="recommendation_runs")
+    insight_run: Mapped[InstagramInsightRun] = relationship(back_populates="recommendation_runs")
+    recommendations: Mapped[list[InstagramRecommendation]] = relationship(
+        back_populates="recommendation_run"
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "number_of_findings_considered >= 0 AND number_of_recommendations_generated >= 0",
+            name="ck_instagram_recommendation_run_counts",
+        ),
+        UniqueConstraint(
+            "instagram_insight_run_id", "engine_version",
+            name="uq_instagram_recommendation_run_insight_engine",
+        ),
+        Index(
+            "ix_instagram_recommendation_runs_project_generated",
+            "analytics_project_id", "generated_at",
+        ),
+        Index(
+            "ix_instagram_recommendation_runs_insight_generated",
+            "instagram_insight_run_id", "generated_at",
+        ),
+    )
+
+
+class InstagramRecommendation(db.Model):
+    """Orientação analítica versionada e rastreável, sem plano de ação embutido."""
+
+    __tablename__ = "instagram_recommendations"
+    id: Mapped[str] = mapped_column(db.String(36), primary_key=True, default=lambda: str(uuid4()))
+    instagram_recommendation_run_id: Mapped[str] = mapped_column(
+        db.ForeignKey("instagram_recommendation_runs.id"), nullable=False
+    )
+    canonical_key: Mapped[str] = mapped_column(db.String(320), nullable=False)
+    rule_id: Mapped[str] = mapped_column(db.String(80), nullable=False)
+    rule_version: Mapped[str] = mapped_column(db.String(80), nullable=False)
+    engine_version: Mapped[str] = mapped_column(db.String(80), nullable=False)
+    title: Mapped[str] = mapped_column(db.String(320), nullable=False)
+    summary: Mapped[str] = mapped_column(db.Text, nullable=False)
+    recommendation_type: Mapped[str] = mapped_column(db.String(48), nullable=False)
+    priority: Mapped[str] = mapped_column(db.String(16), nullable=False)
+    support_level: Mapped[str] = mapped_column(db.String(16), nullable=False)
+    rationale: Mapped[str] = mapped_column(db.Text, nullable=False)
+    limitations_json: Mapped[list] = mapped_column(db.JSON, default=list, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        db.DateTime(timezone=True), default=utcnow, nullable=False
+    )
+
+    recommendation_run: Mapped[InstagramRecommendationRun] = relationship(
+        back_populates="recommendations"
+    )
+    finding_links: Mapped[list[InstagramRecommendationFinding]] = relationship(
+        back_populates="recommendation"
+    )
+
+    __table_args__ = (
+        CheckConstraint("length(trim(canonical_key)) > 0", name="ck_instagram_recommendation_key"),
+        CheckConstraint("length(trim(rule_id)) > 0", name="ck_instagram_recommendation_rule_id"),
+        CheckConstraint("length(trim(rule_version)) > 0", name="ck_instagram_recommendation_rule_version"),
+        CheckConstraint("length(trim(engine_version)) > 0", name="ck_instagram_recommendation_engine_version"),
+        CheckConstraint("length(trim(title)) > 0", name="ck_instagram_recommendation_title"),
+        CheckConstraint("length(trim(summary)) > 0", name="ck_instagram_recommendation_summary"),
+        CheckConstraint("priority IN ('low', 'medium', 'high')", name="ck_instagram_recommendation_priority"),
+        CheckConstraint(
+            "support_level IN ('exploratory', 'moderate', 'consistent')",
+            name="ck_instagram_recommendation_support",
+        ),
+        UniqueConstraint(
+            "instagram_recommendation_run_id", "canonical_key",
+            name="uq_instagram_recommendation_run_key",
+        ),
+        Index(
+            "ix_instagram_recommendations_run_priority",
+            "instagram_recommendation_run_id", "priority", "support_level",
+        ),
+        Index("ix_instagram_recommendations_run_type", "instagram_recommendation_run_id", "recommendation_type"),
+    )
+
+
+class InstagramRecommendationFinding(db.Model):
+    """Ligação explícita que mantém Recommendation → Finding auditável."""
+
+    __tablename__ = "instagram_recommendation_findings"
+    instagram_recommendation_id: Mapped[str] = mapped_column(
+        db.ForeignKey("instagram_recommendations.id"), primary_key=True
+    )
+    instagram_insight_finding_id: Mapped[str] = mapped_column(
+        db.ForeignKey("instagram_insight_findings.id"), primary_key=True
+    )
+
+    recommendation: Mapped[InstagramRecommendation] = relationship(back_populates="finding_links")
+    finding: Mapped[InstagramInsightFinding] = relationship()
+
+    __table_args__ = (
+        Index(
+            "ix_instagram_recommendation_findings_finding",
+            "instagram_insight_finding_id",
+        ),
     )
 
 

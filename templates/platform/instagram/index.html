@@ -1,8 +1,8 @@
 {% extends "platform/base.html" %}
 {% from 'platform/_icons.html' import icon %}
 {% from 'platform/_view_controls.html' import toggle, action_link %}
-{% block title %}Projetos de Análysis Instagram{% endblock %}
-{% block page_intro %}<h1 class="visually-hidden">Projetos de Análysis Instagram</h1>{% endblock %}
+{% block title %}Projetos de Instagram{% endblock %}
+{% block page_intro %}<h1 class="visually-hidden">Projetos de Instagram</h1>{% endblock %}
 
 {% block body %}
 <div class="platform-toolbar platform-toolbar-actions">
@@ -24,7 +24,7 @@
   {% endfor %}
 </div>
 {% else %}
-<div class="platform-empty-state"><h2 class="h5">Você ainda não possui projetos no Análysis Instagram.</h2><p>Crie um projeto para organizar suas importações de dados.</p></div>
+<div class="platform-empty-state"><h2 class="h5">Você ainda não possui projetos no Instagram.</h2><p>Crie um projeto para organizar suas importações de dados.</p></div>
 {% endif %}
  </section>
 <script defer src="{{ url_for('static', filename='js/platform_auto_submit.js') }}"></script>

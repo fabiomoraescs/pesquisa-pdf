@@ -31,14 +31,25 @@ class ToolCatalogTests(unittest.TestCase):
         sidebar = self.client.get('/').text.split('<nav class="platform-nav"', 1)[1].split('</nav>', 1)[0]
         token = csrf_from(matrix_response)
         before = {(row.plan_id, row.tool_id) for row in db.session.scalars(db.select(PlanTool))}
-        for identifier, name, symbol in (("chatdoc", "ChatDoc", "chatdoc"),
-                                          ("quantitative_analysis", "Análise quantitativa", "quantitativa")):
+        for identifier, name, symbol in (
+            ("comments_analysis", "Análise de Comentários", "comentarios"),
+            ("quantitative_analysis", "Pesquisa Quanti", "quantitativa"),
+            ("chatdoc", "ChatDoc", "chatdoc"),
+            ("diagramador", "Diagramador", "diagramador"),
+            ("analytics_seo", "SEO", "seo"),
+        ):
             with self.subTest(tool=identifier):
                 card = re.search(rf'<article[^>]*data-tool-id="{identifier}"[^>]*>(.*?)</article>', tools_html, re.S)[1]
                 row = re.search(rf'<tr data-tool-id="{identifier}">(.*?)</tr>', matrix, re.S)[1]
-                for fragment in (sidebar, card, row):
+                for fragment in (card, row):
                     self.assertIn(name, fragment)
                     self.assertIn(str(icon(symbol)), fragment)
+                self.assertIn(name, sidebar)
+                self.assertIsNotNone(re.search(
+                    rf'<span class="platform-nav-(?:tool-)?unavailable" aria-disabled="true">.*?{re.escape(name)}',
+                    sidebar,
+                    re.S,
+                ))
                 self.assertIn("Indisponível", card)
                 self.assertNotIn('<form', card)
                 inputs = re.findall(r'<input\b[^>]*>', row)
@@ -65,12 +76,15 @@ class ToolCatalogTests(unittest.TestCase):
 
     def test_catalog_remains_complete_and_feeds_historical_admin_usage_chart(self):
         self.assertEqual(self._usage(), {
-            "Busca por termos": 0,
-            "Busca estruturada": 0,
-            "Análise quali-dados": 0,
-            "Análysis Instagram": 0,
-            "Análise quantitativa": 0,
+            "Raspagem por termos": 0,
+            "Raspagem estruturada": 0,
+            "Análise Documental": 0,
+            "Análise de Comentários": 0,
+            "Pesquisa Quanti": 0,
             "ChatDoc": 0,
+            "Diagramador": 0,
+            "Instagram": 0,
+            "SEO": 0,
         })
         # Qualquer outra ferramenta persistida permanece no catálogo administrativo
         # e é exibida como categoria mesmo quando não possui rota implementada.
@@ -84,19 +98,23 @@ class ToolCatalogTests(unittest.TestCase):
         catalog = tool_catalog()
         self.assertEqual(len(catalog), len({tool["id"] for tool in catalog}))
         self.assertEqual({tool["name"] for tool in catalog}, {
-            "Busca por termos", "Busca estruturada", "Análise quali-dados",
-            "Análysis Instagram", "Outra ferramenta", "Análise quantitativa", "ChatDoc",
+            "Raspagem por termos", "Raspagem estruturada", "Análise Documental",
+            "Análise de Comentários", "Pesquisa Quanti", "ChatDoc", "Diagramador",
+            "Instagram", "SEO", "Outra ferramenta",
         })
         for path in ('/admin/ferramentas', '/admin/definir-acessos'):
             html = self.client.get(path).text
             for tool in catalog:
                 self.assertEqual(html.count(f'data-tool-id="{tool["id"]}"'), 1)
         self.assertEqual(self._usage(), {
-            "Busca por termos": 2,
-            "Busca estruturada": 1,
-            "Análise quali-dados": 3,
-            "Análysis Instagram": 0,
-            "Outra ferramenta": 1,
-            "Análise quantitativa": 0,
+            "Raspagem por termos": 2,
+            "Raspagem estruturada": 1,
+            "Análise Documental": 3,
+            "Análise de Comentários": 0,
+            "Pesquisa Quanti": 0,
             "ChatDoc": 0,
+            "Diagramador": 0,
+            "Instagram": 0,
+            "SEO": 0,
+            "Outra ferramenta": 1,
         })

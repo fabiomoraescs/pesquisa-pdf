@@ -1,4 +1,4 @@
-"""Importação CSV/XLSX do Análysis Instagram sem efeitos parciais."""
+"""Importação CSV/XLSX do Instagram sem efeitos parciais."""
 
 from __future__ import annotations
 

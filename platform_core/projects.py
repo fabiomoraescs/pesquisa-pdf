@@ -148,7 +148,7 @@ def _new_project(scrape_type: str):
         elif scrape_type == SYSTEMATIC and (len(selected) != len(selected_ids) or not selected):
             flash("Selecione ao menos uma biblioteca disponível.", "danger")
         elif scrape_type == FREE and selected_ids:
-            flash("Projetos de Busca por termos não usam bibliotecas.", "danger")
+            flash("Projetos de Raspagem por termos não usam bibliotecas.", "danger")
         elif scrape_type == QUALITATIVE and selected_ids:
             flash("Projetos qualitativos não usam bibliotecas de vocabulário.", "danger")
         else:

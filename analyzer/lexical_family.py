@@ -147,7 +147,7 @@ def find_lexical_matches(text: str, query: str, *, case_sensitive: bool = False)
 
 
 def count_lexical_occurrences(text: str, query: str, legacy_pattern) -> int:
-    """Compatibilidade das versões legadas, agora pelo motor do Quali-dados."""
+    """Compatibilidade das versões legadas, agora pelo motor da Análise Documental."""
     del legacy_pattern
     return sum(1 for _ in find_lexical_matches(text, query))
 

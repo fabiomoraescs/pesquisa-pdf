@@ -1,6 +1,6 @@
 """Matching textual puro compartilhado pelas ferramentas de busca.
 
-Este módulo concentra a política já usada pelo leitor Quali-dados para
+Este módulo concentra a política já usada pelo leitor de Análise Documental para
 Literal e Regex.  Ele não conhece PDF, banco ou estruturas de resultado;
 cada ferramenta mantém os próprios contextos e exportações.
 """
@@ -25,7 +25,7 @@ def compile_search_pattern(
     case_sensitive: bool = False,
     longest_regex: bool = False,
 ):
-    """Compila Literal/Regex com a mesma semântica do Quali-dados.
+    """Compila Literal/Regex com a mesma semântica da Análise Documental.
 
     Literal é uma correspondência textual escapada, insensível a caixa por
     padrão e sem dobramento de acentos. Regex recebe limite por página no
@@ -51,7 +51,7 @@ def find_search_spans(
     case_sensitive: bool = False,
     longest_regex: bool = False,
 ):
-    """Retorna spans não vazios com a proteção Regex do Quali-dados."""
+    """Retorna spans não vazios com a proteção Regex da Análise Documental."""
     pattern = compile_search_pattern(
         query,
         use_regex=use_regex,

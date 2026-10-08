@@ -161,7 +161,7 @@ def tool_policy_for_question(
         return _required("current_ui", "get_current_ui_context")
 
     is_platform_help = bool(re.search(
-        r"\b(analysis|ferramentas?|plano|permissoes?|acessos?|busca por termos|busca estruturada|"
+        r"\b(analysis|ferramentas?|plano|permissoes?|acessos?|raspagem por termos|raspagem estruturada|"
         r"literal|regex|lexical|semantica|como funciona esta ferramenta)\b", text,
     ))
     if is_platform_help or _contextual_platform_help(text, key):

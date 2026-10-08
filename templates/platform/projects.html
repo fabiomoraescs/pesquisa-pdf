@@ -1,5 +1,5 @@
 {% extends 'platform/base.html' %}
-{% block title %}Projetos de {{ 'Busca por termos' if scrape_type == 'free' else 'Análise quali-dados' if scrape_type == 'qualitative' else 'Busca estruturada' }}{% endblock %}
+{% block title %}Projetos de {{ 'Raspagem por termos' if scrape_type == 'free' else 'Análise Documental' if scrape_type == 'qualitative' else 'Raspagem estruturada' }}{% endblock %}
 {% block body %}
 {% from 'platform/_view_controls.html' import toggle, action_link %}
 {% from 'platform/_icons.html' import icon %}

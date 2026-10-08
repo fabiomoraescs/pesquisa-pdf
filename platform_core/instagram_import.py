@@ -1,4 +1,4 @@
-"""Parsing estrito e prévias canônicas para importações Análysis Instagram."""
+"""Parsing estrito e prévias canônicas para importações do Instagram."""
 
 from __future__ import annotations
 

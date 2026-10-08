@@ -2,7 +2,7 @@
 {% from 'platform/_tutorial_info.html' import tutorial_button, tutorial_dialog with context %}
 {% from 'platform/_icons.html' import icon %}
 {% from 'platform/instagram/_project_tabs.html' import project_tabs %}
-{% block title %}Dashboard — {{ project.name }} — Análysis Instagram{% endblock %}
+{% block title %}Dashboard — {{ project.name }} — Instagram{% endblock %}
 {% macro number(value) %}{% if value is none %}—{% elif value == value|int %}{{ '{:,}'.format(value|int).replace(',', '.') }}{% else %}{{ '{:,.2f}'.format(value).replace(',', '@').replace('.', ',').replace('@', '.') }}{% endif %}{% endmacro %}
 {% macro percentage(value) %}{{ '{:,.2f}'.format(value).replace(',', '@').replace('.', ',').replace('@', '.') if value is not none else '—' }}{% if value is not none %}%{% endif %}{% endmacro %}
 {% macro signed_number(value) %}{% if value is not none %}{{ '+' if value > 0 else '' }}{{ number(value) }}{% else %}—{% endif %}{% endmacro %}

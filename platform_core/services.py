@@ -24,15 +24,19 @@ PLANOS = (
 )
 ANALYTICS_INSTAGRAM_TOOL = "analytics_instagram"
 FERRAMENTAS = (
-    ("pdf_scraper", "Busca por termos", "/"),
-    ("document_analysis", "Busca estruturada", "/analise-documental"),
-    ("qualitative_analysis", "Análise quali-dados", "/analise-qualitativa"),
-    (ANALYTICS_INSTAGRAM_TOOL, "Análysis Instagram", "/analytics/instagram"),
+    ("pdf_scraper", "Raspagem por termos", "/"),
+    ("document_analysis", "Raspagem estruturada", "/analise-documental"),
+    ("qualitative_analysis", "Análise Documental", "/analise-qualitativa"),
+    (ANALYTICS_INSTAGRAM_TOOL, "Instagram", "/analytics/instagram"),
 )
 # Somente apresentação: não semear Tool/PlanTool nem conceder acesso funcional.
+# As entradas representam ferramentas futuras sem rota, banco ou permissões próprias.
 UNAVAILABLE_TOOLS = (
-    {"id": "quantitative_analysis", "name": "Análise quantitativa", "icon": "quantitativa"},
+    {"id": "quantitative_analysis", "name": "Pesquisa Quanti", "icon": "quantitativa"},
+    {"id": "comments_analysis", "name": "Análise de Comentários", "icon": "comentarios"},
     {"id": "chatdoc", "name": "ChatDoc", "icon": "chatdoc"},
+    {"id": "diagramador", "name": "Diagramador", "icon": "diagramador"},
+    {"id": "analytics_seo", "name": "SEO", "icon": "seo"},
 )
 ACCOUNT_LIFECYCLE_LOCK = RLock()
 
@@ -41,13 +45,25 @@ def tool_catalog() -> list[dict]:
     """Catálogo administrativo completo, sem omitir ferramentas inativas/sem uso."""
     unavailable_ids = {tool["id"] for tool in UNAVAILABLE_TOOLS}
     labels = {code: name for code, name, _ in FERRAMENTAS}
-    order = {code: index for index, (code, _, _) in enumerate(FERRAMENTAS)}
+    # Ordem exclusivamente visual das áreas e de suas ferramentas. As chaves
+    # e as rotas continuam estáveis, inclusive para itens futuros inativos.
+    order = {
+        "pdf_scraper": 0,
+        "document_analysis": 1,
+        "qualitative_analysis": 2,
+        "comments_analysis": 3,
+        "quantitative_analysis": 4,
+        "chatdoc": 5,
+        "diagramador": 6,
+        ANALYTICS_INSTAGRAM_TOOL: 7,
+        "analytics_seo": 8,
+    }
     persisted = db.session.scalars(select(Tool)).all()
     catalog = [{"id": tool.id, "name": labels.get(tool.id, tool.name),
                 "active": tool.active, "implemented": True, "icon": None}
                for tool in persisted if tool.id not in unavailable_ids]
-    catalog.sort(key=lambda tool: (order.get(tool["id"], len(order)), tool["name"]))
     catalog.extend({**tool, "active": False, "implemented": False} for tool in UNAVAILABLE_TOOLS)
+    catalog.sort(key=lambda tool: (order.get(tool["id"], len(order)), tool["name"]))
     return catalog
 
 

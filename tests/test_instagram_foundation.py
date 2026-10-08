@@ -1,4 +1,4 @@
-"""Fundação da ferramenta Análysis Instagram, sem domínio analítico persistido."""
+"""Fundação da ferramenta Instagram, sem domínio analítico persistido."""
 
 import unittest
 
@@ -30,7 +30,7 @@ class InstagramFoundationTests(unittest.TestCase):
     def test_seed_adds_the_tool_to_an_existing_catalog_once_without_granting_all_plans(self):
         tool = db.session.get(Tool, ANALYTICS_INSTAGRAM_TOOL)
         self.assertIsNotNone(tool)
-        self.assertEqual(tool.name, "Análysis Instagram")
+        self.assertEqual(tool.name, "Instagram")
         self.assertEqual(tool.route, "/analytics/instagram")
 
         # Simula uma instalação prévia: planos e outras ferramentas já existem,
@@ -65,10 +65,10 @@ class InstagramFoundationTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("platform/instagram/index.html", templates)
         html = response.get_data(as_text=True)
-        self.assertIn("Análysis Instagram", html)
+        self.assertIn("Instagram", html)
         self.assertNotIn("Acompanhe desempenho, recepção e evolução", html)
         self.assertNotIn("<p class=\"platform-muted mb-1\">ANALYTICS</p>", html)
-        self.assertIn("Você ainda não possui projetos no Análysis Instagram.", html)
+        self.assertIn("Você ainda não possui projetos no Instagram.", html)
         self.assertIn(">Novo projeto</a>", html)
         self.assertIn('data-view-target="instagram-projects-list"', html)
         self.assertIn('href="/analytics/instagram"', html)
@@ -79,20 +79,20 @@ class InstagramFoundationTests(unittest.TestCase):
 
         navigation = self.client.get("/").get_data(as_text=True).split('<nav class="platform-nav"', 1)[1].split("</nav>", 1)[0]
         self.assertNotIn("Analytics", navigation)
-        self.assertNotIn("Análysis Instagram", navigation)
-        self.assertIn("Busca por termos", navigation)
-        self.assertIn("Busca estruturada", navigation)
-        self.assertIn("Análise quali-dados", navigation)
+        self.assertNotIn("Instagram", navigation)
+        self.assertIn("Raspagem por termos", navigation)
+        self.assertIn("Raspagem estruturada", navigation)
+        self.assertIn("Análise Documental", navigation)
 
     def test_plan_access_shows_the_analytics_navigation_without_hiding_existing_tools(self):
         self._grant_plan_access()
         navigation = self.client.get("/").get_data(as_text=True).split('<nav class="platform-nav"', 1)[1].split("</nav>", 1)[0]
         self.assertIn("<span>Analytics</span>", navigation)
-        self.assertIn("Análysis Instagram", navigation)
+        self.assertIn("Instagram", navigation)
         self.assertIn('href="/analytics/instagram"', navigation)
-        self.assertIn("Busca por termos", navigation)
-        self.assertIn("Busca estruturada", navigation)
-        self.assertIn("Análise quali-dados", navigation)
+        self.assertIn("Raspagem por termos", navigation)
+        self.assertIn("Raspagem estruturada", navigation)
+        self.assertIn("Análise Documental", navigation)
 
     def test_admin_bypass_and_user_overrides_keep_the_existing_authorization_rules(self):
         admin = create_user("Admin", "admin@example.org", role="admin", plan="institutional")

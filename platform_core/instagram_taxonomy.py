@@ -1,4 +1,4 @@
-"""Taxonomias editoriais manuais e históricas do Análysis Instagram.
+"""Taxonomias editoriais manuais e históricas do Instagram.
 
 Este módulo mantém o domínio de classificação separado das métricas brutas.
 Classificações nunca são apagadas: uma alteração marca a atribuição anterior

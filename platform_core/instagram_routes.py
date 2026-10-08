@@ -1,4 +1,4 @@
-"""Fluxo mínimo de projetos e importação inicial do Análysis Instagram."""
+"""Fluxo mínimo de projetos e importação inicial do Instagram."""
 
 from __future__ import annotations
 
@@ -72,6 +72,15 @@ from .instagram_insights import (
     grouped_findings,
     latest_insight_run,
 )
+from .instagram_recommendations import (
+    InstagramRecommendationsError,
+    InstagramRecommendationsPersistenceError,
+    generate_recommendations,
+    linked_findings,
+    ordered_recommendations,
+    recommendation_for_project,
+    recommendation_run_for_insight,
+)
 from .instagram_previews import InstagramPreviewExpired, previews
 from .instagram_dashboard import PERIOD_DAYS, TABLE_SORTS, build_instagram_dashboard
 from .instagram_taxonomy import (
@@ -99,6 +108,7 @@ from .models import (
     InstagramAccount,
     InstagramComment,
     InstagramCommentTextVersion,
+    InstagramInsightRun,
     InstagramMedia,
     InstagramTaxonomyCategory,
     InstagramTaxonomyDimension,
@@ -301,6 +311,7 @@ def insights(project_id: UUID):
     if period not in PERIOD_DAYS:
         abort(400)
     run = latest_insight_run(project, period)
+    recommendation_run = recommendation_run_for_insight(project, run.id) if run else None
     period_options = (("7d", "7 dias"), ("30d", "30 dias"), ("90d", "90 dias"),
                       ("all", "Todo o histórico"))
     return render_template(
@@ -308,6 +319,8 @@ def insights(project_id: UUID):
         project=project,
         insight_run=run,
         findings_by_group=grouped_findings(run.findings) if run else {},
+        recommendation_run=recommendation_run,
+        recommendations=ordered_recommendations(recommendation_run),
         period=period, period_options=period_options, period_label=dict(period_options)[period],
         can_generate=project.status == "active" and project.archived_at is None,
     )
@@ -334,6 +347,50 @@ def generate_project_insights(project_id: UUID):
                             _anchor="instagram-insights-content"))
 
 
+@instagram_bp.post("/projects/<uuid:project_id>/insights/recommendations/generate")
+@login_required
+def generate_project_recommendations(project_id: UUID):
+    """Gera recomendações somente para um InsightRun existente e pertencente ao projeto."""
+    project = _project_for_current_user(project_id, active=True)
+    insight_run_id = request.form.get("insight_run_id", "")
+    insight_run = db.session.scalar(
+        select(InstagramInsightRun).where(
+            InstagramInsightRun.id == insight_run_id,
+            InstagramInsightRun.analytics_project_id == project.id,
+        )
+    )
+    if insight_run is None:
+        abort(404)
+    existing = recommendation_run_for_insight(project, insight_run.id)
+    try:
+        recommendation_run = generate_recommendations(project, insight_run)
+    except InstagramRecommendationsError as error:
+        flash(str(error), "danger")
+    except InstagramRecommendationsPersistenceError:
+        current_app.logger.exception("Falha ao gerar recomendações do Instagram")
+        flash("Não foi possível gerar as recomendações. Nenhuma execução parcial foi gravada.", "danger")
+    else:
+        if existing is not None:
+            flash("As recomendações desta versão já haviam sido geradas para este run de Insights.", "info")
+        elif recommendation_run.number_of_recommendations_generated:
+            flash(
+                "Recomendações geradas: "
+                f"{recommendation_run.number_of_recommendations_generated} a partir de "
+                f"{recommendation_run.number_of_findings_considered} achado(s) considerado(s); "
+                f"{recommendation_run.parameters_json.get('findings_ignored_by_rules', 0)} sem recomendação nesta versão.",
+                "success",
+            )
+        else:
+            flash(
+                "Os achados deste período ainda não sustentam recomendações segundo os critérios desta versão.",
+                "info",
+            )
+    return redirect(url_for(
+        "instagram.insights", project_id=project.id, period=insight_run.period_key,
+        _anchor="instagram-recommendations",
+    ))
+
+
 @instagram_bp.get("/projects/<uuid:project_id>/insights/<uuid:finding_id>")
 @login_required
 def insight_detail(project_id: UUID, finding_id: UUID):
@@ -347,6 +404,23 @@ def insight_detail(project_id: UUID, finding_id: UUID):
         finding=finding,
         insight_run=finding.insight_run,
         evidence=evidence_views(project, finding),
+    )
+
+
+@instagram_bp.get("/projects/<uuid:project_id>/insights/recommendations/<uuid:recommendation_id>")
+@login_required
+def recommendation_detail(project_id: UUID, recommendation_id: UUID):
+    project = _project_for_current_user(project_id)
+    recommendation = recommendation_for_project(project, str(recommendation_id))
+    if recommendation is None:
+        abort(404)
+    return render_template(
+        "platform/instagram/recommendation_detail.html",
+        project=project,
+        recommendation=recommendation,
+        recommendation_run=recommendation.recommendation_run,
+        insight_run=recommendation.recommendation_run.insight_run,
+        findings=linked_findings(recommendation),
     )
 
 

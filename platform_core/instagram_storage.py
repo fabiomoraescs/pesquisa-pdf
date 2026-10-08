@@ -1,4 +1,4 @@
-"""Persistência transacional das importações validadas do Análysis Instagram."""
+"""Persistência transacional das importações validadas do Instagram."""
 
 from __future__ import annotations
 

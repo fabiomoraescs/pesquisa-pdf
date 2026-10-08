@@ -26,13 +26,13 @@ class TesteHistoricoRacial(unittest.TestCase):
         pagina = resposta.get_data(as_text=True)
         self.assertIn("Análysis", pagina)
         self.assertIn("ferramentas para pesquisa", pagina)
-        self.assertIn("Raspagem de dados", pagina)
-        self.assertIn("Busca estruturada", pagina)
+        self.assertIn("Pesquisa Quali", pagina)
+        self.assertIn("Raspagem estruturada", pagina)
         self.assertIn(">Processar</button>", pagina)
         self.assertIn(f'action="/analise-documental/projetos/{projeto}/analisar"', pagina)
         self.assertIn('<main class="platform-main platform-main-legacy">', pagina)
         self.assertIn('class="app-content-container platform-toolbar mb-4" data-base-intro', pagina)
-        self.assertIn('Abrir tutorial da Busca estruturada', pagina)
+        self.assertIn('Abrir tutorial da Raspagem estruturada', pagina)
         self.assertNotIn('class="hero-actions"', pagina)
 
     def test_rota_principal_permanece_disponivel(self):

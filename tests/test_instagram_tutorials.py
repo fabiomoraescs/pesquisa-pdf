@@ -1,4 +1,4 @@
-"""Contrato pedagógico e de reutilização do Info do Análysis Instagram."""
+"""Contrato pedagógico e de reutilização do Info do Instagram."""
 
 from __future__ import annotations
 
