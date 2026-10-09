@@ -16,6 +16,7 @@ from .models import (
     AnalyticsProject,
     AnalyticsRun,
     InstagramAccount,
+    InstagramApiConnection,
     InstagramAccountSnapshot,
     InstagramComment,
     InstagramCommentAssessment,
@@ -206,6 +207,9 @@ def _delete_project_records(project_id: str) -> None:
         InstagramMedia.instagram_account_id.in_(account_ids)
     ))
     db.session.execute(delete(AnalyticsRun).where(AnalyticsRun.analytics_project_id == project_id))
+    db.session.execute(delete(InstagramApiConnection).where(
+        InstagramApiConnection.instagram_account_id.in_(account_ids)
+    ))
     db.session.execute(delete(InstagramAccount).where(
         InstagramAccount.analytics_project_id == project_id
     ))

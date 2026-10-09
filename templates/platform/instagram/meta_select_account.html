@@ -1,0 +1,29 @@
+{% extends "platform/base.html" %}
+{% from 'platform/instagram/_project_tabs.html' import project_tabs %}
+
+{% block title %}Selecionar conta profissional — {{ project.name }}{% endblock %}
+{% block page_intro %}<div class="mb-3"><h1 class="h4 mb-1">Selecionar conta profissional</h1><p class="platform-muted mb-0">Escolha a conta do Instagram vinculada à Página correta para este projeto.</p></div>{% endblock %}
+{% block body %}
+{{ project_tabs(project, 'import') }}
+<section class="platform-panel" aria-labelledby="meta-account-selection-title">
+  <h2 id="meta-account-selection-title" class="h5">Contas profissionais encontradas</h2>
+  <p class="platform-muted">A conexão será criada somente após sua escolha. Nenhum dado será importado automaticamente.</p>
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="selection_token" value="{{ selection_token }}">
+    <fieldset class="mb-3">
+      <legend class="visually-hidden">Escolha a conta profissional do Instagram</legend>
+      {% for candidate in candidates %}
+        <label class="platform-panel d-flex align-items-start gap-2 mb-2" for="meta-candidate-{{ loop.index0 }}">
+          <input id="meta-candidate-{{ loop.index0 }}" name="candidate_index" type="radio" value="{{ loop.index0 }}"{% if loop.first %} checked{% endif %}>
+          <span><strong>@{{ candidate.instagram_profile.get('username') }}</strong><span class="d-block platform-muted">{{ candidate.page_name }}</span></span>
+        </label>
+      {% endfor %}
+    </fieldset>
+    <div class="d-flex flex-wrap gap-2">
+      <button class="btn btn-primary" type="submit">Conectar Instagram</button>
+      <a class="btn btn-outline-primary" href="{{ url_for('instagram.new_import', project_id=project.id) }}">Cancelar</a>
+    </div>
+  </form>
+</section>
+{% endblock %}

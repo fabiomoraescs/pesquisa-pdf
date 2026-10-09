@@ -190,8 +190,8 @@ class InstagramFinalAdjustmentsTests(unittest.TestCase):
         mobile_tabs = dashboard[dashboard.index('class="platform-project-tabs-mobile-menu"'):]
         self.assertLess(mobile_tabs.index('>Dashboard</a>'), mobile_tabs.index('>Taxonomias</a>'))
         self.assertLess(mobile_tabs.index('>Taxonomias</a>'), mobile_tabs.index('>Classificação de conteúdos</a>'))
-        self.assertLess(mobile_tabs.index('>Classificação de conteúdos</a>'), mobile_tabs.index('>Importar dados</a>'))
-        self.assertLess(mobile_tabs.index('>Importar dados</a>'), mobile_tabs.index('>Comentários</a>'))
+        self.assertLess(mobile_tabs.index('>Classificação de conteúdos</a>'), mobile_tabs.index('>Fonte de dados</a>'))
+        self.assertLess(mobile_tabs.index('>Fonte de dados</a>'), mobile_tabs.index('>Comentários</a>'))
         self.assertLess(mobile_tabs.index('>Comentários</a>'), mobile_tabs.index('>Insights</a>'))
         self.assertLess(mobile_tabs.index('>Insights</a>'), mobile_tabs.index('>Relatórios</a>'))
         self.assertIn(f'href="{dashboard_url}" aria-current="page">Dashboard</a>', mobile_tabs)
@@ -207,7 +207,7 @@ class InstagramFinalAdjustmentsTests(unittest.TestCase):
             f'href="/analytics/instagram/projects/{self.project.id}/comments">Comentários</a>', dashboard,
         )
         self.assertIn(
-            f'href="/analytics/instagram/projects/{self.project.id}/imports/new">Importar dados</a>', dashboard,
+            f'href="/analytics/instagram/projects/{self.project.id}/imports/new">Fonte de dados</a>', dashboard,
         )
         self.assertIn(
             f'href="/analytics/instagram/projects/{self.project.id}/insights">Insights</a>', dashboard,
@@ -216,7 +216,7 @@ class InstagramFinalAdjustmentsTests(unittest.TestCase):
             f'href="/analytics/instagram/projects/{self.project.id}/reports">Relatórios</a>', dashboard,
         )
         self.assertLess(
-            dashboard.index(f'href="/analytics/instagram/projects/{self.project.id}/imports/new">Importar dados</a>'),
+            dashboard.index(f'href="/analytics/instagram/projects/{self.project.id}/imports/new">Fonte de dados</a>'),
             dashboard.index(f'href="/analytics/instagram/projects/{self.project.id}/comments">Comentários</a>'),
         )
         self.assertLess(
@@ -350,7 +350,7 @@ class InstagramFinalAdjustmentsTests(unittest.TestCase):
             f"/analytics/instagram/projects/{self.project.id}/imports/new"
         ).get_data(as_text=True)
         self.assertIn(
-            f'href="/analytics/instagram/projects/{self.project.id}/imports/new" aria-current="page">Importar dados</a>',
+            f'href="/analytics/instagram/projects/{self.project.id}/imports/new" aria-current="page">Fonte de dados</a>',
             import_page,
         )
 
@@ -359,18 +359,19 @@ class InstagramFinalAdjustmentsTests(unittest.TestCase):
             f'href="{classifications_url}" aria-current="page">Classificação de conteúdos</a>', edit_page_html,
         )
 
-    def test_archived_project_tabs_keep_importation_unavailable(self):
+    def test_archived_project_tabs_keep_importation_unavailable_but_allow_connection_consultation(self):
         self._archive(self.project)
         dashboard = self.client.get(
             f"/analytics/instagram/projects/{self.project.id}/dashboard"
         ).get_data(as_text=True)
         self.assertIn('class="platform-project-tab is-disabled" aria-disabled="true"', dashboard)
-        self.assertEqual(dashboard.count('Importar dados</span>'), 2)
+        self.assertEqual(dashboard.count('Fonte de dados</span>'), 2)
         self.assertNotIn(f'href="/analytics/instagram/projects/{self.project.id}/imports/new"', dashboard)
-        self.assertEqual(
-            self.client.get(f"/analytics/instagram/projects/{self.project.id}/imports/new").status_code,
-            404,
+        import_page = self.client.get(
+            f"/analytics/instagram/projects/{self.project.id}/imports/new"
         )
+        self.assertEqual(import_page.status_code, 200)
+        self.assertIn("Projeto arquivado", import_page.get_data(as_text=True))
 
     def test_auto_submit_listener_is_generic(self):
         script = (Path(__file__).resolve().parents[1] / "static" / "js" / "platform_auto_submit.js").read_text(

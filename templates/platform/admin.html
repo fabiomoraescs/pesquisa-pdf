@@ -106,6 +106,28 @@
   </form>
 </section>
 <script src="{{ url_for('static', filename='js/admin_ai_settings.js') }}"></script>
+{% elif section == 'meta_integration' %}
+<section class="platform-panel" aria-labelledby="meta-integration-title">
+  <h2 class="h4" id="meta-integration-title">Integração Meta</h2>
+  <p class="platform-muted">Diagnóstico da infraestrutura de conexão do Instagram. Credenciais, tokens e chaves de proteção nunca são exibidos nesta página.</p>
+  <dl class="row mb-3">
+    <dt class="col-sm-5">Instagram Login direto</dt><dd class="col-sm-7"><span class="platform-badge{{ '' if meta_settings.instagram_login_available else ' platform-badge-inactive' }}">{{ 'Configurado' if meta_settings.instagram_login_available else 'Não configurado' }}</span></dd>
+    <dt class="col-sm-5">Facebook Login</dt><dd class="col-sm-7"><span class="platform-badge{{ '' if meta_settings.facebook_login_available else ' platform-badge-inactive' }}">{{ 'Configurado' if meta_settings.facebook_login_available else 'Não configurado' }}</span></dd>
+    <dt class="col-sm-5">Redirect URI</dt><dd class="col-sm-7"><span class="platform-badge{{ '' if meta_settings.redirect_uri else ' platform-badge-inactive' }}">{{ 'Configurada' if meta_settings.redirect_uri else 'Não configurada' }}</span></dd>
+    <dt class="col-sm-5">Versão da API</dt><dd class="col-sm-7"><code>{{ meta_settings.api_version }}</code></dd>
+    <dt class="col-sm-5">Chave de proteção dos tokens</dt><dd class="col-sm-7"><span class="platform-badge{{ '' if meta_settings.encryption_available else ' platform-badge-inactive' }}">{{ 'Configurada' if meta_settings.encryption_available else 'Não configurada' }}</span></dd>
+  </dl>
+  <details>
+    <summary>Como configurar</summary>
+    <p class="form-text mt-2">Defina as variáveis de ambiente antes de iniciar o Flask. Em produção, use as Environment Variables ou um Secret Manager do servidor; não cadastre segredos por formulário.</p>
+    <ul class="form-text mb-2">
+      <li>Instagram direto: <code>PESQUISAPDF_META_INSTAGRAM_APP_ID</code> e <code>PESQUISAPDF_META_INSTAGRAM_APP_SECRET</code>.</li>
+      <li>Facebook Login: <code>PESQUISAPDF_META_APP_ID</code> e <code>PESQUISAPDF_META_APP_SECRET</code>.</li>
+      <li>Compartilhadas: <code>PESQUISAPDF_META_REDIRECT_URI</code>, <code>PESQUISAPDF_META_API_VERSION</code> e <code>PESQUISAPDF_META_TOKEN_ENCRYPTION_KEY</code>.</li>
+    </ul>
+    <p class="form-text mb-0">A chave Fernet protege os tokens Meta armazenados no banco e deve permanecer estável enquanto existirem conexões cifradas. Esta fase não implementa rotação de chave.</p>
+  </details>
+</section>
 {% elif section == 'tools' %}
 <div class="platform-toolbar"><p>Disponibilidade global das ferramentas</p>{{ toggle('admin-tools-list') }}</div>
 <div class="platform-view-list" id="admin-tools-list" data-view-container>{% for tool in tools %}<article class="platform-list-item" data-tool-id="{{ tool.id }}"><div class="platform-list-title">{% if tool.icon %}{{ icon(tool.icon) }} {% endif %}{{ tool.name }}</div><div class="platform-list-meta"><span class="platform-badge">{{ ('Ativa' if tool.active else 'Inativa') if tool.implemented else 'Indisponível' }}</span></div><div class="platform-list-actions">{% if tool.implemented %}<form method="post" action="{{ url_for('admin.set_tool_state', tool_id=tool.id) }}" onsubmit="return confirm('Confirma a mudança global desta ferramenta?')"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="confirm" value="yes"><button class="btn btn-outline-primary btn-sm platform-action-button" type="submit" title="{{ 'Desativar' if tool.active else 'Ativar' }} ferramenta" aria-label="{{ 'Desativar' if tool.active else 'Ativar' }} ferramenta">{{ icon('desativar' if tool.active else 'ativar') }}</button></form>{% else %}<span class="platform-muted" aria-disabled="true">Em desenvolvimento</span>{% endif %}</div></article>{% endfor %}</div>

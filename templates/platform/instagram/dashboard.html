@@ -30,7 +30,7 @@
   </form>
 </div>
 {% if not dashboard.has_data %}
-<div class="platform-empty-state"><h2 class="h5">Ainda não há dados para exibir.</h2><p>Importe um arquivo para iniciar o histórico deste projeto.</p>{% if project.status == 'active' %}<a class="btn btn-primary btn-sm" href="{{ url_for('instagram.new_import', project_id=project.id) }}">Importar dados</a>{% endif %}</div>
+<div class="platform-empty-state"><h2 class="h5">Ainda não há dados para exibir.</h2><p>Forneça dados por conexão automática ou importação manual para iniciar este projeto.</p>{% if project.status == 'active' %}<a class="btn btn-primary btn-sm" href="{{ url_for('instagram.new_import', project_id=project.id) }}">Fonte de dados</a>{% endif %}</div>
 {% else %}
   {% if dashboard.rows %}
   <section class="mb-3" aria-label="Métricas das publicações">

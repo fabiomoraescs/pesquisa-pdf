@@ -2,25 +2,118 @@
 {% from 'platform/instagram/_project_tabs.html' import project_tabs %}
 {% from 'platform/_tutorial_info.html' import tutorial_button, tutorial_dialog with context %}
 {% set instagram_tutorial = platform_help_for('instagram_import') %}
+{% set capability_labels = {'supported': 'Disponível', 'unsupported': 'Não disponível', 'permission_denied': 'Sem permissão', 'not_applicable': 'Não aplicável', 'not_observed': 'Não encontrado na amostra', 'temporary_error': 'Indisponível temporariamente', 'unknown': 'Não foi possível determinar', 'not_available_for_provider': 'Não disponível neste método de conexão', 'requires_reauth': 'Reconexão necessária'} %}
+{% set comment_capability_labels = {'permission_denied': 'Sem permissão', 'not_available_for_provider': 'Não disponível neste método de conexão', 'temporary_error': 'Indisponível temporariamente', 'not_observed': 'Não foi possível verificar', 'requires_reauth': 'Reconexão necessária', 'unknown': 'Não foi possível verificar'} %}
+{% set media_type_labels = {'feed': 'Feed', 'reel': 'Reels', 'image': 'Imagem', 'carousel_album': 'Carrossel', 'video': 'Vídeo'} %}
+{% set metric_labels = {'reach': 'Alcance', 'saved': 'Salvamentos', 'shares': 'Compartilhamentos', 'total_interactions': 'Interações', 'follows': 'Seguidores gerados', 'views': 'Visualizações'} %}
+{% macro sample_content_text(count) -%}
+  {%- if count == 0 -%}Nenhum conteúdo encontrado na amostra
+  {%- elif count == 1 -%}1 conteúdo verificado
+  {%- else -%}{{ count }} conteúdos verificados
+  {%- endif -%}
+{%- endmacro %}
+{% macro sample_comment_text(count) -%}
+  {%- if count == 0 -%}Nenhum comentário encontrado na amostra
+  {%- elif count == 1 -%}1 comentário encontrado na amostra
+  {%- else -%}{{ count }} comentários encontrados na amostra
+  {%- endif -%}
+{%- endmacro %}
 
-{% block title %}Importar dados — {{ project.name }}{% endblock %}
-{% block page_intro %}<div class="mb-3 d-flex flex-wrap align-items-start justify-content-between gap-2"><div><h1 class="h4 mb-1">Importar dados</h1><p class="platform-muted mb-0">{{ project.name }}</p></div>{{ tutorial_button(instagram_tutorial, label='Abrir tutorial de Importar dados') }}</div>{% endblock %}
+{% block title %}Fonte de dados — {{ project.name }}{% endblock %}
+{% block page_intro %}<div class="mb-3 d-flex flex-wrap align-items-start justify-content-between gap-2"><div><h1 class="h4 mb-1">Fonte de dados</h1><p class="platform-muted mb-0">{{ project.name }}</p></div>{{ tutorial_button(instagram_tutorial, label='Abrir tutorial de Fonte de dados') }}</div>{% endblock %}
 {% block body %}
 {{ project_tabs(project, 'import') }}
-<section class="platform-panel mb-3" aria-labelledby="instagram-model-title">
-  <h2 id="instagram-model-title" class="h5">Modelo para importação</h2>
-  <p class="platform-muted">Baixe o modelo oficial e preencha os dados seguindo o formato esperado pelo Análysis.</p>
-  <a class="btn btn-outline-primary btn-sm" href="{{ url_for('instagram.import_template', project_id=project.id) }}">Baixar modelo Excel</a>
+<section class="platform-panel mb-3" aria-labelledby="instagram-api-connection-title">
+  <div class="d-flex flex-wrap align-items-start justify-content-between gap-2">
+    <div>
+      <h2 id="instagram-api-connection-title" class="h5">Conexão automática</h2>
+      <p class="platform-muted mb-0">Conecte uma conta profissional para verificar quais dados a API disponibiliza. O diagnóstico não adiciona publicações, métricas ou comentários ao projeto.</p>
+    </div>
+    {% if meta_connection and meta_connection.status == 'connected' %}
+      <span class="platform-badge">Instagram conectado</span>
+    {% elif meta_connection and meta_connection.status == 'needs_reauth' %}
+      <span class="platform-badge platform-badge-inactive">Reconexão necessária</span>
+    {% else %}
+      <span class="platform-badge platform-badge-inactive">Não conectada</span>
+    {% endif %}
+  </div>
+  {% if meta_connection and meta_connection.status in ('connected', 'needs_reauth') %}
+    <dl class="row mt-3 mb-3">
+      <dt class="col-sm-4">Conta profissional</dt><dd class="col-sm-8">@{{ meta_account.username }}</dd>
+      <dt class="col-sm-4">Método</dt><dd class="col-sm-8">{{ 'Instagram direto' if meta_connection.provider == 'instagram_login' else 'Via Facebook' }}</dd>
+      <dt class="col-sm-4">Conexão validada em</dt><dd class="col-sm-8">{{ meta_connection.last_validated_at | data_hora_local if meta_connection.last_validated_at else 'Ainda não validada' }}</dd>
+      <dt class="col-sm-4">Dados verificados em</dt><dd class="col-sm-8">{{ meta_connection.last_capability_test_at | data_hora_local if meta_connection.last_capability_test_at else 'Ainda não executada' }}</dd>
+    </dl>
+    {% if meta_connection.status == 'connected' and meta_connection.capability_result_json %}
+      {% set diagnosis = meta_connection.capability_result_json %}
+      {% set sample = diagnosis.get('sample', {}) %}
+      {% set comments = diagnosis.get('comments', {}) %}
+      {% set comments_status = comments.get('status', 'not_observed') %}
+      {% set observed_types = sample.get('media_types', []) %}
+      <section class="mt-3" aria-labelledby="instagram-connection-diagnosis-title">
+        <h3 id="instagram-connection-diagnosis-title" class="h6">Diagnóstico da conexão</h3>
+        {% if meta_connection.provider == 'instagram_login' %}
+          <dl class="row mb-2">
+            <dt class="col-sm-4">Perfil</dt><dd class="col-sm-8">✓ Acessível</dd>
+            <dt class="col-sm-4">Conteúdos</dt><dd class="col-sm-8">✓ Acessíveis{% if sample.get('observed_count') is not none %}<span class="platform-muted d-block">{{ sample_content_text(sample.get('observed_count')) }}</span>{% endif %}</dd>
+            <dt class="col-sm-4">Tipos encontrados</dt><dd class="col-sm-8">{% for media_type in observed_types %}{{ media_type_labels.get(media_type, 'Outro tipo de conteúdo') }}{% if not loop.last %} · {% endif %}{% else %}Nenhum conteúdo encontrado na amostra{% endfor %}</dd>
+            <dt class="col-sm-4">Comentários</dt><dd class="col-sm-8">{% if comments_status == 'supported' %}✓ Acessíveis<span class="platform-muted d-block">{{ sample_comment_text(comments.get('observed_count')) }}</span>{% else %}{{ comment_capability_labels.get(comments_status, 'Não foi possível verificar') }}{% endif %}</dd>
+            <dt class="col-sm-4">Métricas de desempenho</dt><dd class="col-sm-8">Não disponíveis neste método de conexão.</dd>
+          </dl>
+          <p class="form-text mb-0">Para obter outras métricas, você pode conectar via Facebook ou utilizar a importação manual por CSV/XLSX.</p>
+          {% if comments_status == 'permission_denied' %}<p class="form-text mb-0">Para verificar comentários, reconecte a conta e autorize o acesso solicitado.</p>{% endif %}
+        {% else %}
+          <dl class="row mb-2">
+            <dt class="col-sm-4">Perfil</dt><dd class="col-sm-8">{{ capability_labels.get(diagnosis.get('profile', {}).get('status'), 'Não foi possível determinar') }}</dd>
+            <dt class="col-sm-4">Conteúdos</dt><dd class="col-sm-8">{{ capability_labels.get(sample.get('status'), 'Não foi possível determinar') }}{% if sample.get('observed_count') is not none %}<span class="platform-muted d-block">{{ sample_content_text(sample.get('observed_count')) }}</span>{% endif %}</dd>
+            <dt class="col-sm-4">Tipos encontrados</dt><dd class="col-sm-8">{% for media_type in observed_types %}{{ media_type_labels.get(media_type, 'Outro tipo de conteúdo') }}{% if not loop.last %} · {% endif %}{% else %}Nenhum conteúdo encontrado na amostra{% endfor %}</dd>
+            <dt class="col-sm-4">Comentários</dt><dd class="col-sm-8">{% if comments_status == 'supported' %}✓ Acessíveis<span class="platform-muted d-block">{{ sample_comment_text(comments.get('observed_count')) }}</span>{% else %}{{ comment_capability_labels.get(comments_status, 'Não foi possível verificar') }}{% endif %}</dd>
+          </dl>
+          <h4 class="h6 mt-3">Métricas de desempenho</h4>
+          {% set media_metrics = diagnosis.get('media_metrics', {}) %}
+          {% if media_metrics %}<ul class="platform-muted mb-2">{% for metric, result in media_metrics.items() %}<li>{{ metric_labels.get(metric, 'Métrica') }}: {{ capability_labels.get(result.get('status'), 'Não foi possível determinar') }}</li>{% endfor %}</ul>{% else %}<p class="form-text mb-2">Não foi possível determinar métricas nesta verificação.</p>{% endif %}
+          {% set account_metrics = diagnosis.get('account_metrics', {}) %}
+          {% if account_metrics %}<p class="form-text mb-0">Dados agregados da conta: {{ capability_labels.get(account_metrics.get('status'), 'Não foi possível determinar') }}.</p>{% endif %}
+          {% if comments_status == 'permission_denied' %}<p class="form-text mb-0">Para verificar comentários, reconecte a conta e autorize o acesso solicitado.</p>{% endif %}
+        {% endif %}
+      </section>
+      <details class="mt-3"><summary>Detalhes técnicos</summary><p class="form-text mt-2 mb-0">Versão da API: {{ meta_connection.api_version }}{% if diagnosis.get('checked_at') %} · verificação concluída{% endif %}.</p></details>
+    {% endif %}
+    {% if can_mutate %}
+      <div class="d-flex flex-wrap gap-2">
+        {% if meta_connection.status == 'connected' %}<form method="post" action="{{ url_for('instagram.test_meta_capabilities', project_id=project.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-primary btn-sm" type="submit">Verificar dados disponíveis</button></form>{% endif %}
+        <form method="post" action="{{ url_for('instagram.connect_meta_account', project_id=project.id, provider=meta_connection.provider) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-outline-primary btn-sm" type="submit">Reconectar</button></form>
+        <a class="btn btn-outline-primary btn-sm" href="{{ url_for('instagram.disconnect_meta_account', project_id=project.id) }}">Desconectar</a>
+      </div>
+      <details class="mt-3"><summary>Alterar método</summary><p class="form-text mt-2">Os dados existentes são preservados. A autorização atual só será substituída depois que a nova conta profissional for validada.</p><div class="d-flex flex-wrap gap-2"><form method="post" action="{{ url_for('instagram.connect_meta_account', project_id=project.id, provider='instagram_login') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-outline-primary btn-sm" type="submit" {% if not meta_settings.instagram_login_available %}disabled aria-disabled="true"{% endif %}>Conectar Instagram</button></form><form method="post" action="{{ url_for('instagram.connect_meta_account', project_id=project.id, provider='facebook_login') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-outline-primary btn-sm" type="submit" {% if not meta_settings.facebook_login_available %}disabled aria-disabled="true"{% endif %}>Conectar via Facebook</button></form></div></details>
+    {% else %}
+      <p class="form-text mb-0">Projeto arquivado: conexão e diagnóstico disponíveis somente para consulta.</p>
+    {% endif %}
+  {% else %}
+    {% if can_mutate %}
+      <div class="row g-3 mt-1">
+        <article class="col-12 col-md-6"><h3 class="h6">Conectar diretamente ao Instagram</h3><p class="form-text">Conecte uma conta profissional sem precisar usar Facebook. Permite acessar a conta e seus conteúdos; algumas métricas analíticas podem não estar disponíveis neste método.</p>{% if meta_settings.instagram_login_available %}<form method="post" action="{{ url_for('instagram.connect_meta_account', project_id=project.id, provider='instagram_login') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-primary btn-sm" type="submit">Conectar Instagram</button></form>{% else %}<span class="platform-badge platform-badge-inactive">Não configurado neste ambiente</span>{% endif %}</article>
+        <article class="col-12 col-md-6"><h3 class="h6">Conectar via Facebook</h3><p class="form-text">Opção para contas profissionais vinculadas a uma Página do Facebook. Pode disponibilizar métricas analíticas adicionais.</p>{% if meta_settings.facebook_login_available %}<form method="post" action="{{ url_for('instagram.connect_meta_account', project_id=project.id, provider='facebook_login') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-outline-primary btn-sm" type="submit">Conectar via Facebook</button></form>{% else %}<span class="platform-badge platform-badge-inactive">Não configurado neste ambiente</span>{% endif %}</article>
+      </div>
+    {% else %}
+      <p class="form-text mb-0">Projeto arquivado: conexão disponível somente para consulta.</p>
+    {% endif %}
+  {% endif %}
 </section>
-<section class="platform-panel" aria-labelledby="instagram-import-title">
-  <h2 id="instagram-import-title" class="h5">Importar arquivo</h2>
-  <p class="platform-muted">O arquivo é validado integralmente e exibido em prévia antes de criar qualquer dado histórico.</p>
-  <form method="post" action="{{ url_for('instagram.preview_import', project_id=project.id) }}" enctype="multipart/form-data">
+<section class="platform-panel mb-3" aria-labelledby="instagram-model-title">
+  <h2 id="instagram-model-title" class="h5">Importação manual</h2>
+  <p class="platform-muted">Use CSV/XLSX para importar dados atuais ou históricos e informações que não estejam disponíveis pela conexão automática. Esta fonte pode ser usada com ou sem conexão ao Instagram ou Facebook.</p>
+  <h3 class="h6 mt-3">Modelo para importação</h3>
+  <p class="form-text">Baixe o modelo oficial e preencha os dados seguindo o formato esperado pelo Análysis.</p>
+  {% if can_mutate %}<a class="btn btn-outline-primary btn-sm" href="{{ url_for('instagram.import_template', project_id=project.id) }}">Baixar modelo Excel</a>{% endif %}
+  <h3 id="instagram-import-title" class="h6 mt-3">Importar arquivo</h3>
+  <p class="platform-muted">O arquivo é validado integralmente e exibido em prévia antes de criar dados no projeto.</p>
+  {% if can_mutate %}<form method="post" action="{{ url_for('instagram.preview_import', project_id=project.id) }}" enctype="multipart/form-data">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="platform-form-group"><label class="form-label file-upload-label" for="instagram-dataset">Arquivo CSV ou XLSX</label><input class="form-control file-upload-input" id="instagram-dataset" name="dataset" type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required aria-describedby="instagram-upload-help"><p class="form-text" id="instagram-upload-help">CSV UTF-8 ou XLSX com uma única aba, até 2 MB. Não são aceitos XLSM, fórmulas, links externos ou objetos incorporados.</p></div>
     <details class="mb-3"><summary>Ver instruções de preenchimento</summary><p class="form-text mt-2">Datas: ISO 8601 com timezone, como <code>2026-09-20T18:30:00-03:00</code>. Métricas: vazio = indisponível (NULL); <code>0</code> = zero real; apenas inteiros não negativos, sem decimais.</p><div class="table-responsive"><table class="table platform-themed-table table-sm"><thead><tr><th scope="col">Campo</th><th scope="col">Obrigatório</th><th scope="col">Formato</th><th scope="col">Descrição</th><th scope="col">Exemplo</th></tr></thead><tbody>{% for field in import_fields %}<tr><th scope="row"><code>{{ field.name }}</code></th><td>{{ 'Sim' if field.required else 'Não' }}</td><td>{{ field.format_label }}</td><td>{{ field.description }}</td><td>{{ field.example }}</td></tr>{% endfor %}</tbody></table></div></details>
     <div class="d-flex flex-wrap gap-2"><button class="btn btn-primary" type="submit">Validar e visualizar prévia</button><a class="btn btn-outline-primary" href="{{ url_for('instagram.project_detail', project_id=project.id) }}">Cancelar</a></div>
-  </form>
+  </form>{% else %}<p class="form-text mb-0">Projeto arquivado: a importação manual está indisponível para alterações.</p>{% endif %}
 </section>
 {{ tutorial_dialog(instagram_tutorial) }}
 <script defer src="{{ url_for('static', filename='js/platform_tutorial.js') }}"></script>

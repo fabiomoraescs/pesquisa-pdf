@@ -733,9 +733,9 @@
         {
           "id": "conexao-com-o-fluxo",
           "title": "Como o Dashboard se conecta ao restante do projeto",
-          "keywords": ["Importar dados", "Taxonomias", "Classificação", "Comentários", "Insights", "fluxo"],
+          "keywords": ["Fonte de dados", "Taxonomias", "Classificação", "Comentários", "Insights", "fluxo"],
           "body": [
-            "Um caminho inicial útil é importar dados, conferir se o Dashboard retrata o recorte esperado, definir ou revisar Taxonomias, classificar as publicações, importar e revisar comentários e, então, gerar Insights. O fluxo não é rígido: você pode voltar ao Dashboard sempre que precisar conferir cobertura, período ou uma publicação.",
+            "Um caminho inicial útil é fornecer dados ao projeto, conferir se o Dashboard retrata o recorte esperado, definir ou revisar Taxonomias, classificar as publicações, importar e revisar comentários e, então, gerar Insights. O fluxo não é rígido: você pode voltar ao Dashboard sempre que precisar conferir cobertura, período ou uma publicação.",
             "As comparações por classificação só fazem sentido depois que os critérios editoriais forem aplicados de modo consistente. Insights usa esses registros para apontar associações rastreáveis; ele não transforma um card ou gráfico em explicação causal nem em recomendação automática."
           ],
           "items": []
@@ -926,13 +926,13 @@
     },
     {
       "key": "instagram_import",
-      "title": "Como importar dados do Instagram",
-      "summary": "Use o modelo CSV ou XLSX para registrar publicações e suas observações históricas, validar tudo antes de salvar e acompanhar a evolução sem sobrescrever coletas anteriores.",
+      "title": "Como usar a Fonte de dados do Instagram",
+      "summary": "Use conexão automática ou CSV/XLSX para fornecer dados ao projeto, validar importações antes de salvar e acompanhar a evolução sem sobrescrever coletas anteriores.",
       "sections": [
         {
           "id": "finalidade-e-fluxo",
-          "title": "Para que serve a importação",
-          "keywords": ["CSV", "XLSX", "modelo", "prévia", "confirmação", "histórico"],
+          "title": "Importação manual por CSV/XLSX",
+          "keywords": ["Fonte de dados", "CSV", "XLSX", "modelo", "prévia", "confirmação", "histórico"],
           "body": [
             "A importação transforma um arquivo de dados em registros históricos do projeto. Cada linha representa uma publicação observada em uma coleta; o Análysis cria ou reutiliza a conta e a publicação identificada, mas registra uma nova observação para as métricas daquela coleta.",
             "O fluxo é: baixar o modelo, preencher o CSV UTF-8 ou XLSX de uma única aba, enviar para validação, conferir a prévia e confirmar. Nada analítico é salvo antes da confirmação. Depois dela, o Dashboard passa a usar as novas observações junto ao histórico já existente."
@@ -1002,6 +1002,16 @@
           "body": [
             "Exemplo: importe hoje uma planilha com uma publicação publicada em setembro e métricas observadas em outubro. Em uma nova coleta no mês seguinte, use o mesmo media_external_id e outro observed_at. O Dashboard usará a observação mais recente para o estado atual, enquanto o histórico conserva as duas coletas.",
             "Depois de confirmar, abra o Dashboard para conferir período, cobertura e publicações. Em seguida, se quiser comparar conteúdos por critérios editoriais, defina Taxonomias e classifique as publicações. Comentários e Insights ampliam a leitura, mas não substituem a conferência da fonte importada."
+          ],
+          "items": []
+        },
+        {
+          "id": "conexao-api-opcional",
+          "title": "Conexão automática com a API do Instagram",
+          "keywords": ["Instagram direto", "Login do Facebook", "Página", "Business", "Creator", "capacidade", "CSV", "XLSX"],
+          "body": [
+            "Há dois caminhos de conexão automática: Instagram direto, para uma conta profissional Business ou Creator sem exigir Facebook; e Login do Facebook, que localiza uma Página gerenciada vinculada à conta profissional. O caminho Facebook pode disponibilizar capacidades analíticas mais amplas quando a API e as permissões permitirem. A importação manual por CSV/XLSX é uma fonte de dados independente: pode ser usada com ou sem conexão automática, para dados atuais ou históricos.",
+            "A verificação de dados disponíveis consulta somente o que o método conectado permite. No Instagram direto, valida identidade, perfil, uma pequena amostra de conteúdos e a possibilidade de ler comentários, sem prometer métricas analíticas completas; via Facebook, também pode testar métricas isoladas e um probe mínimo de dados agregados da conta. Ela não cria runs, observações, snapshots, comentários, insights nem relatórios. Comentários serão importados somente durante uma futura sincronização de dados da API, não durante este diagnóstico. Se uma capacidade não estiver disponível, revise permissões, vínculo da Página quando aplicável, tipo da conta e configuração da integração antes de tentar novamente."
           ],
           "items": []
         }

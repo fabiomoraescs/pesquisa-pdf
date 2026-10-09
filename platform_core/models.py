@@ -361,12 +361,71 @@ class InstagramAccount(db.Model):
     analytics_project: Mapped[AnalyticsProject] = relationship(back_populates="instagram_account")
     media: Mapped[list[InstagramMedia]] = relationship(back_populates="instagram_account")
     snapshots: Mapped[list[InstagramAccountSnapshot]] = relationship(back_populates="instagram_account")
+    api_connection: Mapped[InstagramApiConnection | None] = relationship(
+        back_populates="instagram_account", uselist=False
+    )
 
     __table_args__ = (
         UniqueConstraint("analytics_project_id", name="uq_instagram_account_project"),
         UniqueConstraint("external_id", name="uq_instagram_account_external_id"),
         CheckConstraint("length(trim(username)) > 0", name="ck_instagram_account_username"),
         CheckConstraint("length(trim(username_normalized)) > 0", name="ck_instagram_account_username_normalized"),
+    )
+
+
+class InstagramApiConnection(db.Model):
+    """Credencial separada da conta, limitada à conexão e diagnóstico da API."""
+
+    __tablename__ = "instagram_api_connections"
+
+    id: Mapped[str] = mapped_column(db.String(36), primary_key=True, default=lambda: str(uuid4()))
+    instagram_account_id: Mapped[str] = mapped_column(
+        db.ForeignKey("instagram_accounts.id"), nullable=False, unique=True
+    )
+    provider: Mapped[str] = mapped_column(db.String(32), nullable=False, default="facebook_login")
+    # A identidade da API é separada da identidade que pode ter sido informada
+    # em uma importação manual anterior. Isso permite reconciliar uma conta
+    # preexistente sem reescrever dados históricos do projeto.
+    provider_account_external_id: Mapped[str | None] = mapped_column(db.String(128))
+    provider_username: Mapped[str | None] = mapped_column(db.String(100))
+    identity_binding: Mapped[str] = mapped_column(db.String(24), nullable=False, default="exact")
+    status: Mapped[str] = mapped_column(db.String(24), nullable=False, default="error")
+    encrypted_access_token: Mapped[str | None] = mapped_column(db.Text)
+    encrypted_refresh_token: Mapped[str | None] = mapped_column(db.Text)
+    token_expires_at: Mapped[datetime | None] = mapped_column(db.DateTime(timezone=True))
+    scopes_json: Mapped[list] = mapped_column(db.JSON, nullable=False, default=list)
+    connected_at: Mapped[datetime | None] = mapped_column(db.DateTime(timezone=True))
+    last_validated_at: Mapped[datetime | None] = mapped_column(db.DateTime(timezone=True))
+    last_capability_test_at: Mapped[datetime | None] = mapped_column(db.DateTime(timezone=True))
+    api_version: Mapped[str] = mapped_column(db.String(24), nullable=False)
+    capability_result_json: Mapped[dict] = mapped_column(db.JSON, nullable=False, default=dict)
+    last_error_category: Mapped[str | None] = mapped_column(db.String(48))
+    last_error_at: Mapped[datetime | None] = mapped_column(db.DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        db.DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
+
+    instagram_account: Mapped[InstagramAccount] = relationship(back_populates="api_connection")
+
+    __table_args__ = (
+        CheckConstraint(
+            "provider IN ('instagram_login', 'facebook_login')",
+            name="ck_instagram_api_connection_provider",
+        ),
+        CheckConstraint(
+            "identity_binding IN ('exact', 'reconciled')",
+            name="ck_instagram_api_connection_identity_binding",
+        ),
+        CheckConstraint(
+            "status IN ('connected', 'needs_reauth', 'revoked', 'error')",
+            name="ck_instagram_api_connection_status",
+        ),
+        UniqueConstraint(
+            "provider_account_external_id",
+            name="uq_instagram_api_connection_provider_account_external_id",
+        ),
+        Index("ix_instagram_api_connections_status", "status"),
     )
 
 

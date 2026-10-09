@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from io import BytesIO
+import secrets
+import time
 from uuid import UUID
 
-from flask import Blueprint, abort, current_app, flash, redirect, render_template, request, send_file, url_for
+from flask import Blueprint, abort, current_app, flash, redirect, render_template, request, send_file, session, url_for
 from flask_login import current_user, login_required
 from openpyxl import Workbook
 from openpyxl.comments import Comment
@@ -63,6 +65,22 @@ from .instagram_comment_classification import (
 from .instagram_lifecycle import (
     InstagramProjectDeletionError,
     delete_instagram_project_permanently,
+)
+from .instagram_meta import (
+    META_CONNECTION_PROVIDERS,
+    InstagramMetaError,
+    InstagramMetaSettings,
+    choose_candidate,
+    connection_provider,
+    disconnect_connection,
+    log_meta_operation,
+    pending_meta_reconciliations,
+    pending_meta_selections,
+    persist_validated_connection,
+    provider_scopes,
+    reconciliation_required,
+    run_capability_test,
+    safe_meta_error_message,
 )
 from .instagram_insights import (
     InstagramInsightsError,
@@ -177,6 +195,9 @@ from .services import ANALYTICS_INSTAGRAM_TOOL, can_use_tool
 
 instagram_bp = Blueprint("instagram", __name__, url_prefix="/analytics/instagram")
 
+_META_OAUTH_STATE_KEY = "instagram_meta_oauth_state"
+_META_OAUTH_STATE_TTL_SECONDS = 600
+
 
 def _require_tool() -> None:
     if not can_use_tool(current_user, ANALYTICS_INSTAGRAM_TOOL):
@@ -196,6 +217,117 @@ def _project_for_current_user(project_id: UUID, *, active: bool = False) -> Anal
     if project is None:
         abort(404)
     return project
+
+
+def _meta_settings() -> InstagramMetaSettings:
+    return InstagramMetaSettings.from_mapping(current_app.config)
+
+
+def _meta_client(settings: InstagramMetaSettings, provider: str):
+    factory = current_app.extensions.get("instagram_meta_client_factory")
+    return factory(settings, provider) if factory is not None else connection_provider(settings, provider)
+
+
+def _import_template_context(project: AnalyticsProject) -> dict:
+    account = project.instagram_account
+    return {
+        "project": project,
+        "import_fields": IMPORT_FIELDS,
+        "meta_settings": _meta_settings(),
+        "meta_connection": account.api_connection if account is not None else None,
+        "meta_account": account,
+        "can_mutate": project.status == "active" and project.archived_at is None,
+    }
+
+
+def _persist_meta_candidate_or_stage_reconciliation(
+    project: AnalyticsProject,
+    *,
+    candidate,
+    provider: str,
+    granted_scopes: tuple[str, ...] | list[str],
+    settings: InstagramMetaSettings,
+):
+    """Persiste uma conexão validada ou guarda sua credencial no servidor até confirmação."""
+    if reconciliation_required(project, candidate.instagram_profile):
+        reconciliation_token = pending_meta_reconciliations.put(
+            current_user.id,
+            project,
+            provider,
+            candidate,
+            granted_scopes,
+        )
+        return redirect(url_for(
+            "instagram.reconcile_meta_account",
+            project_id=project.id,
+            reconciliation_token=reconciliation_token,
+        ))
+    persist_validated_connection(
+        project,
+        access_token=candidate.connection_access_token,
+        profile=candidate.instagram_profile,
+        granted_scopes=granted_scopes,
+        settings=settings,
+        provider=provider,
+    )
+    return None
+
+
+def _restore_reconciliation_preconfirmation_state(project: AnalyticsProject, reconciliation) -> None:
+    """Restaura apenas o estado capturado antes da confirmação pendente.
+
+    A etapa de seleção não deve persistir uma conexão. A restauração é uma
+    defesa adicional para que um cancelamento jamais deixe o status da conta
+    divergente do estado que existia antes da tentativa. Se outra operação
+    alterou a conta ou a conexão enquanto o nonce estava pendente, não
+    sobrescrevemos esse estado concorrente.
+    """
+    account = project.instagram_account
+    connection = account.api_connection if account is not None else None
+    if (
+        account is None
+        or str(account.id) != reconciliation.account_id
+        or account.external_id != reconciliation.account_external_id
+        or (str(connection.id) if connection is not None else None) != reconciliation.connection_id
+    ):
+        raise InstagramMetaError(
+            "reconciliation_expired",
+            "O estado da conexão foi alterado antes da confirmação.",
+        )
+    account.connection_status = reconciliation.account_connection_status
+
+
+def _store_meta_oauth_state(project: AnalyticsProject, provider: str) -> str:
+    if provider not in META_CONNECTION_PROVIDERS:
+        abort(400)
+    state = secrets.token_urlsafe(32)
+    session[_META_OAUTH_STATE_KEY] = {
+        "state": state,
+        "project_id": project.id,
+        "user_id": current_user.id,
+        "provider": provider,
+        "issued_at": int(time.time()),
+    }
+    session.modified = True
+    return state
+
+
+def _consume_meta_oauth_state(state: str) -> dict:
+    saved = session.pop(_META_OAUTH_STATE_KEY, None)
+    session.modified = True
+    if not isinstance(saved, dict) or not isinstance(state, str):
+        abort(400)
+    expected = saved.get("state")
+    issued_at = saved.get("issued_at")
+    if (
+        not isinstance(expected, str)
+        or not secrets.compare_digest(expected, state)
+        or saved.get("user_id") != current_user.id
+        or not isinstance(issued_at, int)
+        or int(time.time()) - issued_at > _META_OAUTH_STATE_TTL_SECONDS
+    ):
+        abort(400)
+    return saved
 
 
 def _report_for_project(project: AnalyticsProject, report_id: UUID) -> InstagramReport:
@@ -1593,8 +1725,249 @@ def cancel_comment_import(project_id: UUID):
 @instagram_bp.get("/projects/<uuid:project_id>/imports/new")
 @login_required
 def new_import(project_id: UUID):
+    # Arquivados são somente leitura: exibem conexão e diagnóstico, sem POSTs.
+    project = _project_for_current_user(project_id)
+    return render_template("platform/instagram/import_new.html", **_import_template_context(project))
+
+
+@instagram_bp.post("/projects/<uuid:project_id>/imports/meta/connect", defaults={"provider": "facebook_login"})
+@instagram_bp.post("/projects/<uuid:project_id>/imports/meta/connect/<provider>")
+@login_required
+def connect_meta_account(project_id: UUID, provider: str):
+    """Inicia somente o OAuth escolhido; o state associa usuário, projeto e provider."""
     project = _project_for_current_user(project_id, active=True)
-    return render_template("platform/instagram/import_new.html", project=project, import_fields=IMPORT_FIELDS)
+    if provider not in META_CONNECTION_PROVIDERS:
+        abort(404)
+    settings = _meta_settings()
+    if not settings.provider_available(provider):
+        label = "Instagram direto" if provider == "instagram_login" else "Facebook"
+        flash(f"A integração {label} não está configurada neste ambiente.", "warning")
+        return redirect(url_for("instagram.new_import", project_id=project.id))
+    state = _store_meta_oauth_state(project, provider)
+    try:
+        authorization_url = _meta_client(settings, provider).authorization_url(state)
+    except InstagramMetaError as error:
+        log_meta_operation(project.id, "connect_start", error.category, http_status=error.http_status)
+        flash(safe_meta_error_message(error), "danger")
+        return redirect(url_for("instagram.new_import", project_id=project.id))
+    log_meta_operation(project.id, "connect_start", "redirected")
+    return redirect(authorization_url)
+
+
+@instagram_bp.get("/imports/meta/callback")
+@login_required
+def meta_callback():
+    """Consome state e deixa o provider resolver a credencial de conexão."""
+    saved = _consume_meta_oauth_state(request.args.get("state", ""))
+    try:
+        project = _project_for_current_user(UUID(str(saved["project_id"])), active=True)
+    except (KeyError, ValueError):
+        abort(400)
+    provider = saved.get("provider")
+    if provider not in META_CONNECTION_PROVIDERS:
+        abort(400)
+    if request.args.get("error"):
+        log_meta_operation(project.id, "callback", "cancelled")
+        flash("A conexão com o Instagram foi cancelada ou não foi autorizada.", "warning")
+        return redirect(url_for("instagram.new_import", project_id=project.id))
+    code = request.args.get("code", "")
+    if not code:
+        abort(400)
+    settings = _meta_settings()
+    if not settings.provider_available(provider):
+        flash("O método de conexão escolhido não está configurado neste ambiente.", "warning")
+        return redirect(url_for("instagram.new_import", project_id=project.id))
+    started_at = time.monotonic()
+    try:
+        client = _meta_client(settings, provider)
+        token_payload = client.exchange_code(code)
+        candidates = client.resolve_connection_candidates(token_payload["access_token"])
+        candidate = choose_candidate(project, candidates)
+        if candidate is None:
+            selection_token = pending_meta_selections.put(
+                current_user.id, project.id, provider, candidates, list(provider_scopes(provider))
+            )
+            return redirect(url_for(
+                "instagram.select_meta_account", project_id=project.id, selection_token=selection_token
+            ))
+        reconciliation_redirect = _persist_meta_candidate_or_stage_reconciliation(
+            project,
+            candidate=candidate,
+            provider=provider,
+            granted_scopes=provider_scopes(provider),
+            settings=settings,
+        )
+        if reconciliation_redirect is not None:
+            log_meta_operation(project.id, "reconciliation", "pending")
+            return reconciliation_redirect
+        db.session.commit()
+    except InstagramMetaError as error:
+        db.session.rollback()
+        log_meta_operation(
+            project.id, "callback", error.category, http_status=error.http_status,
+            duration_ms=round((time.monotonic() - started_at) * 1000),
+        )
+        flash(safe_meta_error_message(error), "danger")
+        return redirect(url_for("instagram.new_import", project_id=project.id))
+    except Exception:
+        db.session.rollback()
+        current_app.logger.error("instagram_meta project=%s operation=callback status=unexpected_error", project.id)
+        flash("Não foi possível concluir a conexão com o Instagram. Nenhuma credencial foi substituída.", "danger")
+        return redirect(url_for("instagram.new_import", project_id=project.id))
+    log_meta_operation(
+        project.id, "callback", "connected",
+        duration_ms=round((time.monotonic() - started_at) * 1000),
+    )
+    flash("Conta profissional do Instagram conectada. Nenhum dado foi importado automaticamente.", "success")
+    return redirect(url_for("instagram.new_import", project_id=project.id))
+
+
+@instagram_bp.route("/projects/<uuid:project_id>/imports/meta/select", methods=("GET", "POST"))
+@login_required
+def select_meta_account(project_id: UUID):
+    """Seleciona explicitamente uma conta quando a descoberta é ambígua."""
+    project = _project_for_current_user(project_id, active=True)
+    selection_token = request.values.get("selection_token", "")
+    try:
+        selection = pending_meta_selections.get(selection_token, current_user.id, project.id)
+        if request.method == "POST":
+            index = int(request.form.get("candidate_index", ""))
+            candidate, granted_scopes = pending_meta_selections.claim(
+                selection_token, current_user.id, project.id, index
+            )
+            reconciliation_redirect = _persist_meta_candidate_or_stage_reconciliation(
+                project,
+                candidate=candidate,
+                provider=selection.provider,
+                granted_scopes=granted_scopes,
+                settings=_meta_settings(),
+            )
+            if reconciliation_redirect is not None:
+                log_meta_operation(project.id, "reconciliation", "pending")
+                return reconciliation_redirect
+            db.session.commit()
+            log_meta_operation(project.id, "selection", "connected")
+            flash("Conta profissional do Instagram conectada. Nenhum dado foi importado automaticamente.", "success")
+            return redirect(url_for("instagram.new_import", project_id=project.id))
+    except InstagramMetaError as error:
+        db.session.rollback()
+        if error.category == "unknown":
+            flash("A seleção da conta expirou ou não é válida. Inicie a conexão novamente.", "warning")
+        else:
+            flash(safe_meta_error_message(error), "danger")
+        return redirect(url_for("instagram.new_import", project_id=project.id))
+    except ValueError:
+        db.session.rollback()
+        flash("A seleção da conta expirou ou não é válida. Inicie a conexão novamente.", "warning")
+        return redirect(url_for("instagram.new_import", project_id=project.id))
+    return render_template(
+        "platform/instagram/meta_select_account.html",
+        project=project, selection_token=selection_token, candidates=selection.candidates,
+    )
+
+
+@instagram_bp.route("/projects/<uuid:project_id>/imports/meta/reconcile", methods=("GET", "POST"))
+@login_required
+def reconcile_meta_account(project_id: UUID):
+    """Exige confirmação explícita antes de associar uma identidade Meta divergente."""
+    project = _project_for_current_user(project_id, active=True)
+    reconciliation_token = request.values.get("reconciliation_token", "")
+    try:
+        reconciliation = pending_meta_reconciliations.get(
+            reconciliation_token, current_user.id, project.id
+        )
+        if request.method == "POST":
+            action = request.form.get("reconciliation_action", "")
+            if action not in {"confirm", "cancel"}:
+                raise InstagramMetaError("reconciliation_expired", "A confirmação do vínculo não é válida.")
+            reconciliation = pending_meta_reconciliations.claim(
+                reconciliation_token, current_user.id, project.id
+            )
+            if action == "cancel":
+                _restore_reconciliation_preconfirmation_state(project, reconciliation)
+                db.session.commit()
+                log_meta_operation(project.id, "reconciliation", "cancelled")
+                flash("A vinculação da conta foi cancelada. Nenhuma alteração foi feita.", "warning")
+                return redirect(url_for("instagram.new_import", project_id=project.id))
+            persist_validated_connection(
+                project,
+                access_token=reconciliation.candidate.connection_access_token,
+                profile=reconciliation.candidate.instagram_profile,
+                granted_scopes=reconciliation.granted_scopes,
+                settings=_meta_settings(),
+                provider=reconciliation.provider,
+                reconciliation_confirmed=True,
+            )
+            db.session.commit()
+            log_meta_operation(project.id, "reconciliation", "connected")
+            flash("Conta profissional do Instagram vinculada ao projeto. Os dados existentes foram preservados.", "success")
+            return redirect(url_for("instagram.new_import", project_id=project.id))
+    except InstagramMetaError as error:
+        db.session.rollback()
+        log_meta_operation(project.id, "reconciliation", error.category)
+        flash(safe_meta_error_message(error), "danger")
+        return redirect(url_for("instagram.new_import", project_id=project.id))
+    return render_template(
+        "platform/instagram/meta_reconcile_account.html",
+        project=project,
+        reconciliation_token=reconciliation_token,
+        provider=reconciliation.provider,
+        provider_profile=reconciliation.candidate.instagram_profile,
+    )
+
+
+@instagram_bp.post("/projects/<uuid:project_id>/imports/meta/capabilities")
+@login_required
+def test_meta_capabilities(project_id: UUID):
+    project = _project_for_current_user(project_id, active=True)
+    account = project.instagram_account
+    connection = account.api_connection if account is not None else None
+    if connection is None or connection.status != "connected":
+        abort(404)
+    settings = _meta_settings()
+    started_at = time.monotonic()
+    try:
+        run_capability_test(connection, settings, _meta_client(settings, connection.provider))
+        db.session.commit()
+    except InstagramMetaError as error:
+        db.session.commit()
+        log_meta_operation(
+            project.id, "capability_test", error.category, http_status=error.http_status,
+            duration_ms=round((time.monotonic() - started_at) * 1000),
+        )
+        flash(safe_meta_error_message(error), "danger")
+    except Exception:
+        db.session.rollback()
+        current_app.logger.error("instagram_meta project=%s operation=capability_test status=unexpected_error", project.id)
+        flash("Não foi possível concluir a verificação dos dados disponíveis. Nenhum dado analítico foi importado.", "danger")
+    else:
+        log_meta_operation(
+            project.id, "capability_test", "completed",
+            duration_ms=round((time.monotonic() - started_at) * 1000),
+        )
+        flash("Verificação dos dados disponíveis concluída. Nenhum dado analítico foi importado.", "success")
+    return redirect(url_for("instagram.new_import", project_id=project.id))
+
+
+@instagram_bp.route("/projects/<uuid:project_id>/imports/meta/disconnect", methods=("GET", "POST"))
+@login_required
+def disconnect_meta_account(project_id: UUID):
+    project = _project_for_current_user(project_id, active=True)
+    account = project.instagram_account
+    connection = account.api_connection if account is not None else None
+    if connection is None or connection.status == "revoked":
+        abort(404)
+    if request.method == "POST":
+        if request.form.get("confirm") != "yes":
+            abort(400)
+        disconnect_connection(connection)
+        db.session.commit()
+        log_meta_operation(project.id, "disconnect", "revoked")
+        flash("A conexão com a API do Instagram foi desconectada. O histórico do projeto foi preservado.", "success")
+        return redirect(url_for("instagram.new_import", project_id=project.id))
+    return render_template(
+        "platform/instagram/meta_disconnect.html", project=project, connection=connection,
+    )
 
 
 @instagram_bp.get("/projects/<uuid:project_id>/imports/modelo")
@@ -1632,7 +2005,7 @@ def preview_import(project_id: UUID):
     uploaded = request.files.get("dataset")
     if uploaded is None or not uploaded.filename:
         flash("Selecione um arquivo CSV ou XLSX.", "danger")
-        return render_template("platform/instagram/import_new.html", project=project, import_fields=IMPORT_FIELDS), 400
+        return render_template("platform/instagram/import_new.html", **_import_template_context(project)), 400
     data = uploaded.read(MAX_IMPORT_BYTES + 1)
     try:
         dataset = parse_instagram_import(uploaded.filename, data)
@@ -1660,13 +2033,13 @@ def preview_import(project_id: UUID):
         )
     except InstagramImportError as error:
         flash(str(error), "danger")
-        return render_template("platform/instagram/import_new.html", project=project, import_fields=IMPORT_FIELDS), 400
+        return render_template("platform/instagram/import_new.html", **_import_template_context(project)), 400
     try:
         token = previews.put(current_user.id, project.id, preview)
     except OSError:
         current_app.logger.exception("Não foi possível guardar a prévia Instagram")
         flash("Não foi possível preparar a prévia. Tente enviar o arquivo novamente.", "danger")
-        return render_template("platform/instagram/import_new.html", project=project, import_fields=IMPORT_FIELDS), 500
+        return render_template("platform/instagram/import_new.html", **_import_template_context(project)), 500
     return render_template("platform/instagram/import_preview.html", project=project, preview=preview, token=token)
 
 

@@ -4,7 +4,7 @@
 {% set instagram_tutorial = platform_help_for('instagram_import') %}
 
 {% block title %}Importação concluída — {{ project.name }}{% endblock %}
-{% block page_intro %}<div class="mb-3 d-flex flex-wrap align-items-start justify-content-between gap-2"><div><h1 class="h4 mb-1">Importação concluída</h1><p class="platform-muted mb-0">{{ project.name }}</p></div>{{ tutorial_button(instagram_tutorial, label='Abrir tutorial de Importar dados') }}</div>{% endblock %}
+{% block page_intro %}<div class="mb-3 d-flex flex-wrap align-items-start justify-content-between gap-2"><div><h1 class="h4 mb-1">Importação concluída</h1><p class="platform-muted mb-0">{{ project.name }}</p></div>{{ tutorial_button(instagram_tutorial, label='Abrir tutorial de Fonte de dados') }}</div>{% endblock %}
 {% block body %}
 {{ project_tabs(project, 'import') }}
 <section class="platform-panel" aria-labelledby="instagram-import-complete-title">

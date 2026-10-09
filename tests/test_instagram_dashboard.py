@@ -227,7 +227,7 @@ class InstagramDashboardTests(unittest.TestCase):
         self.assertEqual(empty.status_code, 200)
         html = empty.get_data(as_text=True)
         self.assertIn("Ainda não há dados para exibir.", html)
-        self.assertIn("Importar dados", html)
+        self.assertIn("Fonte de dados", html)
         self.assertNotIn('id="instagram-dashboard-chart-data"', html)
         run = self.run_at()
         self.observe(run, self.media("post-a", caption="Legenda visível"), when=REFERENCE,

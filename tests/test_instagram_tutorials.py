@@ -88,7 +88,8 @@ class InstagramTutorialContentTests(unittest.TestCase):
         tutorial = _tutorial_text("instagram_import")
         for marker in (
             "published_at", "observed_at", "period_start", "period_end", "ISO 8601", "America/Maceio",
-            "0 somente", "prévia", "nova observação", "hash repetido",
+            "0 somente", "prévia", "nova observação", "hash repetido", "possibilidade de ler comentários",
+            "não durante este diagnóstico",
         ):
             with self.subTest(marker=marker):
                 self.assertIn(marker, tutorial)

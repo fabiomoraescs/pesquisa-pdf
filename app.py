@@ -109,6 +109,17 @@ app.config.update(
     # Compatibilidade somente para o primeiro bootstrap sem configuração
     # persistida. Depois disso, o Gerencial é a fonte operacional.
     AI_PROVIDER=os.environ.get("AI_PROVIDER", ""),
+    # Integração opcional da API Instagram. Credenciais ficam somente no
+    # ambiente local/deploy; nenhuma delas é exposta a templates ou logs.
+    PESQUISAPDF_META_APP_ID=os.environ.get("PESQUISAPDF_META_APP_ID", ""),
+    PESQUISAPDF_META_APP_SECRET=os.environ.get("PESQUISAPDF_META_APP_SECRET", ""),
+    PESQUISAPDF_META_INSTAGRAM_APP_ID=os.environ.get("PESQUISAPDF_META_INSTAGRAM_APP_ID", ""),
+    PESQUISAPDF_META_INSTAGRAM_APP_SECRET=os.environ.get("PESQUISAPDF_META_INSTAGRAM_APP_SECRET", ""),
+    PESQUISAPDF_META_REDIRECT_URI=os.environ.get("PESQUISAPDF_META_REDIRECT_URI", ""),
+    PESQUISAPDF_META_API_VERSION=os.environ.get("PESQUISAPDF_META_API_VERSION", "v26.0"),
+    PESQUISAPDF_META_TOKEN_ENCRYPTION_KEY=os.environ.get(
+        "PESQUISAPDF_META_TOKEN_ENCRYPTION_KEY", ""
+    ),
 )
 db.init_app(app)
 login_manager.init_app(app)

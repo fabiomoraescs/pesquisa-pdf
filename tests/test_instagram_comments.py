@@ -369,7 +369,7 @@ class InstagramCommentsTests(unittest.TestCase):
             html.index(f'href="/analytics/instagram/projects/{self.project.id}/dashboard">Dashboard</a>'),
             html.index(f'href="/analytics/instagram/projects/{self.project.id}/taxonomies">Taxonomias</a>'),
             html.index(f'href="/analytics/instagram/projects/{self.project.id}/classifications">Classificação de conteúdos</a>'),
-            html.index(f'href="/analytics/instagram/projects/{self.project.id}/imports/new">Importar dados</a>'),
+            html.index(f'href="/analytics/instagram/projects/{self.project.id}/imports/new">Fonte de dados</a>'),
             html.index(f'href="/analytics/instagram/projects/{self.project.id}/comments" aria-current="page">Comentários</a>'),
             html.index(f'href="/analytics/instagram/projects/{self.project.id}/insights">Insights</a>'),
         )

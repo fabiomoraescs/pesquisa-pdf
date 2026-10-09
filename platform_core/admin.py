@@ -34,6 +34,7 @@ from .profile import remove_profile_photo
 from .scraping_types import LABEL_BY_TOOL
 from .official_libraries import LibraryError, add_entity, add_group, add_variant, change_publication, create_draft, create_imported_draft, set_item_active
 from .library_spreadsheets import MAX_XLSX_BYTES, SpreadsheetImportError, parse_library_xlsx, previews
+from .instagram_meta import InstagramMetaSettings
 from .services import ACCOUNT_LIFECYCLE_LOCK, access_is_active, current_grant, record_audit, replace_grant, tool_catalog
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
@@ -62,6 +63,17 @@ def home():
         select(AccessGrant.plan_id, func.count()).where(AccessGrant.ended_at.is_(None)).group_by(AccessGrant.plan_id)
     ).all()
     return render_template("platform/admin.html", section="home", counts=counts, distribution=distribution)
+
+
+@admin_bp.get("/integracao-meta")
+@admin_only
+def meta_integration():
+    """Diagnóstico administrativo de configuração, sem revelar segredos."""
+    return render_template(
+        "platform/admin.html",
+        section="meta_integration",
+        meta_settings=InstagramMetaSettings.from_mapping(current_app.config),
+    )
 
 
 @admin_bp.get("/usuarios")

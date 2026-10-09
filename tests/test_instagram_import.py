@@ -31,6 +31,7 @@ from platform_core.models import (
     AnalyticsRun,
     InstagramAccount,
     InstagramAccountSnapshot,
+    InstagramApiConnection,
     InstagramMedia,
     InstagramMediaObservation,
     PlanTool,
@@ -159,7 +160,7 @@ class InstagramImportTests(unittest.TestCase):
         self.assertIn('>Novo projeto</button>', new_project)
         detail = self.client.get(f"/analytics/instagram/projects/{project.id}").get_data(as_text=True)
         self.assertIn("Nenhuma importação registrada neste projeto.", detail)
-        self.assertIn("Importar dados", detail)
+        self.assertIn("Fonte de dados", detail)
         upload = self.client.get(f"/analytics/instagram/projects/{project.id}/imports/new").get_data(as_text=True)
         self.assertIn("Modelo para importação", upload)
         self.assertIn("Baixar modelo Excel", upload)
@@ -424,6 +425,7 @@ class InstagramImportTests(unittest.TestCase):
 
         confirmed = self.confirm(project, response)
         self.assertEqual(confirmed.status_code, 200)
+        self.assertIsNone(db.session.scalar(select(InstagramApiConnection)))
         self.assertIn("Importação concluída", confirmed.get_data(as_text=True))
         account = db.session.scalar(select(InstagramAccount))
         self.assertEqual(account.username_normalized, "revistax")

@@ -12,9 +12,9 @@
   <a class="platform-project-tab{% if active_tab == key %} is-current{% endif %}" href="{{ href }}"{% if active_tab == key %} aria-current="page"{% endif %}>{{ label }}</a>
   {% endfor %}
   {% if import_available %}
-  <a class="platform-project-tab{% if active_tab == 'import' %} is-current{% endif %}" href="{{ url_for('instagram.new_import', project_id=project.id) }}"{% if active_tab == 'import' %} aria-current="page"{% endif %}>Importar dados</a>
+  <a class="platform-project-tab{% if active_tab == 'import' %} is-current{% endif %}" href="{{ url_for('instagram.new_import', project_id=project.id) }}"{% if active_tab == 'import' %} aria-current="page"{% endif %}>Fonte de dados</a>
   {% else %}
-  <span class="platform-project-tab is-disabled" aria-disabled="true" title="A importação fica indisponível enquanto o projeto estiver arquivado">Importar dados</span>
+  <span class="platform-project-tab is-disabled" aria-disabled="true" title="A fonte de dados fica indisponível enquanto o projeto estiver arquivado">Fonte de dados</span>
   {% endif %}
   <a class="platform-project-tab{% if active_tab == 'comments' %} is-current{% endif %}" href="{{ url_for('instagram.comments', project_id=project.id) }}"{% if active_tab == 'comments' %} aria-current="page"{% endif %}>Comentários</a>
   <a class="platform-project-tab{% if active_tab == 'insights' %} is-current{% endif %}" href="{{ url_for('instagram.insights', project_id=project.id) }}"{% if active_tab == 'insights' %} aria-current="page"{% endif %}>Insights</a>
@@ -27,9 +27,9 @@
     <a class="platform-project-tab{% if active_tab == key %} is-current{% endif %}" href="{{ href }}"{% if active_tab == key %} aria-current="page"{% endif %}>{{ label }}</a>
     {% endfor %}
     {% if import_available %}
-    <a class="platform-project-tab{% if active_tab == 'import' %} is-current{% endif %}" href="{{ url_for('instagram.new_import', project_id=project.id) }}"{% if active_tab == 'import' %} aria-current="page"{% endif %}>Importar dados</a>
+    <a class="platform-project-tab{% if active_tab == 'import' %} is-current{% endif %}" href="{{ url_for('instagram.new_import', project_id=project.id) }}"{% if active_tab == 'import' %} aria-current="page"{% endif %}>Fonte de dados</a>
     {% else %}
-    <span class="platform-project-tab is-disabled" aria-disabled="true" title="A importação fica indisponível enquanto o projeto estiver arquivado">Importar dados</span>
+    <span class="platform-project-tab is-disabled" aria-disabled="true" title="A fonte de dados fica indisponível enquanto o projeto estiver arquivado">Fonte de dados</span>
     {% endif %}
     <a class="platform-project-tab{% if active_tab == 'comments' %} is-current{% endif %}" href="{{ url_for('instagram.comments', project_id=project.id) }}"{% if active_tab == 'comments' %} aria-current="page"{% endif %}>Comentários</a>
     <a class="platform-project-tab{% if active_tab == 'insights' %} is-current{% endif %}" href="{{ url_for('instagram.insights', project_id=project.id) }}"{% if active_tab == 'insights' %} aria-current="page"{% endif %}>Insights</a>
