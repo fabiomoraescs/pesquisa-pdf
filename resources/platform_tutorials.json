@@ -1107,6 +1107,83 @@
       ]
     },
       {
+        "key": "instagram_reports",
+        "title": "Como produzir e interpretar Relatórios",
+        "summary": "Gere uma planilha XLSX reprodutível a partir de um período e de observações concluídas do projeto.",
+        "sections": [
+          {
+            "id": "escopo-e-snapshot",
+            "title": "Escopo, períodos e snapshot",
+            "keywords": ["relatório", "período", "data inicial", "data final", "snapshot", "reprodutibilidade"],
+            "body": [
+              "Informe a data inicial e a data final. A plataforma considera somente AnalyticsRuns concluídos, com início e fim conhecidos, inteiramente contidos nesse intervalo. Runs parcialmente cortados pelas datas não entram no relatório.",
+              "Ao gerar, a plataforma congela um snapshot com o período solicitado, observações usadas, valores, cobertura, limitações e versões. Abrir um relatório posterior não recalcula métricas nem altera o arquivo: novos dados exigem um novo relatório."
+            ],
+            "items": []
+          },
+          {
+            "id": "selecao-automatica",
+            "title": "Seleção automática das observações",
+            "keywords": ["seleção", "automático", "concluído", "duplicado", "cronológico", "run"],
+            "body": [
+              "A escolha é automática e cronológica. Quando houver duplicidade de imports para o mesmo intervalo, a plataforma usa deterministicamente o run concluído mais recente. Isso evita que uma seleção manual altere a reprodutibilidade do documento.",
+              "Se não houver observação elegível dentro do período, nenhum relatório é criado e a tela informa como ajustar as datas."
+            ],
+            "items": []
+          },
+          {
+            "id": "leitura-do-periodo",
+            "title": "Leitura do período",
+            "keywords": ["uma", "duas", "três", "comparação", "evolução", "mediana", "cobertura"],
+            "body": [
+              "Com uma observação, o relatório descreve aquele período sem comparação. Com duas, compara a primeira e a última observação. Com três ou mais, também mostra a evolução pelos pontos efetivamente observados, sem interpolar lacunas.",
+              "Métricas são apresentadas como mediana entre valores conhecidos por conteúdo observado. Zero é valor conhecido; ausência continua ausente. Cobertura informa a proporção de conteúdos com o valor disponível. Mudanças observadas são descritivas e não provam causalidade."
+            ],
+            "items": []
+          },
+          {
+            "id": "planilha-xlsx",
+            "title": "Planilha XLSX",
+            "keywords": ["XLSX", "planilha", "métricas", "comparação", "evolução", "fórmula"],
+            "body": [
+              "A exportação é sempre XLSX. Ela organiza resumo, métricas, conteúdos, comentários, achados, recomendações, ações/testes, acompanhamentos, aprendizados e metodologia. Comparação só aparece com duas ou mais observações; evolução só aparece com três ou mais.",
+              "Textos que poderiam ser interpretados como fórmula são gravados como texto. Não há PDF novo neste fluxo; PDFs de relatórios históricos continuam disponíveis quando o artefato antigo existir."
+            ],
+            "items": []
+          },
+          {
+            "id": "detalhe-e-rastreabilidade",
+            "title": "Detalhe e rastreabilidade",
+            "keywords": ["detalhe", "gráfico", "achado", "recomendação", "ação", "aprendizado", "limitação"],
+            "body": [
+              "A tela do relatório reúne cartões, gráficos e resumos de achados, recomendações, ações/testes, acompanhamentos, aprendizados, conteúdos e comentários quando esses registros estiverem presentes no snapshot.",
+              "A seção de metodologia e rastreabilidade informa quantas observações foram usadas, a versão do snapshot e as limitações registradas. Ela ajuda a conferir o recorte sem transformar a visualização em uma nova análise dos dados atuais."
+            ],
+            "items": []
+          },
+          {
+            "id": "historico-e-downloads",
+            "title": "Histórico, detalhe e segurança",
+            "keywords": ["histórico", "detalhe", "download", "arquivado", "autor", "propriedade"],
+            "body": [
+              "A lista apresenta o período, a data de geração, o status e o XLSX. O detalhe exibe o snapshot congelado e seus downloads disponíveis; ele não consulta novamente os dados para substituir números já publicados.",
+              "Relatórios pertencem ao projeto e à conta que os criou. Projeto arquivado continua permitindo consulta ao histórico, detalhe e download, mas não permite gerar nem excluir. Solicitações de outro projeto ou outra pessoa retornam como recurso inexistente."
+            ],
+            "items": []
+          },
+          {
+            "id": "causalidade-e-seguranca",
+            "title": "Causalidade e segurança",
+            "keywords": ["causalidade", "xlsx", "download", "excluir", "deletar", "privado"],
+            "body": [
+              "Mudanças entre períodos, recomendações, ações, acompanhamentos e aprendizados ajudam a reconstruir o contexto, mas não demonstram causalidade. Outros fatores, como pauta, audiência, distribuição, período e cobertura, podem explicar diferenças observadas.",
+              "O XLSX é gerado no servidor a partir do snapshot e fica em armazenamento privado. A exclusão permanente remove somente o relatório e seus artefatos: runs, achados, recomendações, ações, acompanhamentos e aprendizados permanecem. Ela exige digitar “deletar”; projetos arquivados permanecem em modo somente leitura."
+            ],
+            "items": []
+          }
+        ]
+      },
+      {
         "key": "instagram_insights",
         "title": "Como interpretar os Insights",
         "summary": "Consulte achados descritivos gerados a partir de métricas, classificações editoriais e recepção já registradas no projeto.",

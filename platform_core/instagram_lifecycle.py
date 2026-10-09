@@ -30,6 +30,7 @@ from .models import (
     InstagramRecommendationActionEvaluation,
     InstagramRecommendationFinding,
     InstagramRecommendationRun,
+    InstagramReport,
     InstagramMedia,
     InstagramMediaClassification,
     InstagramMediaObservation,
@@ -109,6 +110,12 @@ def _delete_project_records(project_id: str) -> None:
     dimension_ids = select(InstagramTaxonomyDimension.id).where(
         InstagramTaxonomyDimension.analytics_project_id == project_id
     )
+
+    # Relatórios só referenciam o projeto e os runs de origem; os snapshots e
+    # artefatos são exclusivos deles e precisam sair antes dos AnalyticsRuns.
+    db.session.execute(delete(InstagramReport).where(
+        InstagramReport.analytics_project_id == project_id
+    ))
 
     # Acompanhamentos dependem de Action/Test e de AnalyticsRun: precisam sair
     # antes de ambos na exclusão definitiva do projeto.

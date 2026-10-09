@@ -18,6 +18,7 @@
   {% endif %}
   <a class="platform-project-tab{% if active_tab == 'comments' %} is-current{% endif %}" href="{{ url_for('instagram.comments', project_id=project.id) }}"{% if active_tab == 'comments' %} aria-current="page"{% endif %}>Comentários</a>
   <a class="platform-project-tab{% if active_tab == 'insights' %} is-current{% endif %}" href="{{ url_for('instagram.insights', project_id=project.id) }}"{% if active_tab == 'insights' %} aria-current="page"{% endif %}>Insights</a>
+  <a class="platform-project-tab{% if active_tab == 'reports' %} is-current{% endif %}" href="{{ url_for('instagram.reports', project_id=project.id) }}"{% if active_tab == 'reports' %} aria-current="page"{% endif %}>Relatórios</a>
 </nav>
 <div class="platform-project-tabs-mobile">
   <button class="platform-project-tabs-menu-toggle" type="button" data-project-tabs-toggle aria-label="Menu de navegação do projeto" aria-expanded="false" aria-controls="{{ menu_id }}" title="Menu de navegação do projeto"><span></span><span></span><span></span></button>
@@ -32,6 +33,7 @@
     {% endif %}
     <a class="platform-project-tab{% if active_tab == 'comments' %} is-current{% endif %}" href="{{ url_for('instagram.comments', project_id=project.id) }}"{% if active_tab == 'comments' %} aria-current="page"{% endif %}>Comentários</a>
     <a class="platform-project-tab{% if active_tab == 'insights' %} is-current{% endif %}" href="{{ url_for('instagram.insights', project_id=project.id) }}"{% if active_tab == 'insights' %} aria-current="page"{% endif %}>Insights</a>
+    <a class="platform-project-tab{% if active_tab == 'reports' %} is-current{% endif %}" href="{{ url_for('instagram.reports', project_id=project.id) }}"{% if active_tab == 'reports' %} aria-current="page"{% endif %}>Relatórios</a>
   </nav>
 </div>
 </div>

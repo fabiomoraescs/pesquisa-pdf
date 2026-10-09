@@ -28,7 +28,7 @@ class InstagramTutorialContentTests(unittest.TestCase):
     def tearDown(self):
         load_help_registry.cache_clear()
 
-    def test_all_six_main_areas_have_a_structured_pedagogical_tutorial(self):
+    def test_all_main_areas_have_a_structured_pedagogical_tutorial(self):
         expected_sections = {
             "instagram_dashboard": {
                 "finalidade-e-periodo", "indicadores-e-cobertura", "indicadores-de-desempenho",
@@ -54,6 +54,10 @@ class InstagramTutorialContentTests(unittest.TestCase):
                 "finalidade", "metodo-e-cobertura", "suporte-e-rastreabilidade", "associacao-nao-e-causalidade",
                 "mediana-n-e-cobertura", "diferencas-e-suporte", "familias-de-regras-e-evidencias",
                 "dados-insuficientes-e-periodo", "runs-versoes-e-proximo-passo",
+            },
+            "instagram_reports": {
+                "escopo-e-snapshot", "selecao-automatica", "leitura-do-periodo", "planilha-xlsx",
+                "causalidade-e-seguranca",
             },
         }
         for key, expected in expected_sections.items():
@@ -106,6 +110,9 @@ class InstagramTutorialContentTests(unittest.TestCase):
             "comment_import_complete.html": "instagram_comments",
             "insights.html": "instagram_insights",
             "insight_detail.html": "instagram_insights",
+            "reports.html": "instagram_reports",
+            "report_form.html": "instagram_reports",
+            "report_detail.html": "instagram_reports",
         }
         for name, key in templates.items():
             with self.subTest(template=name):

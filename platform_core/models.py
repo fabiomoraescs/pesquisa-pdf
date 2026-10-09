@@ -288,6 +288,7 @@ class AnalyticsProject(db.Model):
         back_populates="analytics_project"
     )
     learnings: Mapped[list[InstagramLearning]] = relationship(back_populates="analytics_project")
+    reports: Mapped[list[InstagramReport]] = relationship(back_populates="analytics_project")
 
     __table_args__ = (
         CheckConstraint("length(trim(name)) > 0", name="ck_analytics_project_name"),
@@ -1289,6 +1290,61 @@ class InstagramLearning(db.Model):
         CheckConstraint("length(trim(learning_version)) > 0", name="ck_instagram_learning_version"),
         Index("ix_instagram_learnings_project_created", "analytics_project_id", "created_at"),
         Index("ix_instagram_learnings_project_cohort", "analytics_project_id", "cohort_signature"),
+    )
+
+
+class InstagramReport(db.Model):
+    """Relatório Instagram reproduzível, cujo conteúdo é congelado em snapshot."""
+
+    __tablename__ = "instagram_reports"
+    id: Mapped[str] = mapped_column(db.String(36), primary_key=True, default=lambda: str(uuid4()))
+    analytics_project_id: Mapped[str] = mapped_column(
+        db.ForeignKey("analytics_projects.id"), nullable=False
+    )
+    created_by_user_id: Mapped[str] = mapped_column(db.ForeignKey("users.id"), nullable=False)
+    title: Mapped[str] = mapped_column(db.String(320), nullable=False)
+    report_type: Mapped[str] = mapped_column(db.String(24), nullable=False)
+    analysis_mode: Mapped[str] = mapped_column(db.String(32), nullable=False)
+    status: Mapped[str] = mapped_column(db.String(16), nullable=False, default="generating")
+    baseline_run_id: Mapped[str] = mapped_column(db.ForeignKey("analytics_runs.id"), nullable=False)
+    final_run_id: Mapped[str] = mapped_column(db.ForeignKey("analytics_runs.id"), nullable=False)
+    selected_sections_json: Mapped[list] = mapped_column(db.JSON, default=list, nullable=False)
+    formats_json: Mapped[list] = mapped_column(db.JSON, default=list, nullable=False)
+    snapshot_json: Mapped[dict] = mapped_column(db.JSON, default=dict, nullable=False)
+    generator_version: Mapped[str] = mapped_column(db.String(80), nullable=False)
+    pdf_filename: Mapped[str | None] = mapped_column(db.String(255))
+    xlsx_filename: Mapped[str | None] = mapped_column(db.String(255))
+    error_message: Mapped[str | None] = mapped_column(db.String(500))
+    created_at: Mapped[datetime] = mapped_column(
+        db.DateTime(timezone=True), default=utcnow, nullable=False
+    )
+    generated_at: Mapped[datetime | None] = mapped_column(db.DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(
+        db.DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
+
+    analytics_project: Mapped[AnalyticsProject] = relationship(back_populates="reports")
+    created_by: Mapped[User] = relationship(foreign_keys=[created_by_user_id])
+    baseline_run: Mapped[AnalyticsRun] = relationship(foreign_keys=[baseline_run_id])
+    final_run: Mapped[AnalyticsRun] = relationship(foreign_keys=[final_run_id])
+
+    __table_args__ = (
+        CheckConstraint("length(trim(title)) > 0", name="ck_instagram_report_title"),
+        CheckConstraint(
+            "report_type IN ('executive', 'analytical')", name="ck_instagram_report_type"
+        ),
+        CheckConstraint(
+            "analysis_mode IN ('single_period', 'comparative_evolution')",
+            name="ck_instagram_report_analysis_mode",
+        ),
+        CheckConstraint(
+            "status IN ('generating', 'completed', 'failed')", name="ck_instagram_report_status"
+        ),
+        CheckConstraint(
+            "length(trim(generator_version)) > 0", name="ck_instagram_report_generator_version"
+        ),
+        Index("ix_instagram_reports_project_created", "analytics_project_id", "created_at"),
+        Index("ix_instagram_reports_project_status", "analytics_project_id", "status"),
     )
 
 

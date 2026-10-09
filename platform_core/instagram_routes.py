@@ -125,7 +125,20 @@ from .instagram_learnings import (
     learnings_for_project,
     update_learning,
 )
+from .instagram_reports import (
+    InstagramReportError,
+    InstagramReportPersistenceError,
+    artifact_path,
+    delete_report,
+    generate_report,
+    report_chart_data,
+    report_download_name,
+    report_summary_cards,
+    report_for_project,
+    reports_for_project,
+)
 from .instagram_previews import InstagramPreviewExpired, previews
+from .presentation import format_local_datetime
 from .instagram_dashboard import PERIOD_DAYS, TABLE_SORTS, build_instagram_dashboard
 from .instagram_taxonomy import (
     CLASSIFICATION_STATUSES,
@@ -155,6 +168,7 @@ from .models import (
     InstagramInsightRun,
     InstagramMedia,
     InstagramRecommendationActionEvaluation,
+    InstagramReport,
     InstagramTaxonomyCategory,
     InstagramTaxonomyDimension,
 )
@@ -182,6 +196,28 @@ def _project_for_current_user(project_id: UUID, *, active: bool = False) -> Anal
     if project is None:
         abort(404)
     return project
+
+
+def _report_for_project(project: AnalyticsProject, report_id: UUID) -> InstagramReport:
+    report = report_for_project(project, str(report_id))
+    if report is None:
+        abort(404)
+    return report
+
+
+def _report_date(value: object) -> str:
+    """Apresenta datas ISO guardadas no snapshot sem recalcular o relatório."""
+    if isinstance(value, str):
+        try:
+            if len(value) == 10:
+                return datetime.strptime(value, "%Y-%m-%d").strftime("%d/%m/%Y")
+        except ValueError:
+            return "Não informado"
+        try:
+            value = datetime.fromisoformat(value)
+        except ValueError:
+            return "Não informado"
+    return format_local_datetime(value, current_app.config["PRESENTATION_TIMEZONE"])
 
 
 @instagram_bp.get("")
@@ -837,6 +873,104 @@ def delete_learning_route(project_id: UUID, learning_id: UUID):
     return redirect(url_for(
         "instagram.insights", project_id=project.id, period=period, _anchor="instagram-learnings",
     ))
+
+
+@instagram_bp.get("/projects/<uuid:project_id>/reports")
+@login_required
+def reports(project_id: UUID):
+    """Histórico de relatórios imutáveis, inclusive em projetos arquivados."""
+    project = _project_for_current_user(project_id)
+    return render_template(
+        "platform/instagram/reports.html",
+        project=project,
+        reports=reports_for_project(project),
+        report_date=_report_date,
+        can_mutate=project.status == "active" and project.archived_at is None,
+    )
+
+
+@instagram_bp.route("/projects/<uuid:project_id>/reports/new", methods=("GET", "POST"))
+@login_required
+def new_report(project_id: UUID):
+    project = _project_for_current_user(project_id, active=True)
+    defaults = {"period_start": "", "period_end": ""}
+    if request.method == "POST":
+        values = {
+            "period_start": request.form.get("period_start", ""),
+            "period_end": request.form.get("period_end", ""),
+        }
+        try:
+            report = generate_report(project, values, actor_id=current_user.id)
+        except InstagramReportError as error:
+            flash(str(error), "danger")
+            return render_template(
+                "platform/instagram/report_form.html", project=project, form_values=values,
+            ), 400
+        except InstagramReportPersistenceError:
+            current_app.logger.exception("Falha ao gerar relatório Instagram")
+            flash("Não foi possível gerar o relatório. Nenhum relatório concluído foi criado.", "danger")
+            return render_template(
+                "platform/instagram/report_form.html", project=project, form_values=values,
+            ), 500
+        flash("Relatório gerado com snapshot reprodutível.", "success")
+        return redirect(url_for("instagram.report_detail", project_id=project.id, report_id=report.id))
+    return render_template(
+        "platform/instagram/report_form.html", project=project, form_values=defaults,
+    )
+
+
+@instagram_bp.get("/projects/<uuid:project_id>/reports/<uuid:report_id>")
+@login_required
+def report_detail(project_id: UUID, report_id: UUID):
+    project = _project_for_current_user(project_id)
+    report = _report_for_project(project, report_id)
+    return render_template(
+        "platform/instagram/report_detail.html", project=project, report=report,
+        snapshot=report.snapshot_json or {},
+        report_charts=report_chart_data(report.snapshot_json or {}) if report.snapshot_json else {},
+        report_summary_cards=report_summary_cards(report.snapshot_json or {}) if report.snapshot_json else [],
+        report_date=_report_date,
+        can_mutate=project.status == "active" and project.archived_at is None,
+    )
+
+
+@instagram_bp.get("/projects/<uuid:project_id>/reports/<uuid:report_id>/download/<string:format_key>")
+@login_required
+def download_report(project_id: UUID, report_id: UUID, format_key: str):
+    project = _project_for_current_user(project_id)
+    report = _report_for_project(project, report_id)
+    if report.status != "completed" or format_key not in set(report.formats_json or []):
+        abort(404)
+    try:
+        path = artifact_path(project, report, format_key)
+    except InstagramReportError:
+        abort(404)
+    if not path.is_file():
+        abort(404)
+    mimetype = "application/pdf" if format_key == "pdf" else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    return send_file(
+        path, as_attachment=True, download_name=report_download_name(report, format_key), mimetype=mimetype,
+    )
+
+
+@instagram_bp.route("/projects/<uuid:project_id>/reports/<uuid:report_id>/delete", methods=("GET", "POST"))
+@login_required
+def delete_report_route(project_id: UUID, report_id: UUID):
+    project = _project_for_current_user(project_id, active=True)
+    report = _report_for_project(project, report_id)
+    if request.method == "GET":
+        return render_template("platform/instagram/report_delete.html", project=project, report=report)
+    try:
+        delete_report(project, report, request.form.get("confirmation", ""))
+    except InstagramReportError as error:
+        flash(str(error), "danger")
+        return render_template("platform/instagram/report_delete.html", project=project, report=report), 400
+    except InstagramReportPersistenceError:
+        current_app.logger.exception("Falha ao excluir relatório Instagram")
+        flash("Não foi possível excluir o relatório.", "danger")
+        return render_template("platform/instagram/report_delete.html", project=project, report=report), 500
+    flash("Relatório excluído permanentemente.", "success")
+    return redirect(url_for("instagram.reports", project_id=project.id))
 
 
 def _transition_action_route(project_id: UUID, action_id: UUID, status: str):

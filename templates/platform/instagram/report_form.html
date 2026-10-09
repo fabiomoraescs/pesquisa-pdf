@@ -1,0 +1,17 @@
+{% extends "platform/base.html" %}
+{% from 'platform/_tutorial_info.html' import tutorial_button, tutorial_dialog with context %}
+{% from 'platform/instagram/_project_tabs.html' import project_tabs %}
+
+{% block title %}Novo relatório — {{ project.name }} — Instagram{% endblock %}
+{% block body %}
+{% set instagram_tutorial = platform_help_for('instagram_reports') %}
+<section class="platform-panel mb-3"><div class="d-flex flex-wrap align-items-start justify-content-between gap-2"><div><h1 class="platform-page-title">Novo relatório</h1><p class="platform-muted mb-0">Informe o período. A plataforma seleciona automaticamente as execuções concluídas e gera uma planilha XLSX reprodutível.</p></div><div class="d-flex flex-wrap align-items-center gap-2"><a class="btn btn-outline-primary btn-sm" href="{{ url_for('instagram.reports', project_id=project.id) }}">Voltar a Relatórios</a>{{ tutorial_button(instagram_tutorial, label='Abrir tutorial de Relatórios') }}</div></div></section>
+{{ project_tabs(project, 'reports') }}
+<section class="platform-panel mt-3" aria-labelledby="instagram-report-form-title"><h2 id="instagram-report-form-title" class="h5">Período do relatório</h2>
+  <form method="post" class="mt-3"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="row g-3"><div class="col-md-6"><label class="form-label" for="report-period-start">Data inicial</label><input class="form-control" id="report-period-start" name="period_start" type="date" required value="{{ form_values.period_start }}"></div><div class="col-md-6"><label class="form-label" for="report-period-end">Data final</label><input class="form-control" id="report-period-end" name="period_end" type="date" required value="{{ form_values.period_end }}"></div></div>
+    <p class="platform-muted mt-3">Serão usados somente runs concluídos, datados e integralmente contidos no intervalo. Um único run gera leitura não comparativa; dois comparam início e fim; três ou mais também mostram evolução observada.</p><button class="btn btn-primary" type="submit">Gerar relatório</button>
+  </form>
+</section>
+{{ tutorial_dialog(instagram_tutorial) }}<script defer src="{{ url_for('static', filename='js/platform_tutorial.js') }}"></script>
+{% endblock %}

@@ -267,6 +267,10 @@ html[data-theme="dark"] input[type="file"]:disabled::-webkit-file-upload-button 
 .chart-advice { color: var(--muted); font-size: .78rem; margin: 0 0 .25rem; }
 .chart { min-height: clamp(320px, 30vw, 430px); width: 100%; }
 .chart-sankey { min-height: clamp(420px, 35vw, 560px); }
+.report-dashboard-meta dt { color: var(--muted); font-size: .85rem; }
+.report-dashboard-meta dd { margin-bottom: .35rem; }
+.report-provenance summary { color: var(--ink); cursor: pointer; font-weight: 650; }
+.report-provenance[open] summary { margin-bottom: .25rem; }
 .download-card { padding: 1.25rem; }
 .alert { border-color: var(--border); }
 html[data-theme="dark"] .alert-warning { background: #493817; color: #fff0bf; }
