@@ -1,6 +1,7 @@
 {% extends "platform/base.html" %}
 {% from 'platform/_icons.html' import icon %}
 {% from 'platform/_view_controls.html' import toggle, action_link %}
+{% from 'platform/_pagination.html' import pagination_controls %}
 {% block title %}Projetos de Instagram{% endblock %}
 {% block page_intro %}<h1 class="visually-hidden">Projetos de Instagram</h1>{% endblock %}
 
@@ -23,6 +24,7 @@
   </article>
   {% endfor %}
 </div>
+{{ pagination_controls(projects_pagination, 'instagram.home', 'instagram-project-list') }}
 {% else %}
 <div class="platform-empty-state"><h2 class="h5">Você ainda não possui projetos no Instagram.</h2><p>Crie um projeto para organizar suas importações de dados.</p></div>
 {% endif %}

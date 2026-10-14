@@ -129,10 +129,35 @@ class InstagramDashboardTests(unittest.TestCase):
         self.assertEqual((self.metric(summary, "plays").value, self.metric(summary, "plays").known), (0, 1))
         self.assertIsNone(self.metric(summary, "impressions").value)
         self.assertEqual(self.metric(summary, "impressions").display, "—")
+        self.assertEqual(self.metric(summary, "impressions").availability, "unavailable")
+        self.assertFalse(self.metric(summary, "impressions").partial)
         extra = self.media("zero")
         self.observe(run, extra, when=REFERENCE, reach=0)
         zero = self.metric(self.summary(), "reach")
         self.assertEqual((zero.value, zero.known, zero.publications), (1500, 3, 4))
+
+    def test_dashboard_marks_partial_and_unavailable_metrics_without_calling_unknown_zero(self):
+        run = self.run_at()
+        first = self.media("metric-first")
+        second = self.media("metric-second")
+        self.observe(run, first, when=REFERENCE, reach=10, likes=0)
+        self.observe(run, second, when=REFERENCE, reach=None, likes=None)
+        db.session.add(InstagramAccountSnapshot(
+            instagram_account_id=self.account.id,
+            analytics_run_id=run.id,
+            observed_at=REFERENCE,
+            followers_count=None,
+        ))
+        db.session.commit()
+
+        summary = self.summary()
+        self.assertEqual(self.metric(summary, "reach").availability, "partial")
+        self.assertEqual(self.metric(summary, "likes").availability, "partial")
+        self.assertEqual(self.metric(summary, "impressions").availability, "unavailable")
+        html = self.client.get(f"/analytics/instagram/projects/{self.project.id}/dashboard").get_data(as_text=True)
+        self.assertIn("1 de 2 publicações · Dados parciais", html)
+        self.assertIn("Não disponível nos dados selecionados", html)
+        self.assertIn("Não disponível na última coleta", html)
 
     def test_filters_use_publication_date_relative_to_latest_observation(self):
         run = self.run_at()
@@ -146,14 +171,26 @@ class InstagramDashboardTests(unittest.TestCase):
 
     def test_filter_boundary_uses_configured_local_clock(self):
         run = self.run_at()
-        inside = self.media("at-boundary", days_before=7)
-        outside = self.media("before-boundary", days_before=7)
-        outside.published_at = REFERENCE - timedelta(days=7, seconds=1)
+        # O recorte de 7 dias é de datas-calendário locais: em Maceió, a
+        # fronteira é 03/10 00:00 (-03), não 168 horas antes da observação.
+        inside = self.media("at-local-calendar-boundary", days_before=1)
+        outside = self.media("before-local-calendar-boundary", days_before=1)
+        inside.published_at = datetime(2026, 10, 3, 3, tzinfo=UTC)
+        outside.published_at = datetime(2026, 10, 3, 2, 59, 59, 999999, tzinfo=UTC)
         self.observe(run, inside, when=REFERENCE, reach=100)
         self.observe(run, outside, when=REFERENCE, reach=200)
         summary = self.summary("7d")
         self.assertEqual(summary.publication_count, 1)
-        self.assertEqual(summary.rows[0].media.external_id, "at-boundary")
+        self.assertEqual(summary.rows[0].media.external_id, "at-local-calendar-boundary")
+
+    def test_compact_temporal_filter_auto_submits_and_retains_noscript_fallback(self):
+        html = self.client.get(
+            f"/analytics/instagram/projects/{self.project.id}/dashboard?period=7d"
+        ).get_data(as_text=True)
+        self.assertIn('data-instagram-temporal-auto-submit', html)
+        self.assertIn('data-auto-submit data-reset-pagination', html)
+        self.assertIn('>Período: Últimos 7 dias</option>', html)
+        self.assertIn('<noscript><button class="btn btn-outline-primary btn-sm" type="submit">Atualizar</button></noscript>', html)
 
     def test_followers_are_latest_stock_and_chronological_series(self):
         old_run = self.run_at(REFERENCE - timedelta(days=7))
@@ -236,8 +273,9 @@ class InstagramDashboardTests(unittest.TestCase):
         populated = self.client.get(path)
         self.assertEqual(populated.status_code, 200)
         html = populated.get_data(as_text=True)
+        self.assertIn("Instagram: Projeto da revista", html)
         for text in ("Dashboard", "Dados atualizados até", "09/10/2026 10:00", "7 dias", "30 dias",
-                     "90 dias", "Todo o histórico", "Publicações", "Alcance", "Dados parciais",
+                     "90 dias", "Todo o histórico", "Publicações", "Alcance", "Não disponível nos dados selecionados",
                      "Evolução de seguidores", "Alcance por publicação", "Interações por publicação",
                      "Publicações com maior alcance", "Legenda visível", "Indicadores de desempenho",
                      "Taxa mediana de interação por alcance", "Desempenho por tipo de conteúdo",
@@ -256,6 +294,22 @@ class InstagramDashboardTests(unittest.TestCase):
         self.project.archived_at = REFERENCE
         db.session.commit()
         self.assertEqual(self.client.get(path).status_code, 200)  # leitura histórica como no detalhe
+
+    def test_project_header_uses_the_current_project_name_after_rename_and_switch(self):
+        self.project.name = "Revista São João — edição especial"
+        db.session.commit()
+        renamed = self.client.get(f"/analytics/instagram/projects/{self.project.id}/dashboard")
+        self.assertEqual(renamed.status_code, 200)
+        self.assertIn("Instagram: Revista São João — edição especial", renamed.get_data(as_text=True))
+
+        other = AnalyticsProject(owner_user_id=self.user.id, name="Outro projeto")
+        db.session.add(other)
+        db.session.commit()
+        switched = self.client.get(f"/analytics/instagram/projects/{other.id}/dashboard")
+        self.assertEqual(switched.status_code, 200)
+        switched_html = switched.get_data(as_text=True)
+        self.assertIn("Instagram: Outro projeto", switched_html)
+        self.assertNotIn("Instagram: None", switched_html)
 
     def test_period_without_publications_and_cross_user_access(self):
         run = self.run_at()

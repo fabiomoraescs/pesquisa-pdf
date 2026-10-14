@@ -2,13 +2,14 @@
 {% from 'platform/_icons.html' import icon %}
 {% from 'platform/_tutorial_info.html' import tutorial_button, tutorial_dialog with context %}
 {% from 'platform/instagram/_project_tabs.html' import project_tabs %}
+{% from 'platform/_pagination.html' import pagination_controls %}
 
 {% block title %}Relatórios — {{ project.name }} — Instagram{% endblock %}
 {% block body %}
 {% set instagram_tutorial = platform_help_for('instagram_reports') %}
 <section class="platform-panel mb-3" aria-labelledby="instagram-reports-title">
   <div class="d-flex flex-wrap align-items-start justify-content-between gap-2">
-    <div><h1 id="instagram-reports-title" class="platform-page-title">Relatórios</h1><p class="platform-muted mb-0">Sínteses reprodutíveis dos períodos selecionados, com fontes, limitações e artefatos privados.</p></div>
+    <div><h1 id="instagram-reports-title" class="platform-page-title">{{ project.name }}</h1><p class="platform-muted mb-0">Relatórios · Sínteses reprodutíveis dos períodos selecionados, com fontes, limitações e artefatos privados.</p></div>
     <div class="d-flex flex-wrap align-items-center gap-2">{% if can_mutate %}<a class="btn btn-primary btn-sm" href="{{ url_for('instagram.new_report', project_id=project.id) }}">Novo relatório</a>{% endif %}{{ tutorial_button(instagram_tutorial, label='Abrir tutorial de Relatórios') }}</div>
   </div>
 </section>
@@ -22,12 +23,13 @@
       {% set requested = (report.snapshot_json or {}).get('requested_period', {}) %}
       {% set first = (report.snapshot_json or {}).get('first_observation') or (report.snapshot_json or {}).get('baseline_run', {}) %}
       {% set last = (report.snapshot_json or {}).get('last_observation') or (report.snapshot_json or {}).get('final_run', {}) %}
-      <div><div class="platform-list-title"><span class="platform-list-index" aria-hidden="true">{{ '%02d' | format(loop.index) }}</span>Relatório</div><div class="platform-list-meta">{{ report_date(requested.get('start') or first.get('period_start')) }} até {{ report_date(requested.get('end') or last.get('period_end')) }} · {{ report.created_at | data_hora_local }} · XLSX</div></div>
+      <div><div class="platform-list-title"><span class="platform-list-index" aria-hidden="true">{{ '%02d' | format(loop.index) }}</span>Relatório</div><div class="platform-list-meta">{% if requested.get('preset') in ('all', 'all_history') %}Todo o histórico disponível{% else %}{{ report_date(requested.get('start') or first.get('period_start')) }} até {{ report_date(requested.get('end') or last.get('period_end')) }}{% endif %} · {{ report.created_at | data_hora_local }} · XLSX</div></div>
       <div><span class="platform-badge">{{ {'generating': 'Gerando', 'completed': 'Concluído', 'failed': 'Falhou'}[report.status] }}</span></div>
       <div class="platform-list-actions"><a class="btn btn-outline-primary btn-sm platform-action-button" href="{{ url_for('instagram.report_detail', project_id=project.id, report_id=report.id) }}" title="Abrir relatório" aria-label="Abrir relatório">{{ icon('abrir') }}</a>{% if report.status == 'completed' and 'xlsx' in (report.formats_json or []) %}<a class="btn btn-outline-primary btn-sm platform-action-button" href="{{ url_for('instagram.download_report', project_id=project.id, report_id=report.id, format_key='xlsx') }}" title="Baixar XLSX" aria-label="Baixar XLSX">{{ icon('baixar') }}</a>{% endif %}{% if can_mutate %}<a class="btn btn-outline-danger btn-sm platform-action-button" href="{{ url_for('instagram.delete_report_route', project_id=project.id, report_id=report.id) }}" title="Excluir relatório" aria-label="Excluir relatório">{{ icon('lixeira') }}</a>{% endif %}</div>
     </article>
     {% endfor %}
   </div>
+  {{ pagination_controls(reports_page, 'instagram.reports', 'instagram-reports-history') }}
   {% else %}
   <div class="platform-empty-state mt-3"><p class="mb-0">Ainda não há relatórios gerados para este projeto.</p>{% if can_mutate %}<p class="platform-muted mb-0">Escolha períodos concluídos para produzir uma síntese exportável e reproduzível.</p>{% endif %}</div>
   {% endif %}

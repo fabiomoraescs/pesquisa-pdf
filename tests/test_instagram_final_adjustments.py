@@ -236,10 +236,10 @@ class InstagramFinalAdjustmentsTests(unittest.TestCase):
         self.assertIn('data-partial-target="#instagram-dashboard-content"', dashboard)
         self.assertIn('#instagram-media-table', dashboard)
         self.assertIn('data-partial-target="#instagram-media-table"', dashboard)
-        self.assertIn('class="form-select platform-filter-select" id="instagram-dashboard-period-select"', dashboard)
-        self.assertIn('name="period" data-filter-width="short" data-auto-submit', dashboard)
+        self.assertIn('class="form-select form-select-sm platform-temporal-select" id="instagram-dashboard-period-select"', dashboard)
+        self.assertIn('name="period" data-instagram-temporal-period-select data-auto-submit data-reset-pagination', dashboard)
         self.assertIn('<label class="visually-hidden" for="instagram-dashboard-period-select">Período</label>', dashboard)
-        self.assertIn('<option value="all" selected>Período: Todo o histórico</option>', dashboard)
+        self.assertIn('<option value="all" selected>Período: Todo o histórico disponível</option>', dashboard)
         self.assertIn('name="sort" value="reach"', dashboard)
         self.assertIn(f'name="taxonomy_dimension" value="{first_dimension.id}"', dashboard)
         self.assertIn('class="form-select platform-filter-select" id="instagram-dashboard-sort-select"', dashboard)
@@ -420,6 +420,10 @@ class InstagramFinalAdjustmentsTests(unittest.TestCase):
         self.assertIn("--bs-table-hover-bg: var(--surface-muted)", css)
         self.assertIn(".platform-themed-table thead th", css)
         self.assertIn("background-color: var(--surface-muted)", css)
+        run_history = (root / "templates" / "platform" / "instagram" / "_run_history.html").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("platform-themed-table", run_history)
 
         templates = (
             "dashboard.html",
@@ -433,7 +437,10 @@ class InstagramFinalAdjustmentsTests(unittest.TestCase):
                 template = (root / "templates" / "platform" / "instagram" / template_name).read_text(
                     encoding="utf-8"
                 )
-                self.assertIn("platform-themed-table", template)
+                if template_name in {"project_detail.html", "import_new.html"}:
+                    self.assertIn("platform/instagram/_run_history.html", template)
+                else:
+                    self.assertIn("platform-themed-table", template)
 
     def test_project_list_keeps_active_actions_icon_only_and_partial(self):
         other_project, _, _ = self._project_graph(self.owner, "Projeto B")

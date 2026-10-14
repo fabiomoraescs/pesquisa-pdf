@@ -53,7 +53,10 @@ class InstagramArchivingTests(unittest.TestCase):
         self.assertIn('<span class="platform-header-context">Projetos arquivados</span>', archived)
         self.assertIn("Histórico de importações", self.client.get(
             f"/analytics/instagram/projects/{self.project.id}").get_data(as_text=True))
-        self.assertEqual(self.client.get(f"/analytics/instagram/projects/{self.project.id}/imports/new").status_code, 404)
+        import_page = self.client.get(f"/analytics/instagram/projects/{self.project.id}/imports/new")
+        self.assertEqual(import_page.status_code, 200)
+        self.assertIn("Projeto arquivado", import_page.get_data(as_text=True))
+        self.assertIn("a importação manual está indisponível para alterações", import_page.get_data(as_text=True))
         self.assertEqual(self.post_action("restore").status_code, 302)
         db.session.refresh(self.project)
         self.assertEqual(self.project.status, "active")

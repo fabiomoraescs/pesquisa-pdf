@@ -127,13 +127,21 @@ class QualitativeCodeRenameTests(unittest.TestCase):
     def test_lexical_rename_repeat_preserves_identity(self):
         self.fixture_pages([["professores professoras professor"]])
         first = self.automatic(q="professor", mode="lexical")
-        identifier = first.json["terms"][0]["code_id"]
+        self.assertIsNone(first.json["terms"][0]["code_id"])
+        first_codes = first.json["terms"][0]["codes"]
+        identifiers = {code["code_name"]: code["code_id"] for code in first_codes}
+        self.assertEqual(set(identifiers), {"professor", "professores", "professoras"})
+        identifier = identifiers["professor"]
         self.assertEqual(self.rename(identifier, "Docência").status_code, 200)
         repeated = self.automatic(q="professor", mode="lexical")
         self.assertEqual((repeated.json["summary"]["created"],
                           repeated.json["summary"]["existing"]), (0, 3))
-        self.assertEqual(repeated.json["terms"][0]["code_id"], identifier)
-        self.assertEqual(db.session.query(QualitativeCode).count(), 1)
+        self.assertIsNone(repeated.json["terms"][0]["code_id"])
+        self.assertEqual({code["code_id"] for code in repeated.json["terms"][0]["codes"]},
+                         set(identifiers.values()))
+        self.assertEqual(next(code["code_id"] for code in repeated.json["terms"][0]["codes"]
+                              if code["code_name"] == "Docência"), identifier)
+        self.assertEqual(db.session.query(QualitativeCode).count(), 3)
 
     def test_semantic_rename_repeat_preserves_identity(self):
         self.fixture_pages([["Barreiras institucionais persistem."]])

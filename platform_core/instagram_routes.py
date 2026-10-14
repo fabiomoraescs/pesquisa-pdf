@@ -8,13 +8,13 @@ import secrets
 import time
 from uuid import UUID
 
-from flask import Blueprint, abort, current_app, flash, redirect, render_template, request, send_file, session, url_for
+from flask import Blueprint, abort, current_app, flash, jsonify, redirect, render_template, request, send_file, session, url_for
 from flask_login import current_user, login_required
 from openpyxl import Workbook
 from openpyxl.comments import Comment
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import joinedload
 
 from .extensions import db
@@ -82,6 +82,28 @@ from .instagram_meta import (
     run_capability_test,
     safe_meta_error_message,
 )
+from .instagram_meta_sync_jobs import (
+    DEFAULT_META_SYNC_STALE_SECONDS,
+    META_SYNC_COMPLETED,
+    META_SYNC_FAILED,
+    active_meta_sync_run,
+    enqueue_meta_sync_run,
+    recover_stale_meta_sync_runs,
+)
+from .instagram_meta_sync import (
+    SYNC_PERIOD_OPTIONS,
+    SYNC_PERIOD_PRESETS,
+    InstagramMetaSyncError,
+    resolve_publication_window,
+)
+from .instagram_periods import (
+    TEMPORAL_PERIOD_OPTIONS,
+    effective_run_period,
+    form_period as instagram_period_form,
+    period_label as instagram_period_label,
+    resolve_calendar_dates,
+)
+from .pagination import PAGE_SIZE, PlatformPage, paginate_sequence, requested_page
 from .instagram_insights import (
     InstagramInsightsError,
     InstagramInsightsPersistenceError,
@@ -153,10 +175,11 @@ from .instagram_reports import (
     report_download_name,
     report_summary_cards,
     report_for_project,
+    reports_page_for_project,
     reports_for_project,
 )
 from .instagram_previews import InstagramPreviewExpired, previews
-from .presentation import format_local_datetime
+from .presentation import format_local_datetime, to_local_datetime
 from .instagram_dashboard import PERIOD_DAYS, TABLE_SORTS, build_instagram_dashboard
 from .instagram_taxonomy import (
     CLASSIFICATION_STATUSES,
@@ -228,16 +251,134 @@ def _meta_client(settings: InstagramMetaSettings, provider: str):
     return factory(settings, provider) if factory is not None else connection_provider(settings, provider)
 
 
-def _import_template_context(project: AnalyticsProject) -> dict:
+def _sync_period_form(values: dict | None = None, *, active_run: AnalyticsRun | None = None) -> dict[str, str]:
+    """Mantém o formulário de janela previsível sem aceitar presets arbitrários."""
+    values = values or {}
+    if "sync_period" not in values and active_run is not None:
+        parameters = active_run.parameters_json if isinstance(active_run.parameters_json, dict) else {}
+        preset = parameters.get("period_preset")
+        if isinstance(preset, str):
+            values = {"sync_period": preset}
+            # Um reload enquanto uma sincronização personalizada está ativa
+            # reconstrói o formulário da janela já congelada, sem depender do
+            # estado do navegador nem alterar os dados do run.
+            resolved = effective_run_period(active_run)
+            if preset == "custom" and resolved.is_bounded:
+                timezone_name = resolved.timezone_name or current_app.config["PRESENTATION_TIMEZONE"]
+                start = to_local_datetime(resolved.start, timezone_name)
+                end = to_local_datetime(resolved.end, timezone_name)
+                values.update({
+                    "published_from": start.date().isoformat() if start is not None else "",
+                    "published_to": end.date().isoformat() if end is not None else "",
+                })
+    preset = values.get("sync_period", "last_90_days")
+    return {
+        "key": preset if preset in SYNC_PERIOD_PRESETS else "last_90_days",
+        "start": str(values.get("published_from", "") or ""),
+        "end": str(values.get("published_to", "") or ""),
+    }
+
+
+def _meta_sync_completion_url(project: AnalyticsProject, run: AnalyticsRun) -> str:
+    """Retorno de polling que preserva a janela efetivamente congelada."""
+    period_form = _sync_period_form({}, active_run=run)
+    values = {
+        "project_id": project.id,
+        "meta_sync_completed": run.id,
+        "sync_period": period_form["key"],
+    }
+    if period_form["key"] == "custom":
+        values.update({"published_from": period_form["start"], "published_to": period_form["end"]})
+    return url_for("instagram.new_import", **values)
+
+
+def _runs_history_context(project: AnalyticsProject, page_value: object) -> dict:
+    """Uma listagem paginada compartilhada para importações e sincronizações."""
+    total = int(db.session.scalar(select(func.count()).select_from(AnalyticsRun).where(
+        AnalyticsRun.analytics_project_id == project.id
+    )) or 0)
+    requested = requested_page(page_value)
+    current = min(requested, max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE))
+    runs = db.session.scalars(
+        select(AnalyticsRun).where(AnalyticsRun.analytics_project_id == project.id)
+        .order_by(AnalyticsRun.completed_at.desc(), AnalyticsRun.started_at.desc())
+        .limit(PAGE_SIZE).offset((current - 1) * PAGE_SIZE)
+    ).all()
+    return {
+        "runs": runs,
+        "runs_pagination": PlatformPage(tuple(runs), total, current),
+        "run_count": total,
+        "run_period_label": _run_period_label,
+        "run_history_endpoint": "instagram.project_detail",
+        "run_history_page_param": "page",
+    }
+
+
+def _import_template_context(project: AnalyticsProject, *, sync_period_form: dict | None = None) -> dict:
     account = project.instagram_account
+    active_sync = active_meta_sync_run(project.id)
+    form_values = sync_period_form if sync_period_form is not None else request.args
+    history = {
+        **_runs_history_context(project, request.args.get("history_page", "1")),
+        "run_history_endpoint": "instagram.new_import",
+        "run_history_page_param": "history_page",
+    }
     return {
         "project": project,
         "import_fields": IMPORT_FIELDS,
         "meta_settings": _meta_settings(),
         "meta_connection": account.api_connection if account is not None else None,
         "meta_account": account,
+        "active_meta_sync": active_sync,
+        "meta_sync_completion_url": _meta_sync_completion_url(project, active_sync) if active_sync else "",
+        "sync_period_options": SYNC_PERIOD_OPTIONS,
+        "sync_period_form": _sync_period_form(form_values, active_run=active_sync),
+        **history,
         "can_mutate": project.status == "active" and project.archived_at is None,
     }
+
+
+def _meta_sync_completion_flash(project: AnalyticsProject) -> None:
+    """Transforma o retorno assíncrono em feedback humano após reload seguro."""
+    raw_run_id = request.args.get("meta_sync_completed", "")
+    try:
+        run_id = str(UUID(raw_run_id))
+    except (TypeError, ValueError):
+        return
+    run = db.session.scalar(select(AnalyticsRun).where(
+        AnalyticsRun.id == run_id,
+        AnalyticsRun.analytics_project_id == project.id,
+        AnalyticsRun.source_kind == "meta_api",
+        AnalyticsRun.status == META_SYNC_COMPLETED,
+    ))
+    if run is None:
+        return
+    count = run.record_count
+    content_text = "1 conteúdo foi processado" if count == 1 else f"{count} conteúdos foram processados"
+    flash(f"Sincronização concluída. {content_text}.", "success")
+
+
+def _run_period_label(run: AnalyticsRun) -> str:
+    """Mostra a janela Meta congelada sem reinterpretar runs legados."""
+    resolved = effective_run_period(run)
+    if resolved.kind == "unknown" or run.source_kind != "meta_api":
+        return "Não informado"
+    parameters = run.parameters_json if isinstance(run.parameters_json, dict) else {}
+    preset = parameters.get("period_preset")
+    labels = dict(SYNC_PERIOD_OPTIONS)
+    if not isinstance(preset, str) or preset not in labels:
+        return "Não informado"
+    label = labels[preset]
+    if resolved.kind == "all_history":
+        return label
+    if not resolved.is_bounded or not resolved.timezone_name:
+        return label
+    try:
+        start_text = to_local_datetime(resolved.start, resolved.timezone_name).strftime("%d/%m/%Y")
+        end_text = to_local_datetime(resolved.end, resolved.timezone_name).strftime("%d/%m/%Y")
+    except (TypeError, ValueError):
+        return label
+    return f"{label} · {start_text} a {end_text}"
 
 
 def _persist_meta_candidate_or_stage_reconciliation(
@@ -357,30 +498,54 @@ def _report_date(value: object) -> str:
 def home():
     """Lista somente os projetos Instagram pertencentes ao usuário atual."""
     _require_tool()
+    query = select(AnalyticsProject).where(
+        AnalyticsProject.owner_user_id == current_user.id,
+        AnalyticsProject.module_key == "instagram",
+        AnalyticsProject.status == "active",
+        AnalyticsProject.archived_at.is_(None),
+    )
+    total = int(db.session.scalar(select(func.count()).select_from(AnalyticsProject).where(
+        AnalyticsProject.owner_user_id == current_user.id,
+        AnalyticsProject.module_key == "instagram",
+        AnalyticsProject.status == "active",
+        AnalyticsProject.archived_at.is_(None),
+    )) or 0)
+    requested = requested_page(request.args.get("page", "1"))
+    current = min(requested, max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE))
     projects = db.session.scalars(
-        select(AnalyticsProject).where(
-            AnalyticsProject.owner_user_id == current_user.id,
-            AnalyticsProject.module_key == "instagram",
-            AnalyticsProject.status == "active",
-            AnalyticsProject.archived_at.is_(None),
-        ).order_by(AnalyticsProject.updated_at.desc())
+        query.order_by(AnalyticsProject.updated_at.desc()).limit(PAGE_SIZE).offset((current - 1) * PAGE_SIZE)
     ).all()
-    return render_template("platform/instagram/index.html", projects=projects)
+    return render_template(
+        "platform/instagram/index.html", projects=projects,
+        projects_pagination=PlatformPage(tuple(projects), total, current),
+    )
 
 
 @instagram_bp.get("/projects/archived")
 @login_required
 def archived_projects():
     _require_tool()
+    query = select(AnalyticsProject).where(
+        AnalyticsProject.owner_user_id == current_user.id,
+        AnalyticsProject.module_key == "instagram",
+        AnalyticsProject.status == "archived",
+        AnalyticsProject.archived_at.is_not(None),
+    )
+    total = int(db.session.scalar(select(func.count()).select_from(AnalyticsProject).where(
+        AnalyticsProject.owner_user_id == current_user.id,
+        AnalyticsProject.module_key == "instagram",
+        AnalyticsProject.status == "archived",
+        AnalyticsProject.archived_at.is_not(None),
+    )) or 0)
+    requested = requested_page(request.args.get("page", "1"))
+    current = min(requested, max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE))
     projects = db.session.scalars(
-        select(AnalyticsProject).where(
-            AnalyticsProject.owner_user_id == current_user.id,
-            AnalyticsProject.module_key == "instagram",
-            AnalyticsProject.status == "archived",
-            AnalyticsProject.archived_at.is_not(None),
-        ).order_by(AnalyticsProject.archived_at.desc())
+        query.order_by(AnalyticsProject.archived_at.desc()).limit(PAGE_SIZE).offset((current - 1) * PAGE_SIZE)
     ).all()
-    return render_template("platform/instagram/archived_projects.html", projects=projects)
+    return render_template(
+        "platform/instagram/archived_projects.html", projects=projects,
+        projects_pagination=PlatformPage(tuple(projects), total, current),
+    )
 
 
 @instagram_bp.post("/projects/<uuid:project_id>/archive")
@@ -475,17 +640,16 @@ def create_project():
 def project_detail(project_id: UUID):
     project = _project_for_current_user(project_id)
     account = project.instagram_account
-    runs = db.session.scalars(
-        select(AnalyticsRun).where(AnalyticsRun.analytics_project_id == project.id)
-        .order_by(AnalyticsRun.completed_at.desc(), AnalyticsRun.started_at.desc())
-    ).all()
+    history = _runs_history_context(project, request.args.get("page", "1"))
     return render_template(
         "platform/instagram/project_detail.html",
         project=project,
         account=account,
-        runs=runs,
-        run_count=len(runs),
-        last_run=runs[0] if runs else None,
+        **history,
+        last_run=db.session.scalar(
+            select(AnalyticsRun).where(AnalyticsRun.analytics_project_id == project.id)
+            .order_by(AnalyticsRun.completed_at.desc(), AnalyticsRun.started_at.desc()).limit(1)
+        ),
     )
 
 
@@ -493,7 +657,10 @@ def project_detail(project_id: UUID):
 @login_required
 def dashboard(project_id: UUID):
     project = _project_for_current_user(project_id)
-    period = request.args.get("period", "30d")
+    if request.args.get("period", "30d") not in PERIOD_DAYS:
+        abort(400)
+    period_form = instagram_period_form(request.args, default="30d")
+    period = period_form["key"]
     sort = request.args.get("sort", "recent")
     if period not in PERIOD_DAYS or sort not in TABLE_SORTS:
         abort(400)
@@ -501,14 +668,16 @@ def dashboard(project_id: UUID):
         summary = build_instagram_dashboard(
             project, period, current_app.config["PRESENTATION_TIMEZONE"], sort=sort,
             taxonomy_dimension_id=request.args.get("taxonomy_dimension") or None,
+            period_start=period_form["start"], period_end=period_form["end"],
+            table_page=request.args.get("page", "1"),
         )
     except ValueError:
         abort(400)
     return render_template(
         "platform/instagram/dashboard.html", project=project, account=project.instagram_account,
         dashboard=summary,
-        period_options=(("7d", "7 dias"), ("30d", "30 dias"), ("90d", "90 dias"),
-                        ("all", "Todo o histórico")),
+        period_options=TEMPORAL_PERIOD_OPTIONS,
+        period_form=period_form,
         sort_options=(("recent", "Mais recentes"), ("reach", "Maior alcance"),
                       ("interactions", "Mais interações"),
                       ("interaction_rate", "Maior taxa de interação por alcance")),
@@ -520,36 +689,61 @@ def dashboard(project_id: UUID):
 def insights(project_id: UUID):
     """Consulta a última execução explícita de achados para um recorte."""
     project = _project_for_current_user(project_id)
-    period = request.args.get("period", "30d")
+    if request.args.get("period", "30d") not in PERIOD_DAYS:
+        abort(400)
+    period_form = instagram_period_form(request.args, default="30d")
+    period = period_form["key"]
     if period not in PERIOD_DAYS:
         abort(400)
     action_kind = request.args.get("action_kind", "all")
     action_status = request.args.get("action_status", "all")
     try:
-        actions = actions_for_project(project, action_kind=action_kind, status=action_status)
+        filtered_actions = actions_for_project(project, action_kind=action_kind, status=action_status)
     except InstagramActionError:
         abort(400)
-    run = latest_insight_run(project, period)
+    try:
+        run = latest_insight_run(
+            project, period,
+            timezone_name=current_app.config["PRESENTATION_TIMEZONE"],
+            period_start=period_form["start"], period_end=period_form["end"],
+        )
+    except InstagramInsightsError:
+        abort(400)
     recommendation_run = recommendation_run_for_insight(project, run.id) if run else None
-    learnings = learnings_for_project(project)
+    raw_findings_by_group = grouped_findings(run.findings) if run else {}
+    findings_by_group: dict[str, tuple] = {}
+    finding_paginations: dict[str, PlatformPage] = {}
+    for index, (group, items) in enumerate(raw_findings_by_group.items(), start=1):
+        page = paginate_sequence(items, request.args.get(f"findings_page_{index}", "1"))
+        findings_by_group[group] = page.items
+        finding_paginations[group] = page
+    recommendations_page = paginate_sequence(
+        ordered_recommendations(recommendation_run), request.args.get("recommendations_page", "1"),
+    )
+    actions_page = paginate_sequence(filtered_actions, request.args.get("actions_page", "1"))
+    learnings_page = paginate_sequence(learnings_for_project(project), request.args.get("learnings_page", "1"))
     eligible_learning_evaluations = comparable_evaluations(project)
-    period_options = (("7d", "7 dias"), ("30d", "30 dias"), ("90d", "90 dias"),
-                      ("all", "Todo o histórico"))
+    period_options = TEMPORAL_PERIOD_OPTIONS
     return render_template(
         "platform/instagram/insights.html",
         project=project,
         insight_run=run,
-        findings_by_group=grouped_findings(run.findings) if run else {},
+        findings_by_group=findings_by_group,
+        finding_paginations=finding_paginations,
         recommendation_run=recommendation_run,
-        recommendations=ordered_recommendations(recommendation_run),
-        period=period, period_options=period_options, period_label=dict(period_options)[period],
-        actions=actions,
+        recommendations=recommendations_page.items,
+        recommendations_pagination=recommendations_page,
+        period=period, period_options=period_options, period_form=period_form,
+        period_label=instagram_period_label(period),
+        actions=actions_page.items,
+        actions_pagination=actions_page,
         action_counts=action_counts(actions_for_project(project)),
         action_kind=action_kind,
         action_status=action_status,
         action_kind_labels=ACTION_KIND_LABELS,
         action_status_labels=ACTION_STATUS_LABELS,
-        learnings=learnings,
+        learnings=learnings_page.items,
+        learnings_pagination=learnings_page,
         eligible_learning_evaluations=eligible_learning_evaluations,
         learning_assessment_labels=LEARNING_ASSESSMENT_LABELS,
         learning_cohort_label=learning_cohort_label,
@@ -568,7 +762,13 @@ def generate_project_insights(project_id: UUID):
     if period not in PERIOD_DAYS:
         abort(400)
     try:
-        run = generate_insights(project, period, current_app.config["PRESENTATION_TIMEZONE"])
+        run = generate_insights(
+            project,
+            period,
+            current_app.config["PRESENTATION_TIMEZONE"],
+            period_start=request.form.get("period_start"),
+            period_end=request.form.get("period_end"),
+        )
     except InstagramInsightsError as error:
         flash(str(error), "danger")
     except InstagramInsightsPersistenceError:
@@ -576,8 +776,11 @@ def generate_project_insights(project_id: UUID):
         flash("Não foi possível gerar os insights. Nenhuma execução parcial foi gravada.", "danger")
     else:
         flash(f"Insights gerados: {run.finding_count} achado(s) descritivo(s).", "success")
-    return redirect(url_for("instagram.insights", project_id=project.id, period=period,
-                            _anchor="instagram-insights-content"))
+    return_values = {"project_id": project.id, "period": period, "_anchor": "instagram-insights-content"}
+    if period == "custom":
+        return_values["period_start"] = request.form.get("period_start", "")
+        return_values["period_end"] = request.form.get("period_end", "")
+    return redirect(url_for("instagram.insights", **return_values))
 
 
 @instagram_bp.post("/projects/<uuid:project_id>/insights/recommendations/generate")
@@ -748,6 +951,11 @@ def recommendation_action_detail(project_id: UUID, action_id: UUID):
     action = recommendation_action_for_project(project, str(action_id))
     if action is None:
         abort(404)
+    evaluations = evaluations_for_action(project, action)
+    evaluations_pagination = paginate_sequence(
+        evaluations,
+        page=requested_page(request.args.get("evaluations_page")),
+    )
     return render_template(
         "platform/instagram/recommendation_action_detail.html",
         project=project, action=action, recommendation=action.recommendation,
@@ -756,7 +964,8 @@ def recommendation_action_detail(project_id: UUID, action_id: UUID):
         findings=linked_findings(action.recommendation),
         action_kind_labels=ACTION_KIND_LABELS, action_status_labels=ACTION_STATUS_LABELS,
         action_outcome_labels=ACTION_OUTCOME_LABELS,
-        evaluations=evaluations_for_action(project, action),
+        evaluations=evaluations_pagination.items,
+        evaluations_pagination=evaluations_pagination,
         eligible_followup_runs=eligible_followup_runs(project, action),
         assessment_labels=ASSESSMENT_LABELS,
         can_mutate=project.status == "active" and project.archived_at is None,
@@ -1012,10 +1221,12 @@ def delete_learning_route(project_id: UUID, learning_id: UUID):
 def reports(project_id: UUID):
     """Histórico de relatórios imutáveis, inclusive em projetos arquivados."""
     project = _project_for_current_user(project_id)
+    reports_page = reports_page_for_project(project, request.args.get("page", "1"))
     return render_template(
         "platform/instagram/reports.html",
         project=project,
-        reports=reports_for_project(project),
+        reports_page=reports_page,
+        reports=reports_page.items,
         report_date=_report_date,
         can_mutate=project.status == "active" and project.archived_at is None,
     )
@@ -1025,29 +1236,46 @@ def reports(project_id: UUID):
 @login_required
 def new_report(project_id: UUID):
     project = _project_for_current_user(project_id, active=True)
-    defaults = {"period_start": "", "period_end": ""}
+    defaults = instagram_period_form({}, default="90d")
     if request.method == "POST":
-        values = {
-            "period_start": request.form.get("period_start", ""),
-            "period_end": request.form.get("period_end", ""),
-        }
+        period_form = instagram_period_form(request.form, default="90d")
+        # Compatibilidade com o formulário anterior, que enviava somente as
+        # duas datas e não possuía o select de preset.
+        if "period" not in request.form and (
+            request.form.get("period_start") or request.form.get("period_end")
+        ):
+            period_form = {**period_form, "key": "custom"}
         try:
+            requested_dates = resolve_calendar_dates(
+                period_form["key"], current_app.config["PRESENTATION_TIMEZONE"],
+                period_start=period_form["start"], period_end=period_form["end"],
+            )
+            values = {
+                "period_preset": period_form["key"],
+                **({
+                    "period_start": requested_dates[0].isoformat(),
+                    "period_end": requested_dates[1].isoformat(),
+                } if requested_dates is not None else {}),
+            }
             report = generate_report(project, values, actor_id=current_user.id)
-        except InstagramReportError as error:
+        except (InstagramReportError, ValueError) as error:
             flash(str(error), "danger")
             return render_template(
-                "platform/instagram/report_form.html", project=project, form_values=values,
+                "platform/instagram/report_form.html", project=project,
+                period_form=period_form, period_options=TEMPORAL_PERIOD_OPTIONS,
             ), 400
         except InstagramReportPersistenceError:
             current_app.logger.exception("Falha ao gerar relatório Instagram")
             flash("Não foi possível gerar o relatório. Nenhum relatório concluído foi criado.", "danger")
             return render_template(
-                "platform/instagram/report_form.html", project=project, form_values=values,
+                "platform/instagram/report_form.html", project=project,
+                period_form=period_form, period_options=TEMPORAL_PERIOD_OPTIONS,
             ), 500
         flash("Relatório gerado com snapshot reprodutível.", "success")
         return redirect(url_for("instagram.report_detail", project_id=project.id, report_id=report.id))
     return render_template(
-        "platform/instagram/report_form.html", project=project, form_values=defaults,
+        "platform/instagram/report_form.html", project=project,
+        period_form=defaults, period_options=TEMPORAL_PERIOD_OPTIONS,
     )
 
 
@@ -1376,10 +1604,12 @@ def classifications(project_id: UUID):
     states = classification_states(project, tuple(item.id for item in media))
     if status_filter != "all":
         media = tuple(item for item in media if states[item.id].status == status_filter)
+    media_pagination = paginate_sequence(media, request.args.get("page", "1"))
     return render_template(
         "platform/instagram/classifications.html",
         project=project,
-        media=media,
+        media=media_pagination.items,
+        media_pagination=media_pagination,
         states=states,
         status_filter=status_filter,
         can_mutate=project.status == "active" and project.archived_at is None,
@@ -1445,8 +1675,11 @@ def _comment_for_project(project: AnalyticsProject, comment_id: UUID) -> Instagr
 @login_required
 def comments(project_id: UUID):
     project = _project_for_current_user(project_id)
+    if request.args.get("period", "30d") not in PERIOD_DAYS:
+        abort(400)
+    period_form = instagram_period_form(request.args, default="30d")
     filters = {
-        "period": request.args.get("period", "30d"),
+        "period": period_form["key"],
         "sort": request.args.get("sort", "recent"),
         "status": request.args.get("status", "all"),
         "sentiment": request.args.get("sentiment", "all"),
@@ -1454,7 +1687,14 @@ def comments(project_id: UUID):
         "risk": request.args.get("risk", "all"),
     }
     try:
-        summary = build_instagram_comments_dashboard(project, **filters)
+        summary = build_instagram_comments_dashboard(
+            project,
+            **filters,
+            timezone_name=current_app.config["PRESENTATION_TIMEZONE"],
+            period_start=period_form["start"],
+            period_end=period_form["end"],
+            page=request.args.get("page", "1"),
+        )
     except ValueError:
         abort(400)
     return render_template(
@@ -1462,8 +1702,8 @@ def comments(project_id: UUID):
         project=project,
         comments_dashboard=summary,
         filters=filters,
-        period_options=(("7d", "7 dias"), ("30d", "30 dias"), ("90d", "90 dias"),
-                        ("all", "Todo o histórico")),
+        period_options=TEMPORAL_PERIOD_OPTIONS,
+        period_form=period_form,
         sentiment_labels=SENTIMENT_LABELS,
         intent_labels=INTENT_LABELS,
         risk_labels=RISK_LABELS,
@@ -1727,6 +1967,7 @@ def cancel_comment_import(project_id: UUID):
 def new_import(project_id: UUID):
     # Arquivados são somente leitura: exibem conexão e diagnóstico, sem POSTs.
     project = _project_for_current_user(project_id)
+    _meta_sync_completion_flash(project)
     return render_template("platform/instagram/import_new.html", **_import_template_context(project))
 
 
@@ -1947,6 +2188,95 @@ def test_meta_capabilities(project_id: UUID):
         )
         flash("Verificação dos dados disponíveis concluída. Nenhum dado analítico foi importado.", "success")
     return redirect(url_for("instagram.new_import", project_id=project.id))
+
+
+@instagram_bp.post("/projects/<uuid:project_id>/imports/meta/sync")
+@login_required
+def sync_meta_data(project_id: UUID):
+    """Agenda sincronização durável; a coleta não ocupa a requisição web."""
+    project = _project_for_current_user(project_id, active=True)
+    account = project.instagram_account
+    connection = account.api_connection if account is not None else None
+    if connection is None or connection.status != "connected":
+        abort(404)
+    stale_seconds = current_app.config.get("PESQUISAPDF_META_SYNC_STALE_SECONDS", DEFAULT_META_SYNC_STALE_SECONDS)
+    try:
+        recover_stale_meta_sync_runs(stale_seconds=int(stale_seconds))
+        # Uma execução já ativa conserva a janela congelada no próprio run. A
+        # seleção enviada no reload não pode alterar o trabalho em andamento.
+        active_run = active_meta_sync_run(project.id)
+        if active_run is not None:
+            run, created = active_run, False
+        else:
+            publication_window = resolve_publication_window(
+                request.form.get("sync_period", "last_90_days"),
+                request.form.get("published_from"),
+                request.form.get("published_to"),
+                current_app.config["PRESENTATION_TIMEZONE"],
+            )
+            run, created = enqueue_meta_sync_run(
+                project, connection.id, connection.provider, publication_window,
+            )
+    except InstagramMetaSyncError as error:
+        if request.accept_mimetypes.best == "application/json":
+            return jsonify({"message": str(error)}), 400
+        flash(str(error), "danger")
+        return render_template(
+            "platform/instagram/import_new.html",
+            **_import_template_context(project, sync_period_form=request.form),
+        ), 400
+    except (TypeError, ValueError):
+        current_app.logger.error("instagram_meta project=%s operation=sync status=invalid_stale_config", project.id)
+        flash("Não foi possível iniciar a sincronização.", "danger")
+        return redirect(url_for("instagram.new_import", project_id=project.id))
+    except Exception:
+        db.session.rollback()
+        current_app.logger.error("instagram_meta project=%s operation=sync status=enqueue_error", project.id)
+        flash("Não foi possível iniciar a sincronização.", "danger")
+        return redirect(url_for("instagram.new_import", project_id=project.id))
+
+    status_url = url_for("instagram.meta_sync_status", project_id=project.id, run_id=run.id)
+    # Inclusive quando o POST reutiliza um job já pendente/em execução, o
+    # reload precisa representar a janela congelada daquele job, não uma nova
+    # escolha que não foi aplicada a ele.
+    completion_url = _meta_sync_completion_url(project, run)
+    if request.accept_mimetypes.best == "application/json":
+        return jsonify({
+            "status": run.status,
+            "status_url": status_url,
+            "completion_url": completion_url,
+            "reused_active_run": not created,
+        }), 202
+    flash("Sincronização iniciada." if created else "Uma sincronização já está em andamento.", "success")
+    return redirect(completion_url)
+
+
+@instagram_bp.get("/projects/<uuid:project_id>/imports/meta/sync/<uuid:run_id>/status")
+@login_required
+def meta_sync_status(project_id: UUID, run_id: UUID):
+    """Estado seguro de um job Meta pertencente ao projeto do usuário atual."""
+    project = _project_for_current_user(project_id)
+    run = db.session.scalar(select(AnalyticsRun).where(
+        AnalyticsRun.id == str(run_id),
+        AnalyticsRun.analytics_project_id == project.id,
+        AnalyticsRun.source_kind == "meta_api",
+    ))
+    if run is None:
+        abort(404)
+    payload = {
+        "status": run.status,
+        "record_count": run.record_count,
+        "started_at": run.started_at.isoformat() if run.started_at else None,
+        "completed_at": run.completed_at.isoformat() if run.completed_at else None,
+    }
+    if run.status == META_SYNC_FAILED:
+        payload["message"] = run.error_message or "Não foi possível concluir a sincronização. Nenhum dado foi salvo."
+    elif run.status == META_SYNC_COMPLETED:
+        count = run.record_count
+        payload["message"] = "Sincronização concluída. " + (
+            "1 conteúdo foi processado." if count == 1 else f"{count} conteúdos foram processados."
+        )
+    return jsonify(payload)
 
 
 @instagram_bp.route("/projects/<uuid:project_id>/imports/meta/disconnect", methods=("GET", "POST"))

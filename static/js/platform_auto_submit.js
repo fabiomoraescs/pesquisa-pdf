@@ -40,6 +40,12 @@
         for (const value of formData.getAll(name)) url.searchParams.append(name, value);
       }
     }
+    if (form.dataset.resetPagination === 'true') {
+      for (const name of [...url.searchParams.keys()]) {
+        if (name === 'page' || /(?:^|_)page(?:_|$)/.test(name)) url.searchParams.delete(name);
+      }
+      form.dataset.resetPagination = '';
+    }
     return url;
   }
 
@@ -112,8 +118,9 @@
   }
 
   document.addEventListener('change', (event) => {
-    const select = event.target.closest('select[data-auto-submit]');
+    const select = event.target.closest('select[data-auto-submit]:not([data-instagram-temporal-period-select])');
     if (!select || select.disabled || !select.form || select.form.method.toLowerCase() !== 'get') return;
+    if (select.dataset.resetPagination === 'true') select.form.dataset.resetPagination = 'true';
     if (typeof select.form.requestSubmit === 'function') select.form.requestSubmit();
     else select.form.submit();
   });

@@ -404,9 +404,9 @@ class RemainingRefinementsTests(unittest.TestCase):
             self.assertEqual(float(re.search(pattern, hybrid_html).group(1)), expected)
         self.assertIn('id="hr-valor-limiar"', hybrid_html)
         self.assertIn('id="hr-limiar" name="limiar_semantico" type="range"', hybrid_html)
-        self.assertIn("O valor inicial é 0,50", hybrid_html)
-        self.assertNotIn("O valor inicial é 0,70", hybrid_html)
-        self.assertIn("O limiar inicial 0,50", legacy_html)
+        self.assertIn("0,50 · inicial mais exploratória", hybrid_html)
+        self.assertNotIn("0,70 · inicial mais exploratória", hybrid_html)
+        self.assertIn("O valor inicial mais exploratório", legacy_html)
         self.assertEqual(normalize(None), DEFAULT)
         self.assertEqual(normalize("invalido"), DEFAULT)
         for selected in (0.55, 0.60, 0.65, 0.70, 0.75, 0.80, 0.85, 0.90):

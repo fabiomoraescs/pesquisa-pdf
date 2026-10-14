@@ -1250,7 +1250,8 @@ class QualitativeCorpusTests(unittest.TestCase):
         css = (Path(__file__).resolve().parents[1] / "static/css/platform.css").read_text(encoding="utf-8")
         self.assertIn('.platform-qualitative-search-options { display: flex; flex-wrap: wrap', css)
         self.assertIn('.platform-qualitative-search-options label, '
-                      '.platform-qualitative-automatic-options label { display: inline-flex', css)
+                      '.platform-qualitative-automatic-options label, .platform-method-toggle '
+                      '{ display: inline-flex', css)
         self.assertIn('white-space: nowrap; cursor: pointer', css)
         self.assertIn('.platform-qualitative-search-results [data-result-prev]', css)
         self.assertIn('.platform-qualitative-search-results [data-result-count]', css)

@@ -37,3 +37,20 @@ def register_cli(app: Flask) -> None:
         record_audit(user, "admin_created", "user", user.id, after={"role": "admin", "status": "active"})
         db.session.commit()
         click.echo("Administrador criado. A senha não foi exibida nem gravada em arquivo.")
+
+    @app.cli.command("instagram-meta-sync-worker")
+    @click.option("--once", is_flag=True, help="Processa no máximo um job pendente e encerra.")
+    @click.option("--poll-interval", default=5.0, show_default=True, type=float,
+                  help="Segundos de espera quando não houver job pendente.")
+    @click.option("--stale-seconds", default=7200, show_default=True, type=int,
+                  help="Prazo conservador para recuperar job running órfão.")
+    def instagram_meta_sync_worker(once: bool, poll_interval: float, stale_seconds: int) -> None:
+        """Executa a fila durável da sincronização Meta em processo separado."""
+        from .instagram_meta_sync_jobs import run_meta_sync_worker
+
+        run_meta_sync_worker(
+            app,
+            once=once,
+            poll_interval=poll_interval,
+            stale_seconds=stale_seconds,
+        )

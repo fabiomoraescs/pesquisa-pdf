@@ -1,0 +1,8 @@
+{#
+  Rótulo compartilhado da faixa superior de ferramentas vinculadas a
+  projetos. O nome é resolvido na renderização, para acompanhar troca ou
+  renomeação sem estado duplicado no cliente.
+#}
+{% macro project_tool_label(tool_name, project) -%}
+{{ tool_name }}{% if project and project.name %}: {{ project.name }}{% endif %}
+{%- endmacro %}

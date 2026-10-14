@@ -19,7 +19,7 @@ from flask import current_app
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import joinedload, selectinload
 
 from .extensions import db
@@ -33,6 +33,8 @@ from .instagram_actions import ACTION_KIND_LABELS, ACTION_STATUS_LABELS
 from .instagram_cohorts import cohort_label
 from .instagram_learnings import LEARNING_ASSESSMENT_LABELS, learning_cohort_label
 from .instagram_metrics import RATE_METRIC_DEFINITIONS, calculate_derived_metrics
+from .instagram_periods import effective_run_period
+from .pagination import PlatformPage, requested_page
 from .models import (
     AnalyticsProject,
     AnalyticsRun,
@@ -122,7 +124,9 @@ def _percent(value: float | None, *, signed: bool = False) -> str:
     return format_metric_value(value, "%", signed=signed, percentage_fraction=True, fixed_decimals=2)
 
 
-def _parse_requested_period(values: dict[str, object]) -> tuple[date, date]:
+def _parse_requested_period(values: dict[str, object]) -> tuple[date | None, date | None]:
+    if values.get("period_preset") in {"all", "all_history"}:
+        return None, None
     try:
         start = date.fromisoformat(str(values.get("period_start") or ""))
         end = date.fromisoformat(str(values.get("period_end") or ""))
@@ -141,35 +145,59 @@ def _period_boundaries(start: date, end: date) -> tuple[datetime, datetime]:
     )
 
 
-def eligible_report_runs(project: AnalyticsProject) -> tuple[AnalyticsRun, ...]:
-    """Runs concluídos e datados, deduplicados de modo determinístico por intervalo."""
+def _run_period_sort_key(run: AnalyticsRun) -> tuple[int, datetime, datetime, str]:
+    resolved = effective_run_period(run)
+    minimum = datetime.min.replace(tzinfo=timezone.utc)
+    maximum = datetime.max.replace(tzinfo=timezone.utc)
+    if resolved.is_bounded:
+        return 0, resolved.start or minimum, resolved.end or maximum, run.id
+    return 1, maximum, maximum, run.id
+
+
+def _latest_run(winner: AnalyticsRun | None, candidate: AnalyticsRun) -> AnalyticsRun:
+    if winner is None:
+        return candidate
+    minimum = datetime.min.replace(tzinfo=timezone.utc)
+    candidate_key = (_utc(candidate.completed_at) or minimum, _utc(candidate.created_at) or minimum, candidate.id)
+    winner_key = (_utc(winner.completed_at) or minimum, _utc(winner.created_at) or minimum, winner.id)
+    return candidate if candidate_key > winner_key else winner
+
+
+def eligible_report_runs(project: AnalyticsProject, *, include_all_history: bool = False) -> tuple[AnalyticsRun, ...]:
+    """Runs concluídos, temporalmente conhecidos e deduplicados.
+
+    Meta usa a janela congelada no JSON.  ``all_history`` só entra quando o
+    usuário pediu esse escopo explicitamente; um legado sem intervalo continua
+    fora da seleção para não converter a data da execução em data analítica.
+    """
     runs = db.session.scalars(select(AnalyticsRun).where(
         AnalyticsRun.analytics_project_id == project.id,
         AnalyticsRun.status == "completed",
-        AnalyticsRun.period_start.is_not(None),
-        AnalyticsRun.period_end.is_not(None),
     )).all()
-    winners: dict[tuple[datetime, datetime], AnalyticsRun] = {}
+    winners: dict[tuple[object, ...], AnalyticsRun] = {}
     for run in runs:
-        start, end = _utc(run.period_start), _utc(run.period_end)
-        if start is None or end is None or start > end:
+        resolved = effective_run_period(run)
+        if resolved.is_bounded:
+            key: tuple[object, ...] = ("bounded", resolved.start, resolved.end)
+        elif include_all_history and resolved.kind == "all_history":
+            key = ("all_history",)
+        else:
             continue
-        key = (start, end)
-        current = winners.get(key)
-        candidate_key = (_utc(run.completed_at) or datetime.min.replace(tzinfo=timezone.utc), _utc(run.created_at) or datetime.min.replace(tzinfo=timezone.utc), run.id)
-        current_key = (_utc(current.completed_at) or datetime.min.replace(tzinfo=timezone.utc), _utc(current.created_at) or datetime.min.replace(tzinfo=timezone.utc), current.id) if current else None
-        if current is None or candidate_key > current_key:
-            winners[key] = run
-    return tuple(sorted(winners.values(), key=lambda run: (_utc(run.period_start), _utc(run.period_end), run.id)))
+        winners[key] = _latest_run(winners.get(key), run)
+    return tuple(sorted(winners.values(), key=_run_period_sort_key))
 
 
-def resolve_report_runs(project: AnalyticsProject, start: date, end: date) -> tuple[AnalyticsRun, ...]:
-    """Runs concluídos, deduplicados e inteiramente contidos no período pedido."""
+def resolve_report_runs(project: AnalyticsProject, start: date | None, end: date | None) -> tuple[AnalyticsRun, ...]:
+    """Seleciona runs completos para uma janela ou para todo o histórico explícito."""
+    if start is None or end is None:
+        if start is not None or end is not None:
+            raise InstagramReportError("O período do relatório está incompleto.")
+        return eligible_report_runs(project, include_all_history=True)
     lower, upper = _period_boundaries(start, end)
     return tuple(
         run for run in eligible_report_runs(project)
-        if _utc(run.period_start) is not None and _utc(run.period_end) is not None
-        and _utc(run.period_start) >= lower and _utc(run.period_end) <= upper
+        if (resolved := effective_run_period(run)).is_bounded
+        and (resolved.start or lower) >= lower and (resolved.end or upper) <= upper
     )
 
 
@@ -211,9 +239,12 @@ def _run_metrics(project: AnalyticsProject, run: AnalyticsRun) -> tuple[dict, li
 
 
 def _run_snapshot(run: AnalyticsRun) -> dict:
+    resolved = effective_run_period(run)
     return {
         "id": run.id, "source_kind": run.source_kind, "status": run.status,
-        "period_start": _iso(run.period_start), "period_end": _iso(run.period_end),
+        "period_start": _iso(resolved.start), "period_end": _iso(resolved.end),
+        "period_kind": resolved.kind, "period_source": resolved.source,
+        "period_preset": resolved.preset,
         "completed_at": _iso(run.completed_at), "created_at": _iso(run.created_at),
         "record_count": run.record_count, "processor_version": run.processor_version,
     }
@@ -302,14 +333,18 @@ def _in_range(value: str | None, start: datetime | None, end: datetime | None) -
 
 
 def _milestones(source: dict, baseline: AnalyticsRun, final: AnalyticsRun) -> list[dict]:
-    start, end = _utc(baseline.period_start), _utc(final.period_end)
+    baseline_period, final_period = effective_run_period(baseline), effective_run_period(final)
+    start = baseline_period.start if baseline_period.is_bounded else None
+    end = final_period.end if final_period.is_bounded else None
     milestone_rows: list[dict] = []
     for kind, values in (
         ("Recomendação", source["recommendations"]), ("Ação/Teste", source["actions"]),
         ("Acompanhamento", source["evaluations"]), ("Aprendizado", source["learnings"]),
     ):
         for item in values:
-            if _in_range(item.get("created_at"), start, end):
+            # Todo o histórico é explícito e ilimitado; um legado desconhecido
+            # nunca chega a este ponto como fonte de relatório.
+            if (start is None or end is None) or _in_range(item.get("created_at"), start, end):
                 milestone_rows.append({
                     "at": item["created_at"], "kind": kind, "id": item["id"], "title": item.get("title") or item.get("assessment_label") or kind,
                 })
@@ -383,6 +418,8 @@ def report_summary_cards(snapshot: dict, *, limit: int = 3) -> list[dict]:
 
 
 def _series_label(run: dict) -> str:
+    if run.get("period_kind") == "all_history":
+        return "Todo o histórico disponível"
     start, end = _display_date(run.get("period_start")), _display_date(run.get("period_end"))
     return start if start == end else f"{start} — {end}"
 
@@ -475,13 +512,23 @@ def report_chart_data(snapshot: dict) -> dict[str, dict]:
 
 
 def _has_material_gap(runs: tuple[AnalyticsRun, ...]) -> bool:
-    return any(
-        (_utc(right.period_start) - _utc(left.period_end)).total_seconds() > 24 * 60 * 60
-        for left, right in zip(runs, runs[1:])
-    )
+    for left, right in zip(runs, runs[1:]):
+        left_period, right_period = effective_run_period(left), effective_run_period(right)
+        if left_period.is_bounded and right_period.is_bounded and (
+            (right_period.start - left_period.end).total_seconds() > 24 * 60 * 60  # type: ignore[operator]
+        ):
+            return True
+    return False
 
 
-def build_report_snapshot(project: AnalyticsProject, runs: tuple[AnalyticsRun, ...], *, requested_start: date, requested_end: date) -> dict:
+def build_report_snapshot(
+    project: AnalyticsProject,
+    runs: tuple[AnalyticsRun, ...],
+    *,
+    requested_start: date | None,
+    requested_end: date | None,
+    requested_period_key: str | None = None,
+) -> dict:
     """Congela dados e fontes sem inventar observações entre os runs selecionados."""
     if not runs:
         raise InstagramReportError("Não há execuções concluídas no período informado.")
@@ -509,7 +556,11 @@ def build_report_snapshot(project: AnalyticsProject, runs: tuple[AnalyticsRun, .
         "Os resultados são descritivos e não demonstram causalidade.",
         "Métricas ausentes permanecem indisponíveis; zero é valor conhecido.",
     ]
-    if len(runs) >= 2 and (_utc(first.period_end) - _utc(first.period_start)).total_seconds() != (_utc(last.period_end) - _utc(last.period_start)).total_seconds():
+    first_period, last_period = effective_run_period(first), effective_run_period(last)
+    if (
+        len(runs) >= 2 and first_period.is_bounded and last_period.is_bounded
+        and (first_period.end - first_period.start).total_seconds() != (last_period.end - last_period.start).total_seconds()  # type: ignore[operator]
+    ):
         limitations.append("As primeiras e últimas observações têm durações diferentes; considere esse contexto na comparação.")
     if _has_material_gap(runs):
         limitations.append("Há lacunas entre observações selecionadas; a evolução mostra somente pontos efetivamente registrados.")
@@ -519,7 +570,10 @@ def build_report_snapshot(project: AnalyticsProject, runs: tuple[AnalyticsRun, .
         "generated_at": _iso(datetime.now(timezone.utc)),
         "timezone": current_app.config["PRESENTATION_TIMEZONE"],
         "project": {"id": project.id, "name": project.name, "description": project.description},
-        "requested_period": {"start": requested_start.isoformat(), "end": requested_end.isoformat()},
+        "requested_period": {
+            **({"start": requested_start.isoformat(), "end": requested_end.isoformat()} if requested_start is not None and requested_end is not None else {}),
+            **({"preset": requested_period_key} if requested_period_key is not None else {}),
+        },
         "report_type": "executive", "analysis_mode": "comparative_evolution" if len(runs) >= 2 else "single_period",
         "selected_sections": list(DEFAULT_REPORT_SECTIONS),
         "first_observation": run_snapshots[0], "last_observation": run_snapshots[-1],
@@ -537,7 +591,7 @@ def build_report_snapshot(project: AnalyticsProject, runs: tuple[AnalyticsRun, .
             "coverage": "Cobertura = valores conhecidos / conteúdos observados no run.",
             "causality": "Associações temporais e avaliações humanas não provam causalidade.",
             "comparability": "Comparações usam somente métricas com a mesma agregação e unidades compatíveis.",
-            "run_selection": "A seleção automática inclui apenas runs concluídos e datados inteiramente dentro do período; intervalos idênticos usam o run concluído mais recente.",
+            "run_selection": "A seleção automática inclui apenas runs concluídos com período conhecido e inteiramente dentro do recorte; runs Meta usam a janela congelada. Intervalos idênticos usam o run concluído mais recente.",
         },
     }
 
@@ -614,10 +668,15 @@ def _workbook(snapshot: dict) -> bytes:
     final = snapshot.get("last_observation") or snapshot["final_run"]
     period = snapshot.get("requested_period") or {}
     runs = snapshot.get("runs_used") or snapshot.get("source_runs") or []
+    requested_period_text = (
+        "Todo o histórico disponível"
+        if period.get("preset") in {"all", "all_history"}
+        else f"{period.get('start') or _display_date(base['period_start'])} até {period.get('end') or _display_date(final['period_end'])}"
+    )
     sheet("Summary", ["Field", "Value"], [
         ["Projeto", project["name"]],
-        ["Período solicitado", f"{period.get('start') or _display_date(base['period_start'])} até {period.get('end') or _display_date(final['period_end'])}"],
-        ["Observações usadas", len(runs)],
+        ["Período solicitado", requested_period_text],
+        ["Execuções usadas", len(runs)],
         ["Versão", snapshot["schema_version"]],
     ])
     comparison = list(snapshot.get("comparison") or [])
@@ -685,6 +744,22 @@ def reports_for_project(project: AnalyticsProject) -> tuple[InstagramReport, ...
     ).order_by(InstagramReport.created_at.desc(), InstagramReport.id.desc())).all())
 
 
+def reports_page_for_project(project: AnalyticsProject, page: object) -> PlatformPage[InstagramReport]:
+    """Histórico paginado no banco, sem carregar relatórios antigos inteiros."""
+    requested = requested_page(page)
+    total = int(db.session.scalar(select(func.count()).select_from(InstagramReport).where(
+        InstagramReport.analytics_project_id == project.id
+    )) or 0)
+    pages = max(1, (total + 19) // 20)
+    current = min(requested, pages)
+    rows = db.session.scalars(
+        select(InstagramReport).where(InstagramReport.analytics_project_id == project.id)
+        .order_by(InstagramReport.created_at.desc(), InstagramReport.id.desc())
+        .limit(20).offset((current - 1) * 20)
+    ).all()
+    return PlatformPage(tuple(rows), total, current)
+
+
 def report_for_project(project: AnalyticsProject, report_id: str) -> InstagramReport | None:
     return db.session.scalar(select(InstagramReport).where(
         InstagramReport.analytics_project_id == project.id, InstagramReport.id == report_id
@@ -697,8 +772,12 @@ def generate_report(project: AnalyticsProject, values: dict[str, object], *, act
     requested_start, requested_end = _parse_requested_period(values)
     runs = resolve_report_runs(project, requested_start, requested_end)
     if not runs:
-        raise InstagramReportError("Não há execuções concluídas e datadas integralmente contidas no período informado.")
-    title = f"Relatório Instagram — {requested_start.strftime('%d/%m/%Y')} a {requested_end.strftime('%d/%m/%Y')}"
+        raise InstagramReportError("Não há execuções concluídas com período conhecido para o recorte informado.")
+    title = (
+        "Relatório Instagram — Todo o histórico disponível"
+        if requested_start is None or requested_end is None
+        else f"Relatório Instagram — {requested_start.strftime('%d/%m/%Y')} a {requested_end.strftime('%d/%m/%Y')}"
+    )
     report = InstagramReport(
         analytics_project_id=project.id, created_by_user_id=actor_id, title=title,
         # Valores canônicos apenas para compatibilidade com o schema da Fase 9.
@@ -717,7 +796,13 @@ def generate_report(project: AnalyticsProject, values: dict[str, object], *, act
         raise InstagramReportPersistenceError("Não foi possível iniciar a geração do relatório.") from error
     try:
         snapshot = build_report_snapshot(
-            project, runs, requested_start=requested_start, requested_end=requested_end,
+            project,
+            runs,
+            requested_start=requested_start,
+            requested_end=requested_end,
+            requested_period_key=(
+                str(values["period_preset"]) if values.get("period_preset") else None
+            ),
         )
         directory = artifact_directory(project.id, report.id, create=True)
         report.snapshot_json = snapshot

@@ -148,6 +148,16 @@ class FakeInstagramLoginClient:
         self.profile_error = None
         self.comment_error = None
         self.comment_errors = {}
+        self.metric_errors = {}
+        self.metrics = {
+            "reach": 100,
+            "saved": 4,
+            "shares": 2,
+            "total_interactions": 17,
+            "follows": 1,
+            "views": 50,
+        }
+        self.account_reach = 500
         self.sample_media_payload = [
             {"id": f"media-{index}", "media_product_type": "REEL" if index % 2 else "FEED"}
             for index in range(1, 11)
@@ -191,6 +201,20 @@ class FakeInstagramLoginClient:
         if error is not None:
             raise error
         return self.comments_by_media.get(media_id, [])
+
+    def media_metric(self, media_id, metric, access_token):
+        self.calls.append(("metric", media_id, metric, access_token))
+        error = self.metric_errors.get(metric)
+        if error is not None:
+            raise error
+        value = self.metrics.get(metric)
+        values = [] if value is None else [{"value": value}]
+        return {"data": [{"name": metric, "values": values}]}
+
+    def account_insights(self, account_id, access_token):
+        self.calls.append(("account_insights", account_id, access_token))
+        values = [] if self.account_reach is None else [{"value": self.account_reach}]
+        return {"data": [{"name": "reach", "values": values}]}
 
 
 class InstagramMetaConnectionTests(unittest.TestCase):
@@ -284,13 +308,14 @@ class InstagramMetaConnectionTests(unittest.TestCase):
         self.assertEqual(query["scope"][0].split(","), list(FACEBOOK_LOGIN_SCOPES))
         self.assertNotIn("config_id", query)
 
-    def test_instagram_authorization_uses_its_own_credentials_and_minimal_scope(self):
+    def test_instagram_authorization_uses_its_own_credentials_and_insights_scope(self):
         provider = InstagramLoginProvider(InstagramMetaSettings.from_mapping(self.app.config))
         authorization_url = provider.authorization_url("instagram-state-safe")
         query = parse_qs(urlparse(authorization_url).query)
         self.assertEqual(INSTAGRAM_LOGIN_SCOPES, (
             "instagram_business_basic",
             "instagram_business_manage_comments",
+            "instagram_business_manage_insights",
         ))
         self.assertEqual(urlparse(authorization_url).netloc, "www.instagram.com")
         self.assertEqual(query["client_id"], [self.app.config["PESQUISAPDF_META_INSTAGRAM_APP_ID"]])
@@ -315,6 +340,21 @@ class InstagramMetaConnectionTests(unittest.TestCase):
                 self.assertIn("/comment-42/replies?", calls[1][1])
                 self.assertEqual(parse_qs(urlparse(calls[0][1]).query)["fields"], ["id"])
                 self.assertNotIn("secret-token", calls[0][1])
+
+    def test_direct_insights_use_the_instagram_graph_host_and_configured_version(self):
+        provider = InstagramLoginProvider(InstagramMetaSettings.from_mapping(self.app.config))
+        calls = []
+        provider._request_json = lambda method, url, **kwargs: calls.append((method, url, kwargs)) or {"data": []}
+
+        provider.media_metrics("media-42", ("reach", "saved"), "secret-token")
+        provider.account_insights("ig-42", "secret-token")
+
+        self.assertEqual(len(calls), 2)
+        self.assertTrue(all(urlparse(call[1]).netloc == "graph.instagram.com" for call in calls))
+        self.assertTrue(all(f"/{self.app.config['PESQUISAPDF_META_API_VERSION']}/" in call[1] for call in calls))
+        self.assertEqual(parse_qs(urlparse(calls[0][1]).query)["metric"], ["reach,saved"])
+        self.assertEqual(parse_qs(urlparse(calls[1][1]).query)["metric"], ["reach"])
+        self.assertNotIn("secret-token", calls[0][1])
 
     def test_import_page_exposes_both_providers_and_keeps_manual_import_available(self):
         body = self.client.get(self._import_url()).get_data(as_text=True)
@@ -350,7 +390,7 @@ class InstagramMetaConnectionTests(unittest.TestCase):
         self.assertNotIn("instagram-token-very-secret-42", connection.encrypted_access_token)
         self.assertEqual([call[0] for call in self.instagram_fake.calls], ["exchange", "profile"])
 
-    def test_direct_capability_is_limited_and_never_claims_facebook_insights(self):
+    def test_direct_capability_probes_its_own_insights_without_persisting_analytics(self):
         self._callback(self._connect("instagram_login"), code="instagram-valid")
         connection = db.session.scalar(select(InstagramApiConnection))
         validated_at = connection.last_validated_at
@@ -364,8 +404,9 @@ class InstagramMetaConnectionTests(unittest.TestCase):
         result = connection.capability_result_json
         self.assertEqual(result["provider"], "instagram_login")
         self.assertEqual(result["profile"]["status"], "supported")
-        self.assertEqual(result["account_metrics"]["status"], "not_available_for_provider")
-        self.assertEqual(result["media_metrics"]["reach"]["status"], "not_available_for_provider")
+        self.assertEqual(result["account_metrics"]["status"], "supported")
+        self.assertEqual(result["media_metrics"]["reach"]["status"], "supported")
+        self.assertEqual(result["media_metrics"]["views"]["status"], "supported")
         self.assertEqual(result["comments"], {
             "status": "supported",
             "observed_count": 3,
@@ -396,7 +437,8 @@ class InstagramMetaConnectionTests(unittest.TestCase):
         self.assertIn("Conexão validada em", body)
         self.assertIn("Dados verificados em", body)
         self.assertIn("Feed · Reels", body)
-        self.assertIn("Não disponíveis neste método de conexão.", body)
+        self.assertIn("Alcance: Disponível", body)
+        self.assertIn("Dados agregados da conta: Disponível.", body)
         self.assertIn("Verificar dados disponíveis", body)
         self.assertNotIn("not_available_for_provider", body)
         self.assertNotIn("permission_denied", body)

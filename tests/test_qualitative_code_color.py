@@ -127,27 +127,33 @@ class QualitativeCodeColorTests(unittest.TestCase):
         code = db.session.get(QualitativeCode, identifier)
         self.assertEqual((code.id, code.name, code.color), (identifier, "Questão racial", "yellow"))
 
-    def _automatic_color_roundtrip(self, *, query, mode, text):
+    def _automatic_color_roundtrip(self, *, query, mode, text, expected_code_count=1):
         self.fixture_pages([[text]])
         first = self.automatic(q=query, mode=mode)
-        identifier = first.json["terms"][0]["code_id"]
-        self.assertIsNotNone(identifier)
+        first_codes = first.json["terms"][0]["codes"]
+        identifiers = [code["code_id"] for code in first_codes]
+        self.assertEqual(len(identifiers), expected_code_count)
+        self.assertEqual(len(set(identifiers)), expected_code_count)
+        self.assertEqual(first.json["terms"][0]["code_id"],
+                         identifiers[0] if expected_code_count == 1 else None)
         before = [(item.id, item.code_id, item.excerpt_id, item.source_query) for item in self.codings()]
-        self.assertEqual(self.patch_code(identifier, {"color": "purple"}).status_code, 200)
+        for identifier in identifiers:
+            self.assertEqual(self.patch_code(identifier, {"color": "purple"}).status_code, 200)
         repeated = self.automatic(q=query, mode=mode)
-        self.assertEqual(repeated.json["terms"][0]["code_id"], identifier)
+        self.assertEqual(repeated.json["terms"][0]["codes"], first_codes)
         self.assertEqual(repeated.json["summary"]["created"], 0)
         self.assertEqual([(item.id, item.code_id, item.excerpt_id, item.source_query)
                           for item in self.codings()], before)
-        self.assertEqual(db.session.get(QualitativeCode, identifier).color, "purple")
-        self.assertEqual(db.session.query(QualitativeCode).count(), 1)
+        self.assertTrue(all(db.session.get(QualitativeCode, identifier).color == "purple"
+                            for identifier in identifiers))
+        self.assertEqual(db.session.query(QualitativeCode).count(), expected_code_count)
 
     def test_literal_automatic_after_color(self):
         self._automatic_color_roundtrip(query="raça", mode="literal", text="raça raça")
 
     def test_lexical_automatic_after_color(self):
         self._automatic_color_roundtrip(query="professor", mode="lexical",
-                                        text="professor professores professoras")
+                                        text="professor professores professoras", expected_code_count=3)
 
     def test_semantic_automatic_after_color(self):
         with patch("platform_core.qualitative_expanded_search._model", return_value=FakeModel(lambda _: [1, 0])):

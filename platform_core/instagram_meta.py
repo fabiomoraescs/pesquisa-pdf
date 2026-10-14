@@ -1,8 +1,8 @@
-"""Facebook Login e diagnóstico limitado da Graph API para Instagram.
+"""Providers Meta para conexão, diagnóstico e leitura canônica do Instagram.
 
-Esta camada deliberadamente não importa mídias, observações, comentários ou
-insights. Ela só valida uma identidade profissional vinculada a uma Página do
-Facebook e registra um diagnóstico controlado das capacidades da Graph API.
+Esta camada conhece os contratos específicos de Instagram Login e Facebook
+Login. A persistência de mídia, observações e snapshots fica no motor canônico
+de sincronização, para que os modelos analíticos não dependam do provider.
 """
 
 from __future__ import annotations
@@ -38,9 +38,11 @@ FACEBOOK_LOGIN_SCOPES = (
     "pages_read_engagement",
     "pages_show_list",
 )
+INSTAGRAM_LOGIN_INSIGHTS_SCOPE = "instagram_business_manage_insights"
 INSTAGRAM_LOGIN_SCOPES = (
     "instagram_business_basic",
     "instagram_business_manage_comments",
+    INSTAGRAM_LOGIN_INSIGHTS_SCOPE,
 )
 META_CONNECTION_PROVIDERS = frozenset({"instagram_login", "facebook_login"})
 CAPABILITY_MEDIA_LIMIT = 10
@@ -51,6 +53,11 @@ CAPABILITY_METRIC_SAMPLES_PER_TYPE_LIMIT = 2
 PAGE_DISCOVERY_LIMIT = 100
 PAGE_DISCOVERY_MAX_PAGES = 20
 PAGE_DISCOVERY_FALLBACK_LIMIT = 25
+SYNC_MEDIA_PAGE_LIMIT = 100
+SYNC_MEDIA_MAX_PAGES = 200
+SYNC_MEDIA_FIELDS = (
+    "id,caption,comments_count,like_count,media_type,media_product_type,permalink,timestamp"
+)
 
 
 class InstagramMetaError(ValueError):
@@ -92,6 +99,7 @@ def safe_meta_error_message(error: InstagramMetaError) -> str:
         "identity_conflict": "Esta conta do Instagram já está vinculada a outro projeto.",
         "reconciliation_expired": "A confirmação expirou. Conecte a conta novamente.",
         "reconciliation_required": "Confirme o vínculo da conta antes de continuar.",
+        "pagination_limit": "A sincronização excedeu o limite seguro de páginas. Tente novamente mais tarde.",
         "permission_denied": "A conta conectada não concedeu a permissão necessária para esta capacidade.",
         "rate_limited": "A API do Instagram atingiu temporariamente o limite de chamadas. Tente novamente mais tarde.",
         "temporary": "A API do Instagram não respondeu a tempo. Tente novamente mais tarde.",
@@ -455,6 +463,10 @@ class MetaConnectionProvider:
         """Contrato da futura sincronização: respostas também pertencem ao provider."""
         raise NotImplementedError
 
+    def list_media(self, account_external_id: str, access_token: str) -> list[dict[str, Any]]:
+        """Lê todas as mídias com paginação limitada defensivamente para sync."""
+        raise NotImplementedError
+
 
 class FacebookLoginProvider(MetaConnectionProvider):
     """Facebook Login + Graph API com User Token efêmero e Page Token cifrado."""
@@ -626,7 +638,7 @@ class FacebookLoginProvider(MetaConnectionProvider):
             if not isinstance(profile, Mapping) or not isinstance(page_token, str) or not page_token or not page_id:
                 continue
             try:
-                instagram_account_id, _, _, _ = _profile_identity(profile)
+                instagram_account_id, _, _, _ = profile_identity(profile)
             except InstagramMetaError:
                 continue
             if instagram_account_id in instagram_account_ids:
@@ -689,6 +701,62 @@ class FacebookLoginProvider(MetaConnectionProvider):
             operation="profile_identity",
         )
 
+    def instagram_profile_enrichment(self, instagram_account_id: str, page_access_token: str) -> dict[str, Any]:
+        """Lê contagens opcionais sem ampliar o contrato de identidade mínimo."""
+        query = urlencode({"fields": "followers_count"})
+        return self._request_json(
+            "GET", f"https://graph.facebook.com/{self.settings.api_version}/{instagram_account_id}?{query}",
+            access_token=page_access_token,
+            operation="profile_enrichment",
+        )
+
+    def _list_media_from_graph(
+        self,
+        graph_host: str,
+        account_external_id: str,
+        access_token: str,
+    ) -> list[dict[str, Any]]:
+        """Paginação por cursor, nunca por URL devolvida pela API.
+
+        O limite é explícito: se ele for alcançado com cursor pendente, a
+        sincronização falha sem persistir uma coleção silenciosamente truncada.
+        """
+        after: str | None = None
+        seen_cursors: set[str] = set()
+        media: list[dict[str, Any]] = []
+        for _ in range(SYNC_MEDIA_MAX_PAGES):
+            query: dict[str, str] = {
+                "fields": SYNC_MEDIA_FIELDS,
+                "limit": str(SYNC_MEDIA_PAGE_LIMIT),
+            }
+            if after is not None:
+                query["after"] = after
+            payload = self._request_json(
+                "GET",
+                f"{graph_host}/{self.settings.api_version}/{account_external_id}/media?{urlencode(query)}",
+                access_token=access_token,
+                operation="media_sync",
+            )
+            rows = payload.get("data", [])
+            if not isinstance(rows, list) or not all(isinstance(row, Mapping) for row in rows):
+                raise InstagramMetaError("payload_invalid", "A API retornou mídias em formato inesperado.")
+            media.extend(dict(row) for row in rows)
+            paging = payload.get("paging")
+            cursors = paging.get("cursors", {}) if isinstance(paging, Mapping) else {}
+            next_after = cursors.get("after") if isinstance(cursors, Mapping) else None
+            if not isinstance(next_after, str) or not next_after:
+                return media
+            if next_after in seen_cursors or next_after == after:
+                raise InstagramMetaError("payload_invalid", "A paginação de mídias retornou um cursor inválido.")
+            seen_cursors.add(next_after)
+            after = next_after
+        raise InstagramMetaError("pagination_limit", "A paginação de mídias excedeu o limite seguro.")
+
+    def list_media(self, account_external_id: str, page_access_token: str) -> list[dict[str, Any]]:
+        return self._list_media_from_graph(
+            "https://graph.facebook.com", account_external_id, page_access_token
+        )
+
     def sample_media(self, account_external_id: str, page_access_token: str) -> list[dict[str, Any]]:
         query = urlencode({"fields": "id,media_type,media_product_type", "limit": str(CAPABILITY_MEDIA_LIMIT)})
         payload = self._request_json(
@@ -719,7 +787,21 @@ class FacebookLoginProvider(MetaConnectionProvider):
         return [row for row in rows if isinstance(row, dict)][:CAPABILITY_COMMENTS_PER_MEDIA_LIMIT] if isinstance(rows, list) else []
 
     def media_metric(self, media_external_id: str, metric: str, page_access_token: str) -> dict[str, Any]:
-        query = urlencode({"metric": metric})
+        return self.media_metrics(media_external_id, (metric,), page_access_token)
+
+    def media_metrics(
+        self, media_external_id: str, metrics: tuple[str, ...], page_access_token: str
+    ) -> dict[str, Any]:
+        """Consulta métricas compatíveis em lote para reduzir chamadas da sincronização.
+
+        A API aceita a lista separada por vírgulas. O chamador continua
+        responsável por só agrupar métricas já comprovadas para o mesmo tipo de
+        mídia, pois uma métrica incompatível pode invalidar a requisição inteira.
+        """
+        requested = tuple(metric.strip() for metric in metrics if isinstance(metric, str) and metric.strip())
+        if not requested:
+            raise InstagramMetaError("payload_invalid", "Nenhuma métrica foi solicitada.")
+        query = urlencode({"metric": ",".join(requested)})
         return self._request_json(
             "GET", f"https://graph.facebook.com/{self.settings.api_version}/{media_external_id}/insights?{query}",
             access_token=page_access_token,
@@ -774,7 +856,7 @@ class InstagramLoginProvider(FacebookLoginProvider):
             "GET", f"https://graph.instagram.com/{self.settings.api_version}/me?{query}",
             access_token=instagram_access_token,
         )
-        _profile_identity(profile)
+        profile_identity(profile)
         return profile
 
     def resolve_connection_candidates(self, instagram_access_token: str) -> list[InstagramLoginCandidate]:
@@ -788,6 +870,20 @@ class InstagramLoginProvider(FacebookLoginProvider):
         return self._request_json(
             "GET", f"https://graph.instagram.com/{self.settings.api_version}/{instagram_account_id}?{query}",
             access_token=instagram_access_token,
+        )
+
+    def instagram_profile_enrichment(self, instagram_account_id: str, instagram_access_token: str) -> dict[str, Any]:
+        """Mantém seguidores separados da identidade usada no OAuth direto."""
+        query = urlencode({"fields": "followers_count"})
+        return self._request_json(
+            "GET", f"https://graph.instagram.com/{self.settings.api_version}/{instagram_account_id}?{query}",
+            access_token=instagram_access_token,
+            operation="profile_enrichment",
+        )
+
+    def list_media(self, account_external_id: str, instagram_access_token: str) -> list[dict[str, Any]]:
+        return self._list_media_from_graph(
+            "https://graph.instagram.com", account_external_id, instagram_access_token
         )
 
     def sample_media(self, account_external_id: str, instagram_access_token: str) -> list[dict[str, Any]]:
@@ -817,6 +913,28 @@ class InstagramLoginProvider(FacebookLoginProvider):
         rows = payload.get("data", [])
         return [row for row in rows if isinstance(row, dict)][:CAPABILITY_COMMENTS_PER_MEDIA_LIMIT] if isinstance(rows, list) else []
 
+    def media_metrics(
+        self, media_external_id: str, metrics: tuple[str, ...], instagram_access_token: str
+    ) -> dict[str, Any]:
+        """Consulta Insights no host do Instagram Login, não no Graph do Facebook."""
+        requested = tuple(metric.strip() for metric in metrics if isinstance(metric, str) and metric.strip())
+        if not requested:
+            raise InstagramMetaError("payload_invalid", "Nenhuma métrica foi solicitada.")
+        query = urlencode({"metric": ",".join(requested)})
+        return self._request_json(
+            "GET", f"https://graph.instagram.com/{self.settings.api_version}/{media_external_id}/insights?{query}",
+            access_token=instagram_access_token,
+            operation="metric",
+        )
+
+    def account_insights(self, instagram_account_id: str, instagram_access_token: str) -> dict[str, Any]:
+        query = urlencode({"metric": "reach", "period": "day"})
+        return self._request_json(
+            "GET", f"https://graph.instagram.com/{self.settings.api_version}/{instagram_account_id}/insights?{query}",
+            access_token=instagram_access_token,
+            operation="metric",
+        )
+
 
 def connection_provider(settings: InstagramMetaSettings, provider: str) -> MetaConnectionProvider:
     providers = {
@@ -829,7 +947,7 @@ def connection_provider(settings: InstagramMetaSettings, provider: str) -> MetaC
         raise InstagramMetaConfigurationError("O método de conexão solicitado não é suportado.") from None
 
 
-def _profile_identity(profile: Mapping[str, Any]) -> tuple[str, str, str, str | None]:
+def profile_identity(profile: Mapping[str, Any]) -> tuple[str, str, str, str | None]:
     external_id = str(profile.get("id") or "").strip()
     raw_username = str(profile.get("username") or "")
     account_type = str(profile.get("account_type") or "").strip() or None
@@ -884,7 +1002,7 @@ def choose_candidate(
 
 def reconciliation_required(project: AnalyticsProject, profile: Mapping[str, Any]) -> bool:
     """Indica se uma identidade manual precisa de confirmação humana para vincular a API."""
-    provider_external_id, _, provider_username_normalized, _ = _profile_identity(profile)
+    provider_external_id, _, provider_username_normalized, _ = profile_identity(profile)
     account = project.instagram_account
     if account is None or not account.external_id or account.external_id == provider_external_id:
         return False
@@ -938,7 +1056,7 @@ def persist_validated_connection(
     credential = access_token if access_token is not None else page_access_token
     if not credential:
         raise InstagramMetaError("unknown", "A autorização não retornou uma credencial utilizável.")
-    external_id, username, normalized_username, account_type = _profile_identity(profile)
+    external_id, username, normalized_username, account_type = profile_identity(profile)
     account = project.instagram_account
     occupied = db.session.scalar(select(InstagramAccount).where(
         InstagramAccount.external_id == external_id,
@@ -1286,7 +1404,7 @@ def _run_facebook_capability_test(
             raise error
         try:
             profile = client.instagram_profile(provider_account_id, page_token)
-            external_id, _, _, _ = _profile_identity(profile)
+            external_id, _, _, _ = profile_identity(profile)
         except InstagramMetaError as error:
             log_meta_capability_failure(
                 provider="facebook_login", probe="profile_identity", error=error,
@@ -1356,7 +1474,7 @@ def _run_instagram_capability_test(
     settings: InstagramMetaSettings,
     client: Any,
 ) -> dict[str, Any]:
-    """Diagnóstico direto: perfil e mídia, sem presumir acesso a Insights."""
+    """Diagnóstico direto com probes de Insights isolados por métrica."""
     if not settings.instagram_login_available:
         raise InstagramMetaConfigurationError("A integração Instagram Login não está configurada neste ambiente.")
     started = monotonic()
@@ -1372,7 +1490,7 @@ def _run_instagram_capability_test(
             raise error
         try:
             profile = client.instagram_profile(provider_account_id, instagram_token)
-            external_id, _, _, _ = _profile_identity(profile)
+            external_id, _, _, _ = profile_identity(profile)
         except InstagramMetaError as error:
             log_meta_capability_failure(
                 provider="instagram_login", probe="profile_identity", error=error,
@@ -1389,14 +1507,35 @@ def _run_instagram_capability_test(
             raise
         comments = _sample_comments_capability(media, client, instagram_token, provider="instagram_login")
         media_types = sorted({_media_type(row) for row in media if str(row.get("id") or "").strip()})
-        metrics = {
-            metric: {
-                "status": "not_available_for_provider",
-                "by_media_type": {media_type: "not_available_for_provider" for media_type in media_types},
-                "temporal_by_media_type": {},
+        has_insights_scope = INSTAGRAM_LOGIN_INSIGHTS_SCOPE in set(connection.scopes_json or [])
+        if has_insights_scope:
+            samples_by_type = _media_samples_by_type(media)
+            metrics = {
+                metric: _probe_media_metric(
+                    client, samples_by_type, metric, instagram_token, provider="instagram_login"
+                )
+                for metric in CAPABILITY_METRICS
             }
-            for metric in CAPABILITY_METRICS
-        }
+            try:
+                account_payload = client.account_insights(external_id, instagram_token)
+                account_metrics = {"status": "supported", **_temporal_metadata(account_payload)}
+            except InstagramMetaError as error:
+                log_meta_capability_failure(
+                    provider="instagram_login", probe="account_insights", metric="reach", error=error,
+                )
+                account_metrics = {"status": _metric_error_status(error), "temporal_semantics": "unknown"}
+        else:
+            # Conexões criadas antes do novo consentimento seguem válidas para
+            # perfil, mídia e comentários; a reautorização concede Insights.
+            metrics = {
+                metric: {
+                    "status": "permission_denied",
+                    "by_media_type": {media_type: "permission_denied" for media_type in media_types},
+                    "temporal_by_media_type": {},
+                }
+                for metric in CAPABILITY_METRICS
+            }
+            account_metrics = {"status": "permission_denied", "temporal_semantics": "unknown"}
         result = {
             "checked_at": now.isoformat(),
             "api_version": settings.api_version,
@@ -1410,10 +1549,7 @@ def _run_instagram_capability_test(
             },
             "comments": comments,
             "media_metrics": metrics,
-            "account_metrics": {
-                "status": "not_available_for_provider",
-                "temporal_semantics": "unknown",
-            },
+            "account_metrics": account_metrics,
             "duration_ms": round((monotonic() - started) * 1000),
         }
     except InstagramMetaError as error:

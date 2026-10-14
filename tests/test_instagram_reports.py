@@ -97,6 +97,25 @@ class InstagramReportsTests(unittest.TestCase):
             ))
         return run
 
+    def make_meta_run(self, source_hash, start, end, interactions, *, preset="last_7_days", status="completed"):
+        parameters = {"period_preset": preset, "presentation_timezone": "America/Maceio"}
+        if start is not None and end is not None:
+            parameters.update({"published_from": start.isoformat(), "published_to": end.isoformat()})
+        run = AnalyticsRun(
+            analytics_project_id=self.project.id, source_kind="meta_api", status=status,
+            completed_at=end if status == "completed" else None, processor_version="instagram-meta-sync-v1",
+            source_hash=source_hash, record_count=3, parameters_json=parameters,
+        )
+        db.session.add(run)
+        db.session.flush()
+        for media, value in zip(self.media, interactions):
+            db.session.add(InstagramMediaObservation(
+                instagram_media_id=media.id, analytics_run_id=run.id, observed_at=end or datetime(2026, 10, 14, tzinfo=UTC),
+                interactions=value, saves=value // 2, reach=value * 10,
+                impressions=value * 20, plays=value * 30,
+            ))
+        return run
+
     def values(self, **overrides):
         data = {"period_start": "2026-01-01", "period_end": "2026-01-21"}
         data.update(overrides)
@@ -361,6 +380,47 @@ class InstagramReportsTests(unittest.TestCase):
         self.assertEqual([run.id for run in runs], [self.baseline.id, replacement.id, self.final.id])
         self.assertNotIn(partial.id, [run.id for run in runs])
 
+    def test_meta_windows_all_history_and_unknown_legacy_follow_the_shared_resolution_contract(self):
+        meta_last_seven = self.make_meta_run(
+            "meta-last-seven", datetime(2026, 10, 8, 3, tzinfo=UTC), datetime(2026, 10, 14, 15, tzinfo=UTC), (10, 20, 30),
+        )
+        meta_last_thirty = self.make_meta_run(
+            "meta-last-thirty", datetime(2026, 9, 11, 3, tzinfo=UTC), datetime(2026, 10, 10, 4, tzinfo=UTC), (11, 21, 31),
+            preset="last_30_days",
+        )
+        partial = self.make_meta_run(
+            "meta-partial", datetime(2026, 10, 7, 3, tzinfo=UTC), datetime(2026, 10, 14, 15, tzinfo=UTC), (12, 22, 32),
+        )
+        all_history = self.make_meta_run("meta-history", None, None, (13, 23, 33), preset="all_history")
+        legacy = AnalyticsRun(
+            analytics_project_id=self.project.id, source_kind="meta_api", status="completed", source_hash="meta-legacy",
+            completed_at=datetime(2026, 10, 14, tzinfo=UTC), parameters_json={},
+        )
+        pending = self.make_meta_run(
+            "meta-pending", datetime(2026, 10, 8, 3, tzinfo=UTC), datetime(2026, 10, 14, 15, tzinfo=UTC),
+            (14, 24, 34), status="pending",
+        )
+        db.session.add(legacy)
+        db.session.commit()
+
+        week = resolve_report_runs(self.project, datetime(2026, 10, 8, tzinfo=UTC).date(), datetime(2026, 10, 14, tzinfo=UTC).date())
+        self.assertEqual([run.id for run in week], [meta_last_seven.id])
+        self.assertNotIn(meta_last_thirty.id, [run.id for run in week])
+        self.assertNotIn(partial.id, [run.id for run in week])
+        self.assertNotIn(legacy.id, [run.id for run in week])
+        self.assertNotIn(pending.id, [run.id for run in week])
+
+        history = resolve_report_runs(self.project, None, None)
+        self.assertIn(all_history.id, [run.id for run in history])
+        self.assertNotIn(legacy.id, [run.id for run in history])
+        self.assertNotIn(pending.id, [run.id for run in history])
+        report = generate_report(self.project, {"period_preset": "all"}, actor_id=self.user.id)
+        self.assertEqual(report.snapshot_json["requested_period"], {"preset": "all"})
+        snapshot = next(item for item in report.snapshot_json["runs_used"] if item["id"] == all_history.id)
+        self.assertEqual((snapshot["period_kind"], snapshot["period_start"], snapshot["period_end"]), ("all_history", None, None))
+        self.assertIsNone(db.session.get(AnalyticsRun, meta_last_seven.id).period_start)
+        self.assertIsNone(db.session.get(AnalyticsRun, meta_last_seven.id).period_end)
+
     def test_one_two_and_three_observations_have_adaptive_snapshot_and_xlsx_sheets(self):
         one = generate_report(self.project, self.values(period_end="2026-01-07"), actor_id=self.user.id)
         self.assertEqual(one.formats_json, ["xlsx"])
@@ -397,7 +457,7 @@ class InstagramReportsTests(unittest.TestCase):
             book.close()
 
     def test_no_eligible_run_rejects_generation_without_creating_a_report(self):
-        with self.assertRaisesRegex(InstagramReportError, "integralmente contidas"):
+        with self.assertRaisesRegex(InstagramReportError, "período conhecido"):
             generate_report(self.project, self.values(period_start="2026-02-01", period_end="2026-02-02"), actor_id=self.user.id)
         self.assertIsNone(db.session.scalar(select(InstagramReport)))
 
@@ -442,8 +502,20 @@ class InstagramReportsTests(unittest.TestCase):
         self.assertNotIn("Baixar PDF", detail)
         self.assertIn("Baixar XLSX", detail)
         self.assertIn(f"/reports/{report.id}/download/xlsx", detail)
+        self.assertIn("Execuções usadas", detail)
+        self.assertNotIn("Observações usadas", detail)
         self.assertNotIn("report-downloads", detail)
         self.assertNotIn(">Download</span>", detail)
+        workbook = load_workbook(artifact_path(self.project, report, "xlsx"), read_only=True)
+        try:
+            summary_rows = {
+                row[0].value: row[1].value
+                for row in workbook["Summary"].iter_rows(min_row=2)
+            }
+            self.assertEqual(summary_rows["Execuções usadas"], len(report.snapshot_json["runs_used"]))
+            self.assertNotIn("Observações usadas", summary_rows)
+        finally:
+            workbook.close()
         self.client.post("/logout", data={"csrf_token": csrf_from(self.client.get("/"))})
         login(self.client, self.other.email)
         self.assertEqual(self.client.get(reports_url + f"/{report.id}").status_code, 404)

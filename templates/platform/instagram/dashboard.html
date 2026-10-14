@@ -2,6 +2,8 @@
 {% from 'platform/_tutorial_info.html' import tutorial_button, tutorial_dialog with context %}
 {% from 'platform/_icons.html' import icon %}
 {% from 'platform/instagram/_project_tabs.html' import project_tabs %}
+{% from 'platform/instagram/_temporal_period.html' import temporal_period_controls %}
+{% from 'platform/_pagination.html' import pagination_controls %}
 {% block title %}Dashboard — {{ project.name }} — Instagram{% endblock %}
 {% macro number(value) %}{% if value is none %}—{% elif value == value|int %}{{ '{:,}'.format(value|int).replace(',', '.') }}{% else %}{{ '{:,.2f}'.format(value).replace(',', '@').replace('.', ',').replace('@', '.') }}{% endif %}{% endmacro %}
 {% macro percentage(value) %}{{ '{:,.2f}'.format(value).replace(',', '@').replace('.', ',').replace('@', '.') if value is not none else '—' }}{% if value is not none %}%{% endif %}{% endmacro %}
@@ -11,7 +13,7 @@
 {% set instagram_tutorial = platform_help_for('instagram_dashboard') %}
 <section class="platform-panel mb-3" aria-labelledby="instagram-dashboard-title">
   <div class="d-flex flex-wrap align-items-start justify-content-between gap-2">
-    <div><h1 id="instagram-dashboard-title" class="h4 mb-1">Dashboard</h1><p class="platform-muted mb-1">{{ project.name }}{% if account %} · @{{ account.username.lstrip('@') }}{% endif %}</p></div>
+    <div><h1 id="instagram-dashboard-title" class="h4 mb-1">{{ project.name }}</h1><p class="platform-muted mb-1">Dashboard{% if account %} · @{{ account.username.lstrip('@') }}{% endif %}</p></div>
     <div class="d-flex flex-wrap align-items-center gap-2"><a class="btn btn-outline-primary btn-sm" href="{{ url_for('instagram.project_detail', project_id=project.id) }}">Voltar ao projeto</a>{{ tutorial_button(instagram_tutorial, label='Abrir tutorial do Dashboard') }}</div>
   </div>
   {% if dashboard.reference_at %}<p class="platform-muted mb-1"><strong>Dados atualizados até</strong> {{ dashboard.reference_at | data_hora_local }}</p>{% endif %}
@@ -23,10 +25,8 @@
   <form class="platform-filter-control-row" method="get" action="{{ url_for('instagram.dashboard', project_id=project.id, _anchor='instagram-dashboard-period') }}" data-partial-update data-partial-target="#instagram-dashboard-content" data-partial-history="replace">
     <input type="hidden" name="sort" value="{{ dashboard.sort }}">
     {% if dashboard.taxonomy.selected_dimension %}<input type="hidden" name="taxonomy_dimension" value="{{ dashboard.taxonomy.selected_dimension.id }}">{% endif %}
-    <label class="visually-hidden" for="instagram-dashboard-period-select">Período</label>
-    <select class="form-select platform-filter-select" id="instagram-dashboard-period-select" name="period" data-filter-width="short" data-auto-submit>
-      {% for key, label in period_options %}<option value="{{ key }}"{% if dashboard.period == key %} selected{% endif %}>Período: {{ label }}</option>{% endfor %}
-    </select>
+    {{ temporal_period_controls('instagram-dashboard', period_form, period_options, auto_submit=true) }}
+    <noscript><button class="btn btn-outline-primary btn-sm" type="submit">Atualizar</button></noscript>
   </form>
 </div>
 {% if not dashboard.has_data %}
@@ -37,7 +37,7 @@
     <div class="row g-3">
       <div class="col-12 col-sm-6 col-xl-3"><div class="metric-card"><span>Publicações</span><strong>{{ number(dashboard.publication_count) }}</strong><small class="platform-muted">Uma contagem por publicação</small></div></div>
       {% for metric in dashboard.metrics %}
-      <div class="col-12 col-sm-6 col-xl-3"><div class="metric-card"><span>{{ metric.label }}</span><strong>{{ metric.display }}</strong><small class="platform-muted">{{ metric.known }} de {{ metric.publications }} publicações{% if metric.partial %} · Dados parciais{% endif %}</small></div></div>
+      <div class="col-12 col-sm-6 col-xl-3"><div class="metric-card"><span>{{ metric.label }}</span><strong>{{ metric.display }}</strong><small class="platform-muted">{% if metric.unavailable %}Não disponível nos dados selecionados{% else %}{{ metric.known }} de {{ metric.publications }} publicações{% if metric.partial %} · Dados parciais{% endif %}{% endif %}</small></div></div>
       {% endfor %}
     </div>
   </section>
@@ -47,7 +47,7 @@
   <section class="platform-panel mb-3" aria-labelledby="instagram-followers-title">
     <h2 id="instagram-followers-title" class="h5">Seguidores da conta</h2>
     <p class="mb-1"><strong class="fs-4">{{ dashboard.followers_display }}</strong></p>
-    <p class="platform-muted mb-0">Última coleta: {{ dashboard.followers_observed_at | data_hora_local if dashboard.followers_observed_at else 'Não informado' }}. Esta métrica não varia com o filtro de publicações.</p>
+    <p class="platform-muted mb-0">{% if dashboard.followers_count is none %}Não disponível na última coleta. {% endif %}Última coleta: {{ dashboard.followers_observed_at | data_hora_local if dashboard.followers_observed_at else 'Não informado' }}. Esta métrica não varia com o filtro de publicações.</p>
   </section>
   {% if dashboard.rows %}
   {% set median_rate = dashboard.performance_statistics['interaction_rate_by_reach'] %}
@@ -111,7 +111,7 @@
     {% if dashboard.ranking %}<ol class="mb-0">{% for row in dashboard.ranking %}<li class="mb-2"><span title="{{ row.caption }}">{{ row.short_caption }}</span> · {{ row.media.media_type_raw or 'Tipo não informado' }} · {{ row.media.published_at | data_local }} · <strong>{{ number(row.observation.reach) }}</strong>{% if row.permalink %} · <a href="{{ row.permalink }}" target="_blank" rel="noopener noreferrer">Abrir publicação</a>{% endif %}</li>{% endfor %}</ol>{% else %}<p class="platform-muted mb-0">Nenhuma publicação possui alcance informado.</p>{% endif %}
   </section>
   <section class="platform-panel" id="instagram-media-table" aria-labelledby="instagram-media-table-title">
-    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2"><h2 id="instagram-media-table-title" class="h5 mb-0">Publicações</h2><form class="platform-filter-control-row" method="get" action="{{ url_for('instagram.dashboard', project_id=project.id, _anchor='instagram-media-table') }}" data-partial-update data-partial-target="#instagram-media-table" data-partial-history="replace"><input type="hidden" name="period" value="{{ dashboard.period }}">{% if dashboard.taxonomy.selected_dimension %}<input type="hidden" name="taxonomy_dimension" value="{{ dashboard.taxonomy.selected_dimension.id }}">{% endif %}<label class="visually-hidden" for="instagram-dashboard-sort-select">Ordenar por</label><select class="form-select platform-filter-select" id="instagram-dashboard-sort-select" name="sort" data-filter-width="long" data-auto-submit>{% for key, label in sort_options %}<option value="{{ key }}"{% if dashboard.sort == key %} selected{% endif %}>Ordenar por: {{ label }}</option>{% endfor %}</select></form></div>
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2"><h2 id="instagram-media-table-title" class="h5 mb-0">Publicações</h2><form class="platform-filter-control-row" method="get" action="{{ url_for('instagram.dashboard', project_id=project.id, _anchor='instagram-media-table') }}" data-partial-update data-partial-target="#instagram-media-table" data-partial-history="replace"><input type="hidden" name="period" value="{{ dashboard.period }}">{% if period_form.key == 'custom' %}<input type="hidden" name="period_start" value="{{ period_form.start }}"><input type="hidden" name="period_end" value="{{ period_form.end }}">{% endif %}{% if dashboard.taxonomy.selected_dimension %}<input type="hidden" name="taxonomy_dimension" value="{{ dashboard.taxonomy.selected_dimension.id }}">{% endif %}<label class="visually-hidden" for="instagram-dashboard-sort-select">Ordenar por</label><select class="form-select platform-filter-select" id="instagram-dashboard-sort-select" name="sort" data-filter-width="long" data-auto-submit>{% for key, label in sort_options %}<option value="{{ key }}"{% if dashboard.sort == key %} selected{% endif %}>Ordenar por: {{ label }}</option>{% endfor %}</select></form></div>
     <div class="table-responsive"><table class="table platform-themed-table table-sm align-middle text-nowrap">
       <thead><tr><th scope="col">Publicação</th><th scope="col">Tipo</th><th scope="col">Publicada em</th><th scope="col">Alcance</th><th scope="col">Impressões</th><th scope="col">Reproduções</th><th scope="col">Curtidas</th><th scope="col">Comentários</th><th scope="col">Compartilhamentos</th><th scope="col">Salvamentos</th><th scope="col">Interações</th><th scope="col" title="Interações ÷ alcance × 100">Taxa de interação por alcance</th><th scope="col" title="Curtidas ÷ alcance × 100">Curtidas por alcance</th><th scope="col" title="Comentários ÷ alcance × 100">Comentários por alcance</th><th scope="col" title="Compartilhamentos ÷ alcance × 100">Compartilhamentos por alcance</th><th scope="col" title="Salvamentos ÷ alcance × 100">Salvamentos por alcance</th><th scope="col">Observada em</th><th scope="col">Ação</th></tr></thead>
       <tbody>{% for row in dashboard.table_rows %}<tr>
@@ -122,6 +122,7 @@
         <td>{{ row.observation.observed_at | data_hora_local if row.observation else '—' }}</td><td>{% if row.permalink %}{% set open_action = 'Abrir publicação ' ~ (row.media.external_id or row.ordinal) %}<a class="btn btn-outline-primary btn-sm platform-action-button" href="{{ row.permalink }}" target="_blank" rel="noopener noreferrer" title="{{ open_action }}" aria-label="{{ open_action }}">{{ icon('abrir') }}</a>{% else %}—{% endif %}</td>
       </tr>{% endfor %}</tbody>
     </table></div>
+    {{ pagination_controls(dashboard.table_pagination, 'instagram.dashboard', 'instagram-media-table') }}
   </section>
   {% endif %}
   <script id="instagram-dashboard-chart-data" type="application/json">{{ dashboard.chart_data | tojson }}</script>
@@ -134,5 +135,6 @@
 {% endif %}
 {{ tutorial_dialog(instagram_tutorial) }}
 <script defer src="{{ url_for('static', filename='js/platform_tutorial.js') }}"></script>
+<script defer src="{{ url_for('static', filename='js/instagram_temporal_period.js') }}"></script>
 <script defer src="{{ url_for('static', filename='js/platform_auto_submit.js') }}"></script>
 {% endblock %}

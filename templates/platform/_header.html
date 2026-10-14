@@ -1,7 +1,13 @@
 {% from 'platform/_brand.html' import brand_mark %}
 {% if current_user.is_authenticated %}
 {% from 'platform/_icons.html' import icon %}
+{% from 'platform/_project_tool_heading.html' import project_tool_label %}
 {% set endpoint = request.endpoint or '' %}
+{% set header_project = none %}
+{% if project is defined and project %}{% set header_project = project %}
+{% elif selected_project is defined and selected_project %}{% set header_project = selected_project %}
+{% elif legacy_project is defined and legacy_project %}{% set header_project = legacy_project %}
+{% endif %}
 {% set free_context = endpoint in ('inicio', 'resultado', 'download', 'progresso', 'projects.list_free_projects', 'projects.new_free_project', 'projects.archived_free_projects', 'projects.free_project', 'analyses.standard_history', 'analyses.free_history') or (analysis is defined and analysis.tool_id == 'pdf_scraper') or (project is defined and project.scrape_type == 'free') %}
 {% set systematic_context = endpoint in ('projects.list_projects', 'projects.new_project', 'projects.archived_projects', 'analyses.systematic_history') or (analysis is defined and analysis.tool_id == 'document_analysis') or (project is defined and project.scrape_type == 'systematic') or endpoint.startswith('historico_racial.') or endpoint.startswith('user_libraries.') %}
 {% set qualitative_context = endpoint.startswith('qualitative.') or endpoint in ('projects.list_qualitative_projects', 'projects.new_qualitative_project', 'projects.archived_qualitative_projects') or (project is defined and project.scrape_type == 'qualitative') %}
@@ -34,6 +40,12 @@
 {% elif request.blueprint == 'admin' %}{% set section_title = admin_sections.get(endpoint, 'Gerenciar') %}
 {% elif project is defined %}{% set section_title = project.name %}
 {% else %}{% set section_title = 'Análysis' %}{% endif %}
+{% if header_project and instagram_context %}{% set project_tool_name = 'Instagram' %}
+{% elif header_project and free_context %}{% set project_tool_name = 'Raspagem por termos' %}
+{% elif header_project and systematic_context %}{% set project_tool_name = 'Raspagem estruturada' %}
+{% elif header_project and qualitative_context %}{% set project_tool_name = 'Análise Documental' %}
+{% else %}{% set project_tool_name = none %}{% endif %}
+{% if project_tool_name %}{% set section_title = project_tool_label(project_tool_name, header_project) %}{% endif %}
 <aside class="platform-sidebar" id="platform-sidebar" aria-label="Menu da plataforma">
   <div class="platform-section-title" aria-label="Nome da plataforma">{{ brand_mark() }}</div>
   <nav class="platform-nav" aria-label="Navegação principal">

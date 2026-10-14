@@ -20,15 +20,5 @@
   <h2 id="instagram-project-imports-title" class="h5">Importações</h2>
   <dl class="row mb-0"><dt class="col-sm-4">Conta</dt><dd class="col-sm-8">{% if account %}@{{ account.username }}{% else %}Será definida na primeira importação.{% endif %}</dd><dt class="col-sm-4">Execuções registradas</dt><dd class="col-sm-8">{{ run_count }}</dd>{% if last_run %}<dt class="col-sm-4">Última importação</dt><dd class="col-sm-8">{{ last_run.completed_at | data_hora_local if last_run.completed_at else 'Em processamento' }}</dd>{% endif %}</dl>
 </section>
-<section id="instagram-run-history" class="platform-panel" aria-labelledby="instagram-run-history-title">
-  <h2 id="instagram-run-history-title" class="h5">Histórico de importações</h2>
-  {% if runs %}
-  <div class="table-responsive">
-    <table class="table platform-themed-table">
-      <thead><tr><th scope="col">Concluída em</th><th scope="col">Formato</th><th scope="col">Período</th><th scope="col">Publicações observadas</th><th scope="col">Estado</th><th scope="col">Versão do processador</th></tr></thead>
-      <tbody>{% for run in runs %}<tr><td>{{ run.completed_at | data_hora_local if run.completed_at else 'Em processamento' }}</td><td>{{ run.source_kind | upper }}</td><td>{% if run.period_start and run.period_end %}{{ run.period_start | data_hora_local }} a {{ run.period_end | data_hora_local }}{% else %}Não informado{% endif %}</td><td>{{ run.record_count }}</td><td>{{ 'Concluída' if run.status == 'completed' else 'Pendente' if run.status == 'pending' else 'Falhou' if run.status == 'failed' else run.status }}</td><td>{{ run.processor_version }}</td></tr>{% endfor %}</tbody>
-    </table>
-  </div>
-  {% else %}<div class="platform-empty-state">Nenhuma importação registrada neste projeto.</div>{% endif %}
-</section>
+{% include 'platform/instagram/_run_history.html' %}
 {% endblock %}

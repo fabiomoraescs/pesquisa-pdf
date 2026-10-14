@@ -1,6 +1,7 @@
 {% extends 'platform/base.html' %}
 {% from 'platform/_icons.html' import icon %}
 {% from 'platform/_view_controls.html' import action_link %}
+{% from 'platform/_pagination.html' import pagination_controls %}
 {% block title %}Projetos arquivados — Instagram{% endblock %}
 {% block page_intro %}<h1 class="visually-hidden">Projetos arquivados de Instagram</h1>{% endblock %}
 {% block body %}
@@ -22,6 +23,7 @@
   </section>
   {% endfor %}
 </div>
+{{ pagination_controls(projects_pagination, 'instagram.archived_projects', 'instagram-archived-project-list') }}
 {% else %}
 <div class="platform-empty-state"><h2 class="h5">Nenhum projeto arquivado.</h2><p>Projetos arquivados aparecerão aqui.</p><a class="btn btn-outline-primary" href="{{ url_for('instagram.home') }}">Voltar aos projetos</a></div>
 {% endif %}

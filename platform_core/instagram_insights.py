@@ -31,6 +31,7 @@ from .instagram_dashboard import (
     dashboard_period_bounds,
     selected_media_rows,
 )
+from .instagram_periods import InstagramPeriodError, resolve_local_period
 from .instagram_cohorts import media_type_cohort, taxonomy_category_cohort
 from .instagram_metrics import DERIVED_METRICS_VERSION, normalized_content_type
 from .instagram_taxonomy import current_classifications
@@ -59,6 +60,11 @@ RATE_DIFFERENCE_PP = 1.0
 RECEPTION_DIFFERENCE_PP = 15.0
 MIN_RECURRING_TOPIC_N = 3
 MAX_FINDINGS = 24
+# A constraint histórica de ``instagram_insight_runs.period_key`` foi criada
+# antes dos presets de 60 dias, meses e intervalo personalizado. Nesta rodada
+# não há migration: a chave legada é apenas um índice compatível, enquanto o
+# período efetivamente solicitado e seus limites UTC ficam congelados em JSON.
+_PERSISTED_PERIOD_KEYS = frozenset({"7d", "30d", "90d", "all"})
 
 SUPPORT_RANK = {"exploratory": 1, "moderate": 2, "consistent": 3}
 EDITORIAL_DIMENSION_KEYS = frozenset({
@@ -562,12 +568,15 @@ def _ordered(drafts: Iterable[FindingDraft]) -> tuple[FindingDraft, ...]:
 
 
 def build_insight_drafts(project: AnalyticsProject, period: str,
-                         timezone_name: str) -> tuple[datetime | None, tuple[MediaRow, ...],
+                         timezone_name: str, *, period_start: object = None,
+                         period_end: object = None) -> tuple[datetime | None, tuple[MediaRow, ...],
                                                        tuple[CommentFact, ...], tuple[FindingDraft, ...]]:
     """Monta o recorte uma vez e produz achados determinísticos em memória."""
     if period not in PERIOD_DAYS:
         raise InstagramInsightsError("Período inválido.")
-    reference_at, rows = selected_media_rows(project, period, timezone_name)
+    reference_at, rows = selected_media_rows(
+        project, period, timezone_name, period_start=period_start, period_end=period_end,
+    )
     facts = _comment_facts(project, tuple(row.media.id for row in rows))
     drafts = []
     if rows:
@@ -589,14 +598,30 @@ def _validate_draft(draft: FindingDraft) -> None:
         _finite(value)
 
 
-def generate_insights(project: AnalyticsProject, period: str, timezone_name: str) -> InstagramInsightRun:
+def generate_insights(
+    project: AnalyticsProject,
+    period: str,
+    timezone_name: str,
+    *,
+    period_start: object = None,
+    period_end: object = None,
+) -> InstagramInsightRun:
     """Gera uma execução somente por chamada explícita e persiste tudo em transação."""
     if project.status != "active" or project.archived_at is not None:
         raise InstagramInsightsError("Projetos arquivados não podem gerar novos insights.")
-    reference_at, rows, facts, drafts = build_insight_drafts(project, period, timezone_name)
-    period_start, period_end = dashboard_period_bounds(period, reference_at, timezone_name)
+    reference_at, rows, facts, drafts = build_insight_drafts(
+        project, period, timezone_name, period_start=period_start, period_end=period_end,
+    )
+    resolved_start, resolved_end = dashboard_period_bounds(
+        period, reference_at, timezone_name, period_start=period_start, period_end=period_end,
+    )
+    persisted_period_key = period if period in _PERSISTED_PERIOD_KEYS else "all"
     parameters = {
         "period": period,
+        "requested_period_key": period,
+        "persisted_period_key": persisted_period_key,
+        "period_start": resolved_start.isoformat() if resolved_start else None,
+        "period_end": resolved_end.isoformat() if resolved_end else None,
         "engine_version": INSTAGRAM_INSIGHTS_VERSION,
         "derived_metrics_version": DERIVED_METRICS_VERSION,
         "latest_observation_per_media": True,
@@ -605,8 +630,8 @@ def generate_insights(project: AnalyticsProject, period: str, timezone_name: str
     }
     try:
         run = InstagramInsightRun(
-            analytics_project_id=project.id, period_key=period, period_start=period_start,
-            period_end=period_end, reference_at=reference_at,
+            analytics_project_id=project.id, period_key=persisted_period_key, period_start=resolved_start,
+            period_end=resolved_end, reference_at=reference_at,
             engine_version=INSTAGRAM_INSIGHTS_VERSION, parameters_json=parameters,
             publication_count=len(rows), comment_count=len(facts), finding_count=len(drafts),
         )
@@ -650,16 +675,50 @@ def generate_insights(project: AnalyticsProject, period: str, timezone_name: str
         ) from error
 
 
-def latest_insight_run(project: AnalyticsProject, period: str) -> InstagramInsightRun | None:
+def latest_insight_run(
+    project: AnalyticsProject,
+    period: str,
+    *,
+    timezone_name: str | None = None,
+    period_start: object = None,
+    period_end: object = None,
+) -> InstagramInsightRun | None:
     """Retorna somente o último run explícito do recorte solicitado."""
     if period not in PERIOD_DAYS:
         raise InstagramInsightsError("Período inválido.")
-    return db.session.scalar(
-        select(InstagramInsightRun)
-        .where(InstagramInsightRun.analytics_project_id == project.id, InstagramInsightRun.period_key == period)
-        .options(selectinload(InstagramInsightRun.findings))
-        .order_by(InstagramInsightRun.generated_at.desc(), InstagramInsightRun.id.desc())
+    persisted_period_key = period if period in _PERSISTED_PERIOD_KEYS else "all"
+    query = select(InstagramInsightRun).where(
+        InstagramInsightRun.analytics_project_id == project.id,
+        InstagramInsightRun.period_key == persisted_period_key,
     )
+    if period == "custom":
+        if not timezone_name:
+            raise InstagramInsightsError("O timezone do período personalizado é obrigatório.")
+        try:
+            selected = resolve_local_period(
+                period, timezone_name, reference_at=None, period_start=period_start, period_end=period_end,
+            )
+        except InstagramPeriodError as error:
+            raise InstagramInsightsError(str(error)) from error
+        query = query.where(
+            InstagramInsightRun.period_start == selected.start,
+            InstagramInsightRun.period_end == selected.end,
+        )
+    candidates = db.session.scalars(
+        query.options(selectinload(InstagramInsightRun.findings))
+        .order_by(InstagramInsightRun.generated_at.desc(), InstagramInsightRun.id.desc())
+    ).unique().all()
+    for candidate in candidates:
+        parameters = candidate.parameters_json if isinstance(candidate.parameters_json, dict) else {}
+        requested_key = parameters.get("requested_period_key", parameters.get("period", candidate.period_key))
+        if requested_key != period:
+            continue
+        if period == "custom" and (
+            candidate.period_start != selected.start or candidate.period_end != selected.end
+        ):
+            continue
+        return candidate
+    return None
 
 
 def finding_for_project(project: AnalyticsProject, finding_id: str) -> InstagramInsightFinding | None:

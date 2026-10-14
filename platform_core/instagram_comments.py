@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Iterable
 from urllib.parse import urlsplit
 
@@ -16,6 +16,8 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
 from .extensions import db
+from .instagram_periods import InstagramPeriodError, TEMPORAL_PERIOD_KEYS, resolve_local_period
+from .pagination import PlatformPage, paginate_sequence
 from .models import (
     AnalyticsProject,
     InstagramAccount,
@@ -28,7 +30,7 @@ from .models import (
 )
 
 
-COMMENT_PERIOD_DAYS = {"7d": 7, "30d": 30, "90d": 90, "all": None}
+COMMENT_PERIOD_DAYS = {"7d": 7, "30d": 30, "60d": 60, "90d": 90, "6m": None, "12m": None, "custom": None, "all": None}
 COMMENT_STATUSES = ("all", "unclassified", "classified")
 COMMENT_SENTIMENTS = ("all", "positive", "neutral", "negative", "mixed")
 COMMENT_NEEDS_RESPONSE = ("all", "yes", "no", "unknown")
@@ -217,6 +219,7 @@ class InstagramCommentsDashboard:
     period: str
     sort: str
     rows: tuple[CommentRow, ...]
+    pagination: PlatformPage[CommentRow]
     all_rows: tuple[CommentRow, ...]
     metrics: ReceptionMetrics
     chart_data: dict
@@ -302,17 +305,31 @@ def _sort_rows(rows: list[CommentRow], sort: str) -> list[CommentRow]:
 def build_instagram_comments_dashboard(
     project: AnalyticsProject,
     *, period: str, sort: str, status: str = "all", sentiment: str = "all",
-    needs_response: str = "all", risk: str = "all",
+    needs_response: str = "all", risk: str = "all", timezone_name: str = "UTC",
+    period_start: object = None, period_end: object = None, page: object = 1,
 ) -> InstagramCommentsDashboard:
-    if (period not in COMMENT_PERIOD_DAYS or sort not in COMMENT_SORTS or status not in COMMENT_STATUSES
+    if (period not in TEMPORAL_PERIOD_KEYS or sort not in COMMENT_SORTS or status not in COMMENT_STATUSES
             or sentiment not in COMMENT_SENTIMENTS or needs_response not in COMMENT_NEEDS_RESPONSE
             or risk not in COMMENT_RISKS):
         raise ValueError("Filtro de comentários inválido.")
     reference_at = _utc(_reference_at(project.id))
     rows = list(_all_rows(project.id))
-    if reference_at is not None and COMMENT_PERIOD_DAYS[period] is not None:
-        lower = reference_at - timedelta(days=COMMENT_PERIOD_DAYS[period])
-        rows = [row for row in rows if _utc(row.comment.published_at) >= lower]
+    try:
+        resolved_period = resolve_local_period(
+            period, timezone_name, reference_at=reference_at,
+            period_start=period_start, period_end=period_end,
+        )
+    except InstagramPeriodError as error:
+        raise ValueError(str(error)) from error
+    if period != "all":
+        if resolved_period.start is None or resolved_period.end is None:
+            rows = []
+        else:
+            rows = [
+                row for row in rows
+                if _utc(row.comment.published_at) is not None
+                and resolved_period.start <= _utc(row.comment.published_at) <= resolved_period.end
+            ]
     unfiltered = tuple(rows)
     if status != "all":
         rows = [row for row in rows if row.status == status]
@@ -342,11 +359,13 @@ def build_instagram_comments_dashboard(
         known_replies=sum(row.observation is not None and row.observation.replies_count is not None for row in metric_source),
     )
     chart_rows = tuple(rows)
+    pagination = paginate_sequence(_sort_rows(rows, sort), page)
     return InstagramCommentsDashboard(
         reference_at=reference_at,
         period=period,
         sort=sort,
-        rows=tuple(_sort_rows(rows, sort)),
+        rows=pagination.items,
+        pagination=pagination,
         all_rows=unfiltered,
         metrics=metrics,
         chart_data={

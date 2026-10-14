@@ -422,14 +422,14 @@
           "title": "Planilha XLSX — aba OCORRENCIAS",
           "body": [
             "OCORRENCIAS contém uma linha por candidato localizado. Ela é a aba principal para filtrar, comparar e voltar ao contexto textual. Os campos de decisão humana são inicializados pelo processamento, mas não são atualizados pela interface atual depois da exportação.",
-            "Página PDF final normalmente fica vazia em uma correspondência lexical de uma página; pode ser preenchida em candidato semântico que cobre mais de uma página. Termo encontrado e Forma original no texto também podem ficar vazios em correspondências exclusivamente semânticas."
+            "Página PDF final normalmente fica vazia em uma correspondência lexical de uma página; pode ser preenchida em candidato semântico que cobre mais de uma página. Variante configurada, Termo encontrado e Forma original no texto também podem ficar vazios em correspondências exclusivamente semânticas."
           ],
           "items": [
             {"name": "ID ocorrência / ID documento / Arquivo PDF", "description": "Chaves de rastreabilidade da ocorrência e de seu documento."},
             {"name": "Página PDF / Página PDF final", "description": "Página inicial e, quando o bloco semântico se estende, página final do candidato."},
             {"name": "Categoria de busca", "description": "No pipeline atual, o valor registrado é entidades; ele identifica a natureza estruturada da busca, não um grupo criado pelo usuário."},
             {"name": "Tipo de entidade / Identificador da entidade / Entidade canônica", "description": "Descrevem a classificação do vocabulário, seu ID estável e o nome de referência exibido."},
-            {"name": "Termo encontrado / Forma original no texto", "description": "Variante que motivou o achado lexical e sua grafia recortada do PDF; podem ficar vazios em candidato somente semântico."},
+            {"name": "Variante configurada / Termo encontrado / Forma original no texto", "description": "A variante configurada vem do vocabulário; termo encontrado é a evidência localizada e a forma original preserva a grafia recortada do PDF. Podem ficar vazios em candidato somente semântico."},
             {"name": "Grupo(s) / Bibliotecas de origem", "description": "Mostram os grupos da entidade e os identificadores das bibliotecas de que a entidade foi composta, quando houver."},
             {"name": "Método de análise / Tipo de correspondência / Similaridade semântica", "description": "Diferenciam o método da Base, Lexical, Semântica ou Lexical + semântica e o escore disponível apenas quando houve comparação semântica."},
             {"name": "Trecho anterior / Trecho da ocorrência / Trecho posterior / Contexto completo", "description": "Preservam o material textual para conferência; cada um pode estar vazio nas bordas do documento."},
@@ -929,6 +929,19 @@
       "title": "Como usar a Fonte de dados do Instagram",
       "summary": "Use conexão automática ou CSV/XLSX para fornecer dados ao projeto, validar importações antes de salvar e acompanhar a evolução sem sobrescrever coletas anteriores.",
       "sections": [
+        {
+          "id": "conexao-automatica",
+          "title": "Conexão automática e sincronização",
+          "keywords": ["Meta", "Instagram", "Facebook", "sincronizar", "verificar dados disponíveis"],
+          "body": [
+            "Depois de conectar uma conta profissional, use Sincronizar dados para registrar conteúdos, observações e métricas que a API disponibilizar nos mesmos históricos usados pelo Dashboard, Insights e Relatórios. A sincronização cria uma nova execução histórica e reutiliza a publicação quando a API retorna o mesmo identificador estável.",
+            "Verificar dados disponíveis é diferente: ele consulta apenas uma amostra para mostrar as capacidades da conexão e não cria publicação, execução, métrica, snapshot ou comentário. Comentários serão sincronizados em uma etapa própria da plataforma."
+          ],
+          "items": [
+            {"name": "Métrica indisponível", "description": "Permanece como dado não informado; o Análysis não a transforma em zero."},
+            {"name": "Período", "description": "A sincronização registra o momento observado. Quando a API não declara um intervalo comum para todas as métricas, ela não inventa period_start ou period_end."}
+          ]
+        },
         {
           "id": "finalidade-e-fluxo",
           "title": "Importação manual por CSV/XLSX",

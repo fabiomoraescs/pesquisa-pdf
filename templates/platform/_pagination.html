@@ -1,0 +1,17 @@
+{% macro pagination_controls(pagination, endpoint, anchor=None, page_param='page') -%}
+{% if pagination and pagination.pages > 1 %}
+  {% set query = request.args.to_dict() %}
+  {% set route_values = request.view_args.copy() if request.view_args else {} %}
+  <nav class="platform-pagination" aria-label="Paginação">
+    <ul class="pagination pagination-sm mb-0">
+      <li class="page-item{% if not pagination.has_previous %} disabled{% endif %}"><a class="page-link"{% if pagination.has_previous %}{% set _ = query.update({page_param: pagination.previous_page}) %}{% set _ = route_values.update(query) %} href="{{ url_for(endpoint, _anchor=anchor, **route_values) }}"{% else %} aria-disabled="true" tabindex="-1"{% endif %}>Anterior</a></li>
+      {% for number in pagination.numbers %}
+        {% if number is none %}<li class="page-item disabled" aria-hidden="true"><span class="page-link">…</span></li>
+        {% elif number == pagination.page %}<li class="page-item active"><span class="page-link" aria-current="page">{{ number }}</span></li>
+        {% else %}{% set _ = query.update({page_param: number}) %}{% set _ = route_values.update(query) %}<li class="page-item"><a class="page-link" href="{{ url_for(endpoint, _anchor=anchor, **route_values) }}">{{ number }}</a></li>{% endif %}
+      {% endfor %}
+      <li class="page-item{% if not pagination.has_next %} disabled{% endif %}"><a class="page-link"{% if pagination.has_next %}{% set _ = query.update({page_param: pagination.next_page}) %}{% set _ = route_values.update(query) %} href="{{ url_for(endpoint, _anchor=anchor, **route_values) }}"{% else %} aria-disabled="true" tabindex="-1"{% endif %}>Próxima</a></li>
+    </ul>
+  </nav>
+{% endif %}
+{%- endmacro %}

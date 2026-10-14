@@ -431,6 +431,12 @@ html[data-theme="dark"] .form-check-input:checked { background-color: var(--blue
 }
 .loading-panel h2 { font-size: 1.3rem; margin: 1rem 0 .5rem; }
 .loading-panel p { color: var(--muted); margin: 0; }
+.loading-context {
+  color: var(--ink) !important;
+  font-weight: 600;
+  margin: 0 0 .35rem !important;
+  overflow-wrap: anywhere;
+}
 .loading-progress {
   background: var(--surface-muted);
   border: 1px solid var(--border);

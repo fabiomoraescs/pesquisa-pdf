@@ -326,9 +326,12 @@ class InstagramCommentsTests(unittest.TestCase):
             html,
         )
         self.assertNotIn('platform-filter-control-group', html)
-        self.assertNotIn('<label class="form-label"', html)
+        # O seletor compartilhado mantém o rótulo do filtro compacto e acessível;
+        # os rótulos de data existem somente dentro do bloco personalizado oculto.
+        self.assertIn('<label class="visually-hidden" for="instagram-comments-period-select">', html)
+        self.assertIn('data-instagram-temporal-period-custom hidden', html)
         expected_filters = (
-            ('comment-period', 'Período', 'Período: 30 dias'),
+            ('instagram-comments-period-select', 'Período', 'Período: Últimos 30 dias'),
             ('comment-status', 'Status', 'Status: Todos'),
             ('comment-sentiment', 'Sentimento', 'Sentimento: Todos'),
             ('comment-needs-response', 'Resposta', 'Resposta: Todas'),
@@ -336,10 +339,8 @@ class InstagramCommentsTests(unittest.TestCase):
             ('comment-sort', 'Ordenar', 'Ordenar: Recentes'),
         )
         for control_id, accessible_name, selected_label in expected_filters:
-            self.assertIn(
-                f'<label class="visually-hidden" for="{control_id}">{accessible_name}</label><select ',
-                html,
-            )
+            self.assertIn(f'<label class="visually-hidden" for="{control_id}">{accessible_name}</label>', html)
+            self.assertIn(f'id="{control_id}"', html)
             self.assertIn(f'>{selected_label}</option>', html)
         styles = (Path(__file__).resolve().parents[1] / "static" / "css" / "platform.css").read_text(encoding="utf-8")
         self.assertIn("field-sizing: content", styles)
@@ -352,7 +353,7 @@ class InstagramCommentsTests(unittest.TestCase):
         filtered = self.client.get(
             f"/analytics/instagram/projects/{self.project.id}/comments?period=7d&status=classified&sentiment=negative&needs_response=yes&risk=high&sort=likes"
         ).get_data(as_text=True)
-        self.assertIn('<option value="7d" selected>Período: 7 dias</option>', filtered)
+        self.assertIn('<option value="7d" selected>Período: Últimos 7 dias</option>', filtered)
         self.assertIn('<option value="classified" selected>Status: Classificados</option>', filtered)
         self.assertIn('<option value="negative" selected>Sentimento: Negativo</option>', filtered)
         self.assertIn('<option value="yes" selected>Resposta: Sim</option>', filtered)
@@ -361,7 +362,7 @@ class InstagramCommentsTests(unittest.TestCase):
         long_labels = self.client.get(
             f"/analytics/instagram/projects/{self.project.id}/comments?period=all&status=unclassified&sentiment=negative&needs_response=yes&risk=all&sort=risk"
         ).get_data(as_text=True)
-        self.assertIn('<option value="all" selected>Período: Histórico</option>', long_labels)
+        self.assertIn('<option value="all" selected>Período: Todo o histórico disponível</option>', long_labels)
         self.assertIn('<option value="unclassified" selected>Status: Pendentes</option>', long_labels)
         self.assertIn('<option value="yes" selected>Resposta: Sim</option>', long_labels)
         self.assertIn('<option value="risk" selected>Ordenar: Risco</option>', long_labels)

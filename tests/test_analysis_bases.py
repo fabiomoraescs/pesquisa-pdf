@@ -129,7 +129,7 @@ class AnalysisBaseTests(unittest.TestCase):
         self.assertIn('.app-content-container, .platform-main > .hero-card { width: 100%; max-width: var(--platform-primary-content-max-width);', platform_css)
         self.assertIn('.platform-main-results { max-width: calc(var(--platform-primary-content-max-width)', platform_css)
         self.assertIn('.platform-main-legacy > .hero-card.platform-primary-boxes { padding-inline: 0; }', platform_css)
-        self.assertIn('<h1 class="platform-page-title">', term_results_template)
+        self.assertIn('<h1 class="platform-page-title">{{ project.name if project is defined and project', term_results_template)
         self.assertNotIn('<h1 class="mb-1">', term_results_template)
         self.assertIn('class="hero-card platform-primary-boxes"', structured_template)
         for template in (free_template, structured_template):
@@ -155,14 +155,17 @@ class AnalysisBaseTests(unittest.TestCase):
         self.assertEqual(urlparse(free.headers["Location"]).path, "/raspagem-livre")
         free_tool = self.client.get(free.headers["Location"])
         self.assertEqual(free_tool.status_code, 200)
-        self.assertIn(f'<input type="hidden" name="project_id" value="{free_id}">', free_tool.get_data(as_text=True))
-        self.assertIn('<p class="h5 mb-0">Livre direto</p>', free_tool.get_data(as_text=True))
+        free_html = free_tool.get_data(as_text=True)
+        free_header = '<span class="platform-header-context">Raspagem por termos: Livre direto</span>'
+        self.assertIn(f'<input type="hidden" name="project_id" value="{free_id}">', free_html)
+        self.assertIn(free_header, free_html)
+        self.assertLess(free_html.index(free_header), free_html.index('<main class="platform-main'))
         intro, content = free_tool.text.split('<section class="hero-card">', 1)
         self.assertIn('class="app-content-container platform-toolbar mb-4" data-base-intro', intro)
-        self.assertIn('Livre direto</p>', intro)
+        self.assertIn('<p class="h5 mb-0">Livre direto</p>', intro)
         self.assertIn('data-platform-tutorial-open', intro)
         self.assertNotIn('data-platform-tutorial-open', content)
-        self.assertNotIn('Livre direto</p>', content)
+        self.assertNotIn('Raspagem por termos: Livre direto</p>', content)
         for control in ('id="pdfs"', 'id="termos"', 'name="versao"', 'name="project_id"'):
             self.assertIn(control, content)
         self.assertNotIn('id="free-project-id"', free_tool.get_data(as_text=True))
@@ -183,6 +186,10 @@ class AnalysisBaseTests(unittest.TestCase):
         systematic_intro, systematic_content = systematic_tool.text.split(
             '<section class="hero-card', 1
         )
+        systematic_html = systematic_tool.get_data(as_text=True)
+        systematic_header = '<span class="platform-header-context">Raspagem estruturada: Sistemático direto</span>'
+        self.assertIn(systematic_header, systematic_html)
+        self.assertLess(systematic_html.index(systematic_header), systematic_html.index('<main class="platform-main'))
         self.assertIn('<p class="h5 mb-0">Sistemático direto</p>', systematic_intro)
         self.assertIn('data-platform-tutorial-open', systematic_intro)
         self.assertNotIn('Sistemático direto', systematic_content.split('<footer', 1)[0])

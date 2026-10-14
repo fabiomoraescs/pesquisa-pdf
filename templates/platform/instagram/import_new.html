@@ -1,5 +1,6 @@
 {% extends "platform/base.html" %}
 {% from 'platform/instagram/_project_tabs.html' import project_tabs %}
+{% from 'platform/instagram/_temporal_period.html' import temporal_period_controls %}
 {% from 'platform/_tutorial_info.html' import tutorial_button, tutorial_dialog with context %}
 {% set instagram_tutorial = platform_help_for('instagram_import') %}
 {% set capability_labels = {'supported': 'Disponível', 'unsupported': 'Não disponível', 'permission_denied': 'Sem permissão', 'not_applicable': 'Não aplicável', 'not_observed': 'Não encontrado na amostra', 'temporary_error': 'Indisponível temporariamente', 'unknown': 'Não foi possível determinar', 'not_available_for_provider': 'Não disponível neste método de conexão', 'requires_reauth': 'Reconexão necessária'} %}
@@ -20,14 +21,14 @@
 {%- endmacro %}
 
 {% block title %}Fonte de dados — {{ project.name }}{% endblock %}
-{% block page_intro %}<div class="mb-3 d-flex flex-wrap align-items-start justify-content-between gap-2"><div><h1 class="h4 mb-1">Fonte de dados</h1><p class="platform-muted mb-0">{{ project.name }}</p></div>{{ tutorial_button(instagram_tutorial, label='Abrir tutorial de Fonte de dados') }}</div>{% endblock %}
+{% block page_intro %}<div class="mb-3 d-flex flex-wrap align-items-start justify-content-between gap-2"><div><h1 class="h4 mb-1">{{ project.name }}</h1><p class="platform-muted mb-0">Fonte de dados</p></div>{{ tutorial_button(instagram_tutorial, label='Abrir tutorial de Fonte de dados') }}</div>{% endblock %}
 {% block body %}
 {{ project_tabs(project, 'import') }}
 <section class="platform-panel mb-3" aria-labelledby="instagram-api-connection-title">
   <div class="d-flex flex-wrap align-items-start justify-content-between gap-2">
     <div>
       <h2 id="instagram-api-connection-title" class="h5">Conexão automática</h2>
-      <p class="platform-muted mb-0">Conecte uma conta profissional para verificar quais dados a API disponibiliza. O diagnóstico não adiciona publicações, métricas ou comentários ao projeto.</p>
+      <p class="platform-muted mb-0">Conecte uma conta profissional para sincronizar conteúdos e métricas disponíveis. “Verificar dados disponíveis” continua sendo apenas um diagnóstico e não adiciona dados ao projeto.</p>
     </div>
     {% if meta_connection and meta_connection.status == 'connected' %}
       <span class="platform-badge">Instagram conectado</span>
@@ -44,6 +45,10 @@
       <dt class="col-sm-4">Conexão validada em</dt><dd class="col-sm-8">{{ meta_connection.last_validated_at | data_hora_local if meta_connection.last_validated_at else 'Ainda não validada' }}</dd>
       <dt class="col-sm-4">Dados verificados em</dt><dd class="col-sm-8">{{ meta_connection.last_capability_test_at | data_hora_local if meta_connection.last_capability_test_at else 'Ainda não executada' }}</dd>
     </dl>
+    <div id="instagram-meta-sync-feedback" class="alert" role="status" hidden></div>
+    {% if active_meta_sync %}
+      <p id="instagram-meta-sync-active" class="form-text" data-instagram-meta-sync-status-url="{{ url_for('instagram.meta_sync_status', project_id=project.id, run_id=active_meta_sync.id) }}" data-instagram-meta-sync-completion-url="{{ meta_sync_completion_url }}">Sincronização em andamento. Esta página acompanhará o status; você também pode atualizá-la mais tarde.</p>
+    {% endif %}
     {% if meta_connection.status == 'connected' and meta_connection.capability_result_json %}
       {% set diagnosis = meta_connection.capability_result_json %}
       {% set sample = diagnosis.get('sample', {}) %}
@@ -58,9 +63,9 @@
             <dt class="col-sm-4">Conteúdos</dt><dd class="col-sm-8">✓ Acessíveis{% if sample.get('observed_count') is not none %}<span class="platform-muted d-block">{{ sample_content_text(sample.get('observed_count')) }}</span>{% endif %}</dd>
             <dt class="col-sm-4">Tipos encontrados</dt><dd class="col-sm-8">{% for media_type in observed_types %}{{ media_type_labels.get(media_type, 'Outro tipo de conteúdo') }}{% if not loop.last %} · {% endif %}{% else %}Nenhum conteúdo encontrado na amostra{% endfor %}</dd>
             <dt class="col-sm-4">Comentários</dt><dd class="col-sm-8">{% if comments_status == 'supported' %}✓ Acessíveis<span class="platform-muted d-block">{{ sample_comment_text(comments.get('observed_count')) }}</span>{% else %}{{ comment_capability_labels.get(comments_status, 'Não foi possível verificar') }}{% endif %}</dd>
-            <dt class="col-sm-4">Métricas de desempenho</dt><dd class="col-sm-8">Não disponíveis neste método de conexão.</dd>
+            <dt class="col-sm-4">Métricas de desempenho</dt><dd class="col-sm-8">{% set media_metrics = diagnosis.get('media_metrics', {}) %}{% if media_metrics %}<ul class="platform-muted mb-2">{% for metric, result in media_metrics.items() %}<li>{{ metric_labels.get(metric, 'Métrica') }}: {{ capability_labels.get(result.get('status'), 'Não foi possível determinar') }}</li>{% endfor %}</ul>{% else %}<span class="platform-muted">Não foi possível determinar métricas nesta verificação.</span>{% endif %}{% set account_metrics = diagnosis.get('account_metrics', {}) %}{% if account_metrics %}<p class="form-text mb-0">Dados agregados da conta: {{ capability_labels.get(account_metrics.get('status'), 'Não foi possível determinar') }}.</p>{% endif %}</dd>
           </dl>
-          <p class="form-text mb-0">Para obter outras métricas, você pode conectar via Facebook ou utilizar a importação manual por CSV/XLSX.</p>
+          {% if media_metrics and media_metrics.values() | selectattr('status', 'equalto', 'permission_denied') | list | length == media_metrics | length %}<p class="form-text mb-0">Para verificar métricas, reconecte a conta e autorize o acesso solicitado.</p>{% endif %}
           {% if comments_status == 'permission_denied' %}<p class="form-text mb-0">Para verificar comentários, reconecte a conta e autorize o acesso solicitado.</p>{% endif %}
         {% else %}
           <dl class="row mb-2">
@@ -80,10 +85,25 @@
       <details class="mt-3"><summary>Detalhes técnicos</summary><p class="form-text mt-2 mb-0">Versão da API: {{ meta_connection.api_version }}{% if diagnosis.get('checked_at') %} · verificação concluída{% endif %}.</p></details>
     {% endif %}
     {% if can_mutate %}
-      <div class="d-flex flex-wrap gap-2">
-        {% if meta_connection.status == 'connected' %}<form method="post" action="{{ url_for('instagram.test_meta_capabilities', project_id=project.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-primary btn-sm" type="submit">Verificar dados disponíveis</button></form>{% endif %}
-        <form method="post" action="{{ url_for('instagram.connect_meta_account', project_id=project.id, provider=meta_connection.provider) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-outline-primary btn-sm" type="submit">Reconectar</button></form>
-        <a class="btn btn-outline-primary btn-sm" href="{{ url_for('instagram.disconnect_meta_account', project_id=project.id) }}">Desconectar</a>
+      <div class="platform-meta-sync-layout">
+        {% if meta_connection.status == 'connected' %}
+        <form id="instagram-meta-sync-form" method="post" action="{{ url_for('instagram.sync_meta_data', project_id=project.id) }}" class="platform-meta-sync-period-form" data-platform-loading-overlay-form data-platform-async-form data-instagram-meta-sync-form data-loading-overlay-target="instagram-meta-sync-overlay-processamento" data-meta-sync-status-url="{{ url_for('instagram.meta_sync_status', project_id=project.id, run_id=active_meta_sync.id) if active_meta_sync else '' }}" data-meta-sync-completion-url="{{ meta_sync_completion_url }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          {{ temporal_period_controls('instagram-meta-sync', sync_period_form, sync_period_options, select_name='sync_period', start_name='published_from', end_name='published_to', disabled=active_meta_sync, all_history_warning=true, show_label=true) }}
+        </form>
+        <div class="d-flex flex-wrap gap-2 platform-meta-sync-actions">
+          <button class="btn btn-primary btn-sm" form="instagram-meta-sync-form" type="submit" data-loading-overlay-submit{% if active_meta_sync %} disabled aria-disabled="true"{% endif %}>Sincronizar dados</button>
+          <form method="post" action="{{ url_for('instagram.test_meta_capabilities', project_id=project.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-outline-primary btn-sm" type="submit">Verificar dados disponíveis</button></form>
+          <form method="post" action="{{ url_for('instagram.connect_meta_account', project_id=project.id, provider=meta_connection.provider) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-outline-primary btn-sm" type="submit">Reconectar</button></form>
+          <a class="btn btn-outline-primary btn-sm" href="{{ url_for('instagram.disconnect_meta_account', project_id=project.id) }}">Desconectar</a>
+        </div>
+        {% endif %}
+        {% if meta_connection.status == 'needs_reauth' %}
+        <div class="d-flex flex-wrap gap-2 platform-meta-sync-actions">
+          <form method="post" action="{{ url_for('instagram.connect_meta_account', project_id=project.id, provider=meta_connection.provider) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-outline-primary btn-sm" type="submit">Reconectar</button></form>
+          <a class="btn btn-outline-primary btn-sm" href="{{ url_for('instagram.disconnect_meta_account', project_id=project.id) }}">Desconectar</a>
+        </div>
+        {% endif %}
       </div>
       <details class="mt-3"><summary>Alterar método</summary><p class="form-text mt-2">Os dados existentes são preservados. A autorização atual só será substituída depois que a nova conta profissional for validada.</p><div class="d-flex flex-wrap gap-2"><form method="post" action="{{ url_for('instagram.connect_meta_account', project_id=project.id, provider='instagram_login') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-outline-primary btn-sm" type="submit" {% if not meta_settings.instagram_login_available %}disabled aria-disabled="true"{% endif %}>Conectar Instagram</button></form><form method="post" action="{{ url_for('instagram.connect_meta_account', project_id=project.id, provider='facebook_login') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-outline-primary btn-sm" type="submit" {% if not meta_settings.facebook_login_available %}disabled aria-disabled="true"{% endif %}>Conectar via Facebook</button></form></div></details>
     {% else %}
@@ -115,6 +135,13 @@
     <div class="d-flex flex-wrap gap-2"><button class="btn btn-primary" type="submit">Validar e visualizar prévia</button><a class="btn btn-outline-primary" href="{{ url_for('instagram.project_detail', project_id=project.id) }}">Cancelar</a></div>
   </form>{% else %}<p class="form-text mb-0">Projeto arquivado: a importação manual está indisponível para alterações.</p>{% endif %}
 </section>
+{% set run_history_title = 'Histórico de importações e sincronizações' %}
+{% include 'platform/instagram/_run_history.html' %}
 {{ tutorial_dialog(instagram_tutorial) }}
+{% set sync_progress_context = ('@' ~ meta_account.username) if meta_account and meta_account.username else '' %}
+{% with progress_prefix='instagram-meta-sync-', progress_title='Sincronizando dados', progress_context=sync_progress_context, progress_message='Estamos buscando os conteúdos e as métricas disponíveis no Instagram. Isso pode levar alguns instantes.', progress_aria_label='Progresso da sincronização', progress_show_detail=false, progress_show_time=false %}{% include 'platform/_progress_overlay.html' %}{% endwith %}
+<script defer src="{{ url_for('static', filename='js/platform_form_loading_overlay.js') }}"></script>
+<script defer src="{{ url_for('static', filename='js/instagram_temporal_period.js') }}"></script>
+<script defer src="{{ url_for('static', filename='js/instagram_meta_sync_status.js') }}"></script>
 <script defer src="{{ url_for('static', filename='js/platform_tutorial.js') }}"></script>
 {% endblock %}

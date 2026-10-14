@@ -15,8 +15,8 @@
   {% include 'platform/_header.html' %}
   <main class="platform-main">
     <section class="hero-card" aria-labelledby="titulo-vocabulario">
-      <h1 class="hr-vocab-page-title" id="titulo-vocabulario">Vocabulário da pesquisa</h1>
-      <p class="platform-muted">Projeto: <strong>{{ project.name }}</strong></p>
+      <h1 class="hr-vocab-page-title">{{ project.name }}</h1>
+      <h2 class="h5" id="titulo-vocabulario">Vocabulário da pesquisa</h2>
       <a class="btn btn-outline-primary mb-4" href="{{ url_for('historico_racial.inicio_projeto', project_id=project.id) }}">Voltar à análise</a>
 
       <div class="download-card p-4 mb-4">

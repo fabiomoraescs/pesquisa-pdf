@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Mapping
 from urllib.parse import urlsplit
 
@@ -21,6 +21,8 @@ from .instagram_metrics import (
     follower_variation,
     summarize_values,
 )
+from .instagram_periods import InstagramPeriodError, TEMPORAL_PERIOD_KEYS, resolve_local_period
+from .pagination import PlatformPage, paginate_sequence
 from .instagram_taxonomy import (
     TaxonomyDashboardData,
     TaxonomyMetricInput,
@@ -38,7 +40,10 @@ from .models import (
 from .presentation import format_local_datetime, to_local_datetime
 
 
-PERIOD_DAYS = {"7d": 7, "30d": 30, "90d": 90, "all": None}
+# Compatibilidade pública para módulos anteriores. A resolução efetiva fica em
+# ``instagram_periods`` para que Dashboard, Comentários, Insights e Relatórios
+# não mantenham listas de períodos diferentes.
+PERIOD_DAYS = {"7d": 7, "30d": 30, "60d": 60, "90d": 90, "6m": None, "12m": None, "custom": None, "all": None}
 TABLE_SORTS = ("recent", "reach", "interactions", "interaction_rate")
 METRICS = (
     ("reach", "Alcance"),
@@ -70,8 +75,20 @@ class MetricSummary:
         return _number(self.value)
 
     @property
+    def availability(self) -> str:
+        if self.known == 0:
+            return "unavailable"
+        if self.known < self.publications:
+            return "partial"
+        return "complete"
+
+    @property
     def partial(self) -> bool:
-        return self.known < self.publications
+        return self.availability == "partial"
+
+    @property
+    def unavailable(self) -> bool:
+        return self.availability == "unavailable"
 
 
 @dataclass(frozen=True)
@@ -123,6 +140,7 @@ class InstagramDashboard:
     type_comparisons: tuple[ContentTypeComparison, ...]
     taxonomy: TaxonomyDashboardData
     table_rows: tuple[MediaRow, ...]
+    table_pagination: PlatformPage[MediaRow]
     sort: str
     derived_metrics_version: str
     has_data: bool
@@ -151,28 +169,42 @@ def _latest_project_observation(project_id: str) -> datetime | None:
     return max((value for value in (media_at, account_at) if value is not None), default=None)
 
 
-def dashboard_period_bounds(period: str, reference_at: datetime | None,
-                            timezone_name: str) -> tuple[datetime | None, datetime | None]:
+def dashboard_period_bounds(
+    period: str,
+    reference_at: datetime | None,
+    timezone_name: str,
+    *,
+    period_start: object = None,
+    period_end: object = None,
+) -> tuple[datetime | None, datetime | None]:
     """Retorna o intervalo UTC do recorte já usado pelo Dashboard.
 
     A data de fim continua sendo a última observação do projeto; o filtro de
     publicações não usa o relógio atual. Outros módulos analíticos podem
     reutilizar esta regra sem criar uma semântica temporal concorrente.
     """
-    if period not in PERIOD_DAYS:
-        raise ValueError("Período inválido")
-    if reference_at is None:
-        return None, None
-    days = PERIOD_DAYS[period]
-    if days is None:
-        return None, reference_at
-    local_end = to_local_datetime(reference_at, timezone_name)
-    local_start = local_end - timedelta(days=days)
-    return local_start.astimezone(timezone.utc), reference_at
+    try:
+        resolved = resolve_local_period(
+            period,
+            timezone_name,
+            reference_at=reference_at,
+            period_start=period_start,
+            period_end=period_end,
+        )
+    except InstagramPeriodError as error:
+        raise ValueError(str(error)) from error
+    return resolved.start, resolved.end
 
 
-def _media_rows(project_id: str, period: str, reference_at: datetime | None,
-                timezone_name: str) -> tuple[MediaRow, ...]:
+def _media_rows(
+    project_id: str,
+    period: str,
+    reference_at: datetime | None,
+    timezone_name: str,
+    *,
+    period_start: object = None,
+    period_end: object = None,
+) -> tuple[MediaRow, ...]:
     ranked_observations = (
         select(
             InstagramMediaObservation.id.label("observation_id"),
@@ -199,13 +231,15 @@ def _media_rows(project_id: str, period: str, reference_at: datetime | None,
         .where(InstagramAccount.analytics_project_id == project_id)
         .order_by(InstagramMedia.published_at.desc(), InstagramMedia.id.desc())
     )
-    period_start, period_end = dashboard_period_bounds(period, reference_at, timezone_name)
-    if PERIOD_DAYS[period] is not None:
-        if period_start is None or period_end is None:
+    start, end = dashboard_period_bounds(
+        period, reference_at, timezone_name, period_start=period_start, period_end=period_end,
+    )
+    if period != "all":
+        if start is None or end is None:
             return ()
         query = query.where(
-            InstagramMedia.published_at >= period_start,
-            InstagramMedia.published_at <= period_end,
+            InstagramMedia.published_at >= start,
+            InstagramMedia.published_at <= end,
         )
     return tuple(
         MediaRow(media, observation, ordinal, {})
@@ -249,18 +283,27 @@ def _with_derived_metrics(rows: tuple[MediaRow, ...]) -> tuple[MediaRow, ...]:
     )
 
 
-def selected_media_rows(project: AnalyticsProject, period: str,
-                        timezone_name: str) -> tuple[datetime | None, tuple[MediaRow, ...]]:
+def selected_media_rows(
+    project: AnalyticsProject,
+    period: str,
+    timezone_name: str,
+    *,
+    period_start: object = None,
+    period_end: object = None,
+) -> tuple[datetime | None, tuple[MediaRow, ...]]:
     """Seleciona uma publicação por mídia e aplica as métricas derivadas v1.
 
     Esta é a interface reutilizável para camadas analíticas: mantém a regra
     canônica de "última observação por publicação" sem somar coletas passadas.
     """
-    if period not in PERIOD_DAYS:
+    if period not in TEMPORAL_PERIOD_KEYS:
         raise ValueError("Período inválido")
     reference_at = _latest_project_observation(project.id)
     return reference_at, _with_derived_metrics(
-        _media_rows(project.id, period, reference_at, timezone_name)
+        _media_rows(
+            project.id, period, reference_at, timezone_name,
+            period_start=period_start, period_end=period_end,
+        )
     )
 
 
@@ -306,14 +349,25 @@ def _table_rows(rows: tuple[MediaRow, ...], sort: str) -> tuple[MediaRow, ...]:
     )))
 
 
-def build_instagram_dashboard(project: AnalyticsProject, period: str, timezone_name: str,
-                              *, sort: str = "recent", taxonomy_dimension_id: str | None = None) -> InstagramDashboard:
+def build_instagram_dashboard(
+    project: AnalyticsProject,
+    period: str,
+    timezone_name: str,
+    *,
+    sort: str = "recent",
+    taxonomy_dimension_id: str | None = None,
+    period_start: object = None,
+    period_end: object = None,
+    table_page: object = 1,
+) -> InstagramDashboard:
     """Carrega agregados sem N+1 e nunca soma observações de uma mesma mídia."""
-    if period not in PERIOD_DAYS:
+    if period not in TEMPORAL_PERIOD_KEYS:
         raise ValueError("Período inválido")
     if sort not in TABLE_SORTS:
         raise ValueError("Ordenação inválida")
-    reference_at, rows = selected_media_rows(project, period, timezone_name)
+    reference_at, rows = selected_media_rows(
+        project, period, timezone_name, period_start=period_start, period_end=period_end,
+    )
     metrics = []
     for field, label in METRICS:
         values = [getattr(row.observation, field) for row in rows if row.observation is not None]
@@ -379,13 +433,14 @@ def build_instagram_dashboard(project: AnalyticsProject, period: str, timezone_n
             "horizontal": len(taxonomy.comparisons) > 5,
         },
     }
+    table_pagination = paginate_sequence(_table_rows(rows, sort), table_page)
     return InstagramDashboard(
         reference_at=reference_at, period=period, rows=rows, metrics=tuple(metrics), ranking=ranking,
         followers_count=followers_count, followers_observed_at=followers_at,
         followers_series=followers_series, followers_variation=followers_delta,
         performance_statistics=performance_statistics, type_comparisons=type_comparisons,
         taxonomy=taxonomy,
-        table_rows=_table_rows(rows, sort), sort=sort,
+        table_rows=table_pagination.items, table_pagination=table_pagination, sort=sort,
         derived_metrics_version=DERIVED_METRICS_VERSION, has_data=reference_at is not None,
         chart_data=chart_data,
     )
