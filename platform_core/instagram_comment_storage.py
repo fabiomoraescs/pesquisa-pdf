@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 
 from sqlalchemy import select
 
 from .extensions import db
-from .instagram_comment_import import InstagramCommentImportDataset
+from .instagram_comment_import import InstagramCommentImportDataset, comment_text_hash
 from .models import (
     AnalyticsProject,
     AnalyticsRun,
@@ -24,11 +25,54 @@ class InstagramCommentImportPersistenceError(ValueError):
     """Conflito de domínio descoberto ao confirmar a prévia de comentários."""
 
 
+class InstagramCommentMetaPersistenceError(ValueError):
+    """Conflito canônico ao persistir comentários já normalizados pela Meta.
+
+    Ao contrário do importador manual, o chamador desta camada participa da
+    transação que já pertence ao ``AnalyticsRun`` Meta. Portanto esta exceção
+    nunca faz commit ou rollback por conta própria.
+    """
+
+
 @dataclass(frozen=True)
 class InstagramCommentImportResult:
     run_id: str
     comments_created: int
     comments_reused: int
+    text_versions_created: int
+    observations_created: int
+
+
+@dataclass(frozen=True)
+class InstagramMetaCommentPersistenceRow:
+    """Evidência de comentário Meta pronta para a persistência canônica."""
+
+    media_external_id: str
+    comment_external_id: str
+    parent_comment_external_id: str | None
+    comment_text: str | None
+    published_at: datetime
+    observed_at: datetime
+    author_username: str | None
+    author_external_id: str | None
+    like_count: int | None
+    replies_count: int | None
+
+    @property
+    def comment_text_hash(self) -> str | None:
+        return comment_text_hash(self.comment_text) if self.comment_text is not None else None
+
+
+@dataclass(frozen=True)
+class InstagramMetaCommentPersistenceResult:
+    """Contadores agregados, seguros e específicos da execução Meta."""
+
+    comments_created: int
+    comments_reused: int
+    root_comments_created: int
+    root_comments_reused: int
+    replies_created: int
+    replies_reused: int
     text_versions_created: int
     observations_created: int
 
@@ -92,6 +136,10 @@ def _validate_reply_graph(
         parent_key_by_key[key] = parent_key
         parent_object_by_key[key] = parent
 
+    def row_location(row: object) -> str:
+        line_number = getattr(row, "line_number", None)
+        return f"Linha {line_number}" if isinstance(line_number, int) and line_number > 0 else "Comentário"
+
     for row in rows:
         key = (row.media_external_id, row.comment_external_id)
         existing = comments_by_media_external.get(key)
@@ -103,17 +151,17 @@ def _validate_reply_graph(
             parent = comments_by_media_external.get(desired_key)
             if parent is None and desired_key not in rows_by_key:
                 raise InstagramCommentImportPersistenceError(
-                    f"Linha {row.line_number}: comentário pai '{row.parent_comment_external_id}' não foi encontrado na mesma publicação."
+                    f"{row_location(row)}: comentário pai '{row.parent_comment_external_id}' não foi encontrado na mesma publicação."
                 )
             if parent is not None and parent.instagram_media_id != media_by_external[row.media_external_id].id:
                 raise InstagramCommentImportPersistenceError(
-                    f"Linha {row.line_number}: o comentário pai pertence a outra publicação."
+                    f"{row_location(row)}: o comentário pai pertence a outra publicação."
                 )
         if existing is not None and existing.parent_comment_id is not None:
             current_key = parent_key_by_key[key]
             if desired_key != current_key:
                 raise InstagramCommentImportPersistenceError(
-                    f"Linha {row.line_number}: o comentário já possui uma relação de resposta diferente."
+                    f"{row_location(row)}: o comentário já possui uma relação de resposta diferente."
                 )
         parent_key_by_key[key] = desired_key
 
@@ -133,6 +181,156 @@ def _validate_reply_graph(
         parent_key = parent_key_by_key[key]
         parent_object_by_key[key] = comments_by_media_external.get(parent_key) if parent_key else None
     return parent_object_by_key
+
+
+def _fill_original_text_when_first_available(comment: InstagramComment, text: str | None) -> None:
+    """Preenche somente uma lacuna criada por resposta Meta sem texto.
+
+    ``original_text`` continua imutável depois que uma evidência textual real
+    foi observada. O evento do modelo aplica a mesma regra como última defesa.
+    """
+    if comment.original_text is None and text is not None:
+        comment.original_text = text
+
+
+def persist_instagram_meta_comments(
+    project: AnalyticsProject,
+    run: AnalyticsRun,
+    rows: tuple[InstagramMetaCommentPersistenceRow, ...] | list[InstagramMetaCommentPersistenceRow],
+) -> InstagramMetaCommentPersistenceResult:
+    """Persiste comentários Meta na transação do ``AnalyticsRun`` já existente.
+
+    Esta função deliberadamente não abre, confirma nem desfaz transações. O
+    motor de sincronização a chama depois de preparar mídias e antes de marcar
+    o run como concluído, de modo que uma falha em qualquer edge revoga também
+    mídias, observações e snapshots daquela execução.
+    """
+    normalized_rows = tuple(rows)
+    try:
+        account = _project_account(project)
+        media_by_external = _media_by_external_id(account)
+        row_keys: set[tuple[str, str]] = set()
+        for row in normalized_rows:
+            key = (row.media_external_id, row.comment_external_id)
+            if key in row_keys:
+                raise InstagramCommentMetaPersistenceError(
+                    "A API retornou o mesmo comentário mais de uma vez para a mesma publicação."
+                )
+            row_keys.add(key)
+            if row.media_external_id not in media_by_external:
+                raise InstagramCommentMetaPersistenceError(
+                    "A API retornou um comentário para uma publicação fora desta sincronização."
+                )
+
+        media_ids = [media.id for media in media_by_external.values()]
+        existing_comments = list(db.session.scalars(
+            select(InstagramComment).where(InstagramComment.instagram_media_id.in_(media_ids))
+        )) if media_ids else []
+        media_external_by_id = {media.id: external_id for external_id, media in media_by_external.items()}
+        comments_by_key = {
+            (media_external_by_id[comment.instagram_media_id], comment.external_id): comment
+            for comment in existing_comments
+        }
+        try:
+            parent_objects = _validate_reply_graph(
+                comments_by_media_external=comments_by_key,
+                rows=normalized_rows,
+                media_by_external=media_by_external,
+            )
+        except InstagramCommentImportPersistenceError as error:
+            raise InstagramCommentMetaPersistenceError(str(error)) from error
+
+        version_hashes: dict[str, set[str]] = {}
+        if existing_comments:
+            for version in db.session.scalars(select(InstagramCommentTextVersion).where(
+                InstagramCommentTextVersion.instagram_comment_id.in_([comment.id for comment in existing_comments])
+            )):
+                version_hashes.setdefault(version.instagram_comment_id, set()).add(version.content_hash)
+
+        created = reused = roots_created = roots_reused = replies_created = replies_reused = 0
+        comments_for_rows: dict[tuple[str, str], InstagramComment] = {}
+        for row in normalized_rows:
+            key = (row.media_external_id, row.comment_external_id)
+            comment = comments_by_key.get(key)
+            is_reply = row.parent_comment_external_id is not None
+            if comment is None:
+                comment = InstagramComment(
+                    instagram_media=media_by_external[row.media_external_id],
+                    external_id=row.comment_external_id,
+                    parent=parent_objects[key],
+                    author_username=row.author_username,
+                    author_external_id=row.author_external_id,
+                    published_at=row.published_at,
+                    original_text=row.comment_text,
+                )
+                db.session.add(comment)
+                comments_by_key[key] = comment
+                created += 1
+                if is_reply:
+                    replies_created += 1
+                else:
+                    roots_created += 1
+            else:
+                # A API completa somente lacunas factuais; nunca reescreve a
+                # autoria já guardada e jamais toca avaliações humanas.
+                if comment.author_username is None and row.author_username:
+                    comment.author_username = row.author_username
+                if comment.author_external_id is None and row.author_external_id:
+                    comment.author_external_id = row.author_external_id
+                _fill_original_text_when_first_available(comment, row.comment_text)
+                reused += 1
+                if is_reply:
+                    replies_reused += 1
+                else:
+                    roots_reused += 1
+            comments_for_rows[key] = comment
+
+        db.session.flush()
+        versions_created = observations_created = 0
+        for row in normalized_rows:
+            key = (row.media_external_id, row.comment_external_id)
+            comment = comments_for_rows[key]
+            if row.parent_comment_external_id:
+                parent = comments_for_rows.get((row.media_external_id, row.parent_comment_external_id))
+                if parent is None:
+                    parent = comments_by_key[(row.media_external_id, row.parent_comment_external_id)]
+                comment.parent = parent
+
+            hashes = version_hashes.setdefault(comment.id, set())
+            content_hash = row.comment_text_hash
+            if content_hash is not None and content_hash not in hashes:
+                db.session.add(InstagramCommentTextVersion(
+                    instagram_comment=comment,
+                    text=row.comment_text,
+                    content_hash=content_hash,
+                    first_observed_at=row.observed_at,
+                    is_original=(len(hashes) == 0),
+                ))
+                hashes.add(content_hash)
+                versions_created += 1
+            db.session.add(InstagramCommentObservation(
+                instagram_comment=comment,
+                analytics_run=run,
+                observed_at=row.observed_at,
+                like_count=row.like_count,
+                replies_count=row.replies_count,
+            ))
+            observations_created += 1
+        db.session.flush()
+        return InstagramMetaCommentPersistenceResult(
+            comments_created=created,
+            comments_reused=reused,
+            root_comments_created=roots_created,
+            root_comments_reused=roots_reused,
+            replies_created=replies_created,
+            replies_reused=replies_reused,
+            text_versions_created=versions_created,
+            observations_created=observations_created,
+        )
+    except InstagramCommentMetaPersistenceError:
+        raise
+    except InstagramCommentImportPersistenceError as error:
+        raise InstagramCommentMetaPersistenceError(str(error)) from error
 
 
 def persist_instagram_comment_import(
@@ -212,6 +410,7 @@ def persist_instagram_comment_import(
                     comment.author_username = row.author_username
                 if comment.author_external_id is None and row.author_external_id:
                     comment.author_external_id = row.author_external_id
+                _fill_original_text_when_first_available(comment, row.comment_text)
                 reused += 1
             comments_for_rows[key] = comment
 
@@ -260,6 +459,8 @@ def persist_instagram_comment_import(
 
 
 __all__ = [
-    "InstagramCommentImportPersistenceError", "InstagramCommentImportResult", "comment_import_conflict",
-    "persist_instagram_comment_import",
+    "InstagramCommentImportPersistenceError", "InstagramCommentImportResult",
+    "InstagramCommentMetaPersistenceError", "InstagramMetaCommentPersistenceResult",
+    "InstagramMetaCommentPersistenceRow", "comment_import_conflict",
+    "persist_instagram_comment_import", "persist_instagram_meta_comments",
 ]

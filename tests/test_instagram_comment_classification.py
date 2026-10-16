@@ -128,6 +128,28 @@ class InstagramCommentClassificationTests(unittest.TestCase):
         self.assertEqual((repeated.classified, repeated.already_classified), (0, 1))
         self.assertEqual(len(self.assessments()), 1)
 
+    def test_batch_skips_comments_without_any_text_version(self):
+        comment = InstagramComment(
+            instagram_media=self.media,
+            external_id="comment-without-text-version",
+            published_at=datetime(2026, 10, 2, tzinfo=timezone.utc),
+            original_text=None,
+        )
+        db.session.add(comment)
+        db.session.commit()
+
+        preview = plan_comment_classification(self.project)
+        self.assertEqual(
+            (preview.total_comments, preview.eligible, preview.classified, preview.skipped, preview.errors),
+            (1, 0, 0, 1, 0),
+        )
+        completed = classify_project_comments(self.project)
+        self.assertEqual(
+            (completed.total_comments, completed.eligible, completed.classified, completed.skipped, completed.errors),
+            (1, 0, 0, 1, 0),
+        )
+        self.assertEqual(len(self.assessments()), 0)
+
     def test_new_classifier_or_text_version_creates_new_automatic_history(self):
         self.import_comments(_row(text="Obrigado pela ajuda."))
         classify_project_comments(self.project)

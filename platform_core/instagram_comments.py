@@ -36,6 +36,7 @@ COMMENT_SENTIMENTS = ("all", "positive", "neutral", "negative", "mixed")
 COMMENT_NEEDS_RESPONSE = ("all", "yes", "no", "unknown")
 COMMENT_RISKS = ("all", "none", "low", "medium", "high")
 COMMENT_SORTS = ("recent", "oldest", "likes", "risk")
+TEXT_UNAVAILABLE_LABEL = "Texto não disponibilizado pela API."
 
 SENTIMENT_LABELS = {"positive": "Positivo", "neutral": "Neutro", "negative": "Negativo", "mixed": "Misto"}
 INTENT_LABELS = {
@@ -183,7 +184,11 @@ class CommentRow:
 
     @property
     def text(self) -> str:
-        return (self.text_version.text if self.text_version else self.comment.original_text)
+        return (
+            self.text_version.text
+            if self.text_version is not None
+            else (self.comment.original_text or TEXT_UNAVAILABLE_LABEL)
+        )
 
     @property
     def short_text(self) -> str:

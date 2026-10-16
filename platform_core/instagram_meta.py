@@ -8,6 +8,7 @@ de sincronização, para que os modelos analíticos não dependam do provider.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 import json
 import logging
 from threading import RLock
@@ -58,6 +59,17 @@ SYNC_MEDIA_MAX_PAGES = 200
 SYNC_MEDIA_FIELDS = (
     "id,caption,comments_count,like_count,media_type,media_product_type,permalink,timestamp"
 )
+SYNC_COMMENT_PAGE_LIMIT = 100
+SYNC_COMMENT_MAX_PAGES = 200
+SYNC_COMMENT_MAX_RECORDS_PER_EDGE = 20_000
+# O SDK oficial da Meta enumera estes campos em IGComment para os dois fluxos
+# Graph. ``replies_count`` não faz parte desse contrato: solicitá-lo poderia
+# invalidar uma edge inteira. O DTO preserva o campo como ``None`` se algum
+# provider vier a devolvê-lo de forma compatível, mas a coleta não o exige.
+SYNC_COMMENT_FIELDS_BY_PROVIDER = {
+    "facebook_login": "id,text,timestamp,username,like_count",
+    "instagram_login": "id,text,timestamp,username,like_count",
+}
 
 
 class InstagramMetaError(ValueError):
@@ -84,6 +96,140 @@ class InstagramMetaError(ValueError):
 class InstagramMetaConfigurationError(InstagramMetaError):
     def __init__(self, message: str = "A integração com a API do Instagram não está configurada."):
         super().__init__("configuration", message)
+
+
+@dataclass(frozen=True)
+class CanonicalMetaComment:
+    """Comentário Meta validado, ainda sem qualquer persistência local.
+
+    Comentários raiz carregam ``media_external_id``. Respostas carregam o ID
+    externo do pai; a camada de coleta futura conserva o vínculo da mídia do
+    comentário raiz ao montar a árvore antes de persistir.
+    """
+
+    external_id: str
+    parent_comment_external_id: str | None
+    media_external_id: str | None
+    text: str | None
+    published_at: datetime
+    author_username: str | None
+    author_external_id: str | None
+    like_count: int | None
+    replies_count: int | None
+
+
+@dataclass(frozen=True)
+class MetaCommentCollection:
+    """Resultado completo de uma edge de comentários Meta.
+
+    Além dos registros normalizados, conserva a quantidade exata de páginas
+    consultadas para telemetria do run. A coleção é iterável para manter o
+    uso natural pelos consumidores do provider.
+    """
+
+    comments: tuple[CanonicalMetaComment, ...]
+    pages_queried: int
+
+    def __iter__(self):
+        return iter(self.comments)
+
+    def __len__(self) -> int:
+        return len(self.comments)
+
+
+def _meta_comment_body(value: object, *, limit: int) -> str | None:
+    """Normaliza somente texto que a Meta efetivamente disponibilizou.
+
+    A identidade e o timestamp continuam obrigatórios. Já ``text`` pode estar
+    ausente ou nulo em uma resposta válida da API; isso não é evidência de um
+    corpo vazio e deve permanecer ``None`` até uma leitura futura disponibilizar
+    conteúdo real.
+    """
+    if value is None:
+        return None
+    if not isinstance(value, str) or len(value) > limit:
+        raise InstagramMetaError("payload_invalid", "A API retornou um comentário em formato inesperado.")
+    if not value.strip():
+        raise InstagramMetaError("payload_invalid", "A API retornou um comentário em formato inesperado.")
+    return value
+
+
+def _optional_meta_comment_text(value: object, *, limit: int) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise InstagramMetaError("payload_invalid", "A API retornou um comentário em formato inesperado.")
+    normalized = value.strip()
+    if not normalized:
+        return None
+    if len(normalized) > limit:
+        raise InstagramMetaError("payload_invalid", "A API retornou um comentário em formato inesperado.")
+    return normalized
+
+
+def _optional_meta_comment_count(value: object) -> int | None:
+    """Mantém ``None`` distinto do contador conhecido igual a zero."""
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise InstagramMetaError("payload_invalid", "A API retornou um comentário em formato inesperado.")
+    return value
+
+
+def _meta_comment_timestamp(value: object) -> datetime:
+    if not isinstance(value, str) or not value.strip():
+        raise InstagramMetaError("payload_invalid", "A API retornou um comentário em formato inesperado.")
+    try:
+        parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    except ValueError:
+        raise InstagramMetaError("payload_invalid", "A API retornou um comentário em formato inesperado.") from None
+    if parsed.tzinfo is None:
+        raise InstagramMetaError("payload_invalid", "A API retornou um comentário em formato inesperado.")
+    return parsed.astimezone(timezone.utc)
+
+
+def normalize_meta_comment(
+    payload: Mapping[str, Any],
+    *,
+    media_external_id: str | None = None,
+    parent_comment_external_id: str | None = None,
+) -> CanonicalMetaComment:
+    """Valida o contrato mínimo de um comentário ou resposta da Meta.
+
+    O normalizador não acessa banco, não deduz campos ausentes e não altera
+    texto. Assim ele pode ser usado tanto pelos dois providers quanto, na
+    rodada posterior, pela persistência transacional.
+    """
+    if not isinstance(payload, Mapping):
+        raise InstagramMetaError("payload_invalid", "A API retornou um comentário em formato inesperado.")
+    external_id = _optional_meta_comment_text(payload.get("id"), limit=128)
+    if external_id is None:
+        raise InstagramMetaError("payload_invalid", "A API retornou um comentário em formato inesperado.")
+    normalized_media_id = _optional_meta_comment_text(media_external_id, limit=128)
+    normalized_parent_id = _optional_meta_comment_text(
+        parent_comment_external_id, limit=128,
+    )
+    if normalized_parent_id == external_id:
+        raise InstagramMetaError("payload_invalid", "A API retornou um comentário em formato inesperado.")
+
+    author = payload.get("from")
+    author = author if isinstance(author, Mapping) else {}
+    author_username = _optional_meta_comment_text(
+        payload.get("username", author.get("username", author.get("name"))),
+        limit=100,
+    )
+    author_external_id = _optional_meta_comment_text(author.get("id"), limit=128)
+    return CanonicalMetaComment(
+        external_id=external_id,
+        parent_comment_external_id=normalized_parent_id,
+        media_external_id=normalized_media_id,
+        text=_meta_comment_body(payload.get("text"), limit=10_000),
+        published_at=_meta_comment_timestamp(payload.get("timestamp")),
+        author_username=author_username,
+        author_external_id=author_external_id,
+        like_count=_optional_meta_comment_count(payload.get("like_count")),
+        replies_count=_optional_meta_comment_count(payload.get("replies_count")),
+    )
 
 
 def safe_meta_error_message(error: InstagramMetaError) -> str:
@@ -463,6 +609,18 @@ class MetaConnectionProvider:
         """Contrato da futura sincronização: respostas também pertencem ao provider."""
         raise NotImplementedError
 
+    def list_media_comments(
+        self, media_external_id: str, access_token: str,
+    ) -> MetaCommentCollection:
+        """Lê todos os comentários de uma mídia com paginação defensiva."""
+        raise NotImplementedError
+
+    def list_comment_replies(
+        self, comment_external_id: str, access_token: str,
+    ) -> MetaCommentCollection:
+        """Lê todas as respostas de um comentário com paginação defensiva."""
+        raise NotImplementedError
+
     def list_media(self, account_external_id: str, access_token: str) -> list[dict[str, Any]]:
         """Lê todas as mídias com paginação limitada defensivamente para sync."""
         raise NotImplementedError
@@ -752,6 +910,102 @@ class FacebookLoginProvider(MetaConnectionProvider):
             after = next_after
         raise InstagramMetaError("pagination_limit", "A paginação de mídias excedeu o limite seguro.")
 
+    def _list_comment_edge_from_graph(
+        self,
+        graph_host: str,
+        object_external_id: str,
+        edge: str,
+        access_token: str,
+        *,
+        media_external_id: str | None = None,
+        parent_comment_external_id: str | None = None,
+    ) -> MetaCommentCollection:
+        """Lê uma edge de comentários sem seguir URLs devolvidas pela Meta.
+
+        A paginação é explicitamente limitada por página e por registro. Ao
+        atingir qualquer limite, ou ao receber cursor/ID repetido, a operação
+        falha: uma futura persistência nunca poderá tomar a coleção truncada
+        como uma fotografia completa.
+        """
+        if edge not in {"comments", "replies"}:
+            raise ValueError("A edge de comentários solicitada não é suportada.")
+        object_external_id = _optional_meta_comment_text(object_external_id, limit=128)
+        if object_external_id is None:
+            raise InstagramMetaError("payload_invalid", "A API retornou um identificador de comentário inválido.")
+        fields = SYNC_COMMENT_FIELDS_BY_PROVIDER.get(self.key)
+        if fields is None:
+            raise InstagramMetaError("payload_invalid", "O provider não possui um contrato de comentários válido.")
+
+        after: str | None = None
+        seen_cursors: set[str] = set()
+        seen_comment_ids: set[str] = set()
+        comments: list[CanonicalMetaComment] = []
+        operation = "media_comments_sync" if edge == "comments" else "comment_replies_sync"
+        for page_number in range(1, SYNC_COMMENT_MAX_PAGES + 1):
+            query: dict[str, str] = {
+                "fields": fields,
+                "limit": str(SYNC_COMMENT_PAGE_LIMIT),
+            }
+            if after is not None:
+                query["after"] = after
+            payload = self._request_json(
+                "GET",
+                f"{graph_host}/{self.settings.api_version}/{object_external_id}/{edge}?{urlencode(query)}",
+                access_token=access_token,
+                operation=operation,
+            )
+            if "data" not in payload:
+                raise InstagramMetaError("payload_invalid", "A API retornou comentários em formato inesperado.")
+            rows = payload["data"]
+            if not isinstance(rows, list) or not all(isinstance(row, Mapping) for row in rows):
+                raise InstagramMetaError("payload_invalid", "A API retornou comentários em formato inesperado.")
+            for row in rows:
+                comment = normalize_meta_comment(
+                    row,
+                    media_external_id=media_external_id,
+                    parent_comment_external_id=parent_comment_external_id,
+                )
+                if comment.external_id in seen_comment_ids:
+                    raise InstagramMetaError("payload_invalid", "A paginação de comentários retornou um identificador repetido.")
+                seen_comment_ids.add(comment.external_id)
+                comments.append(comment)
+                if len(comments) > SYNC_COMMENT_MAX_RECORDS_PER_EDGE:
+                    raise InstagramMetaError(
+                        "pagination_limit", "A paginação de comentários excedeu o limite seguro de registros."
+                    )
+
+            # Sem ``paging`` a edge terminou normalmente. Quando o campo vem
+            # presente, porém, sua estrutura precisa ser válida: não podemos
+            # transformar uma resposta malformada em término silencioso. A
+            # presença de ``next`` determina se outra página existe; sua URL
+            # não é seguida, apenas o cursor ``after`` correspondente é usado
+            # na URL canônica construída acima.
+            if "paging" not in payload:
+                return MetaCommentCollection(comments=tuple(comments), pages_queried=page_number)
+            paging = payload["paging"]
+            if not isinstance(paging, Mapping) or "cursors" not in paging:
+                raise InstagramMetaError("payload_invalid", "A paginação de comentários está em formato inesperado.")
+            cursors = paging["cursors"]
+            if not isinstance(cursors, Mapping) or not cursors:
+                raise InstagramMetaError("payload_invalid", "A paginação de comentários está em formato inesperado.")
+            for cursor_name in ("before", "after"):
+                if cursor_name in cursors and (
+                    not isinstance(cursors[cursor_name], str) or not cursors[cursor_name]
+                ):
+                    raise InstagramMetaError("payload_invalid", "A paginação de comentários retornou um cursor inválido.")
+            if "next" not in paging:
+                return MetaCommentCollection(comments=tuple(comments), pages_queried=page_number)
+            if not isinstance(paging["next"], str) or not paging["next"]:
+                raise InstagramMetaError("payload_invalid", "A paginação de comentários está em formato inesperado.")
+            if "after" not in cursors:
+                raise InstagramMetaError("payload_invalid", "A paginação de comentários retornou um cursor inválido.")
+            next_after = cursors["after"]
+            if next_after == after or next_after in seen_cursors:
+                raise InstagramMetaError("payload_invalid", "A paginação de comentários retornou um cursor inválido.")
+            seen_cursors.add(next_after)
+            after = next_after
+        raise InstagramMetaError("pagination_limit", "A paginação de comentários excedeu o limite seguro de páginas.")
+
     def list_media(self, account_external_id: str, page_access_token: str) -> list[dict[str, Any]]:
         return self._list_media_from_graph(
             "https://graph.facebook.com", account_external_id, page_access_token
@@ -777,6 +1031,17 @@ class FacebookLoginProvider(MetaConnectionProvider):
         rows = payload.get("data", [])
         return [row for row in rows if isinstance(row, dict)][:CAPABILITY_COMMENTS_PER_MEDIA_LIMIT] if isinstance(rows, list) else []
 
+    def list_media_comments(
+        self, media_external_id: str, page_access_token: str,
+    ) -> MetaCommentCollection:
+        return self._list_comment_edge_from_graph(
+            "https://graph.facebook.com",
+            media_external_id,
+            "comments",
+            page_access_token,
+            media_external_id=media_external_id,
+        )
+
     def sample_comment_replies(self, comment_external_id: str, page_access_token: str) -> list[dict[str, Any]]:
         query = urlencode({"fields": "id", "limit": str(CAPABILITY_COMMENTS_PER_MEDIA_LIMIT)})
         payload = self._request_json(
@@ -785,6 +1050,17 @@ class FacebookLoginProvider(MetaConnectionProvider):
         )
         rows = payload.get("data", [])
         return [row for row in rows if isinstance(row, dict)][:CAPABILITY_COMMENTS_PER_MEDIA_LIMIT] if isinstance(rows, list) else []
+
+    def list_comment_replies(
+        self, comment_external_id: str, page_access_token: str,
+    ) -> MetaCommentCollection:
+        return self._list_comment_edge_from_graph(
+            "https://graph.facebook.com",
+            comment_external_id,
+            "replies",
+            page_access_token,
+            parent_comment_external_id=comment_external_id,
+        )
 
     def media_metric(self, media_external_id: str, metric: str, page_access_token: str) -> dict[str, Any]:
         return self.media_metrics(media_external_id, (metric,), page_access_token)
@@ -904,6 +1180,17 @@ class InstagramLoginProvider(FacebookLoginProvider):
         rows = payload.get("data", [])
         return [row for row in rows if isinstance(row, dict)][:CAPABILITY_COMMENTS_PER_MEDIA_LIMIT] if isinstance(rows, list) else []
 
+    def list_media_comments(
+        self, media_external_id: str, instagram_access_token: str,
+    ) -> MetaCommentCollection:
+        return self._list_comment_edge_from_graph(
+            "https://graph.instagram.com",
+            media_external_id,
+            "comments",
+            instagram_access_token,
+            media_external_id=media_external_id,
+        )
+
     def sample_comment_replies(self, comment_external_id: str, instagram_access_token: str) -> list[dict[str, Any]]:
         query = urlencode({"fields": "id", "limit": str(CAPABILITY_COMMENTS_PER_MEDIA_LIMIT)})
         payload = self._request_json(
@@ -912,6 +1199,17 @@ class InstagramLoginProvider(FacebookLoginProvider):
         )
         rows = payload.get("data", [])
         return [row for row in rows if isinstance(row, dict)][:CAPABILITY_COMMENTS_PER_MEDIA_LIMIT] if isinstance(rows, list) else []
+
+    def list_comment_replies(
+        self, comment_external_id: str, instagram_access_token: str,
+    ) -> MetaCommentCollection:
+        return self._list_comment_edge_from_graph(
+            "https://graph.instagram.com",
+            comment_external_id,
+            "replies",
+            instagram_access_token,
+            parent_comment_external_id=comment_external_id,
+        )
 
     def media_metrics(
         self, media_external_id: str, metrics: tuple[str, ...], instagram_access_token: str

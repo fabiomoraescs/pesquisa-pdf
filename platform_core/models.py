@@ -564,8 +564,14 @@ class InstagramComment(db.Model):
     author_external_id: Mapped[str | None] = mapped_column(db.String(128))
     published_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), nullable=False)
     # A primeira evidência textual permanece aqui; versões posteriores vivem
-    # em instagram_comment_text_versions e não a substituem.
-    original_text: Mapped[str] = mapped_column(db.Text, nullable=False)
+    # em instagram_comment_text_versions e não a substituem. A Meta pode
+    # devolver uma identidade válida sem disponibilizar o corpo do comentário;
+    # nesse caso, ``None`` registra essa indisponibilidade sem fabricar texto.
+    # ``active_history`` forces SQLAlchemy to load the persisted value before
+    # replacing an expired/deferred attribute.  The ORM guard below must prove
+    # that this is the one permitted transition (None -> first real text), not
+    # merely infer it from a possibly incomplete history.
+    original_text: Mapped[str | None] = mapped_column(db.Text, active_history=True)
     created_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         db.DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
@@ -586,7 +592,10 @@ class InstagramComment(db.Model):
     __table_args__ = (
         UniqueConstraint("instagram_media_id", "external_id", name="uq_instagram_comment_media_external_id"),
         CheckConstraint("length(trim(external_id)) > 0", name="ck_instagram_comment_external_id"),
-        CheckConstraint("length(trim(original_text)) > 0", name="ck_instagram_comment_original_text"),
+        CheckConstraint(
+            "original_text IS NULL OR length(trim(original_text)) > 0",
+            name="ck_instagram_comment_original_text",
+        ),
         CheckConstraint(
             "parent_comment_id IS NULL OR parent_comment_id <> id",
             name="ck_instagram_comment_not_self_parent",
@@ -598,8 +607,20 @@ class InstagramComment(db.Model):
 
 @event.listens_for(InstagramComment, "before_update")
 def _preserve_instagram_comment_original_text(_mapper, _connection, comment: InstagramComment) -> None:
-    """O texto original é evidência primária e não pode ser alterado em updates."""
-    if inspect(comment).attrs.original_text.history.has_changes():
+    """Só permite preencher uma lacuna textual que a Meta informou como indisponível."""
+    history = inspect(comment).attrs.original_text.history
+    if not history.has_changes():
+        return
+
+    # Nunca aceite uma alteração cujo valor anterior não tenha sido carregado:
+    # após expire()/refresh() a história só é confiável porque active_history
+    # acima força esse carregamento.  Assim, a única escrita permitida é a
+    # transição comprovada de texto indisponível para o primeiro texto real.
+    if (
+        tuple(history.deleted) != (None,)
+        or not isinstance(comment.original_text, str)
+        or not comment.original_text.strip()
+    ):
         raise ValueError("O texto original do comentário não pode ser alterado.")
 
 

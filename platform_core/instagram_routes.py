@@ -279,6 +279,30 @@ def _sync_period_form(values: dict | None = None, *, active_run: AnalyticsRun | 
     }
 
 
+def _meta_sync_includes_comments(run: AnalyticsRun | None) -> bool:
+    """A opção efetiva vem sempre do job durável, nunca do DOM atual."""
+    if run is None or not isinstance(run.parameters_json, dict):
+        return False
+    return run.parameters_json.get("include_comments") is True
+
+
+def _sync_include_comments_form(values: dict | None = None, *, active_run: AnalyticsRun | None = None) -> bool:
+    """Reconstrói o checkbox; um job ativo prevalece sobre um POST posterior."""
+    if active_run is not None:
+        return _meta_sync_includes_comments(active_run)
+    return (values or {}).get("include_comments") == "true"
+
+
+def _requested_include_comments() -> bool:
+    """Aceita somente o contrato HTML explícito, sem coerção de strings soltas."""
+    raw_values = request.form.getlist("include_comments")
+    if not raw_values:
+        return False
+    if len(raw_values) != 1 or raw_values[0] not in {"true", "false"}:
+        raise InstagramMetaSyncError("invalid_option", "A opção de comentários recebida é inválida.")
+    return raw_values[0] == "true"
+
+
 def _meta_sync_completion_url(project: AnalyticsProject, run: AnalyticsRun) -> str:
     """Retorno de polling que preserva a janela efetivamente congelada."""
     period_form = _sync_period_form({}, active_run=run)
@@ -330,12 +354,39 @@ def _import_template_context(project: AnalyticsProject, *, sync_period_form: dic
         "meta_connection": account.api_connection if account is not None else None,
         "meta_account": account,
         "active_meta_sync": active_sync,
+        "active_meta_sync_include_comments": _meta_sync_includes_comments(active_sync),
         "meta_sync_completion_url": _meta_sync_completion_url(project, active_sync) if active_sync else "",
         "sync_period_options": SYNC_PERIOD_OPTIONS,
         "sync_period_form": _sync_period_form(form_values, active_run=active_sync),
+        "sync_include_comments": _sync_include_comments_form(form_values, active_run=active_sync),
         **history,
         "can_mutate": project.status == "active" and project.archived_at is None,
     }
+
+
+def _meta_sync_completion_message(run: AnalyticsRun) -> str:
+    """Resumo humano com contagens agregadas, sem metadados sensíveis."""
+    count = run.record_count
+    if isinstance(count, bool) or not isinstance(count, int) or count < 0:
+        count = 0
+    content_text = "1 conteúdo foi processado" if count == 1 else f"{count} conteúdos foram processados"
+    message = f"Sincronização concluída. {content_text}."
+    if not _meta_sync_includes_comments(run):
+        return message
+    parameters = run.parameters_json if isinstance(run.parameters_json, dict) else {}
+    comments = parameters.get("comments")
+    if not isinstance(comments, dict):
+        return message
+    root_count = comments.get("root_comments_found")
+    replies_count = comments.get("replies_found")
+    if (
+        isinstance(root_count, bool) or not isinstance(root_count, int) or root_count < 0
+        or isinstance(replies_count, bool) or not isinstance(replies_count, int) or replies_count < 0
+    ):
+        return message
+    roots_text = "1 comentário coletado" if root_count == 1 else f"{root_count} comentários coletados"
+    replies_text = "1 resposta coletada" if replies_count == 1 else f"{replies_count} respostas coletadas"
+    return f"{message} {roots_text}; {replies_text}."
 
 
 def _meta_sync_completion_flash(project: AnalyticsProject) -> None:
@@ -353,9 +404,7 @@ def _meta_sync_completion_flash(project: AnalyticsProject) -> None:
     ))
     if run is None:
         return
-    count = run.record_count
-    content_text = "1 conteúdo foi processado" if count == 1 else f"{count} conteúdos foram processados"
-    flash(f"Sincronização concluída. {content_text}.", "success")
+    flash(_meta_sync_completion_message(run), "success")
 
 
 def _run_period_label(run: AnalyticsRun) -> str:
@@ -2201,9 +2250,11 @@ def sync_meta_data(project_id: UUID):
         abort(404)
     stale_seconds = current_app.config.get("PESQUISAPDF_META_SYNC_STALE_SECONDS", DEFAULT_META_SYNC_STALE_SECONDS)
     try:
+        requested_include_comments = _requested_include_comments()
         recover_stale_meta_sync_runs(stale_seconds=int(stale_seconds))
         # Uma execução já ativa conserva a janela congelada no próprio run. A
-        # seleção enviada no reload não pode alterar o trabalho em andamento.
+        # seleção enviada no reload — inclusive a de comentários — não pode
+        # alterar o trabalho em andamento.
         active_run = active_meta_sync_run(project.id)
         if active_run is not None:
             run, created = active_run, False
@@ -2216,6 +2267,7 @@ def sync_meta_data(project_id: UUID):
             )
             run, created = enqueue_meta_sync_run(
                 project, connection.id, connection.provider, publication_window,
+                include_comments=requested_include_comments,
             )
     except InstagramMetaSyncError as error:
         if request.accept_mimetypes.best == "application/json":
@@ -2246,8 +2298,18 @@ def sync_meta_data(project_id: UUID):
             "status_url": status_url,
             "completion_url": completion_url,
             "reused_active_run": not created,
+            "include_comments": _meta_sync_includes_comments(run),
         }), 202
-    flash("Sincronização iniciada." if created else "Uma sincronização já está em andamento.", "success")
+    if created:
+        flash(
+            "Sincronização iniciada com comentários e respostas."
+            if _meta_sync_includes_comments(run)
+            else "Sincronização iniciada.",
+            "success",
+        )
+    else:
+        active_mode = "inclui comentários e respostas" if _meta_sync_includes_comments(run) else "sincroniza somente conteúdos e métricas"
+        flash(f"Uma sincronização já está em andamento e {active_mode}.", "success")
     return redirect(completion_url)
 
 
@@ -2266,16 +2328,14 @@ def meta_sync_status(project_id: UUID, run_id: UUID):
     payload = {
         "status": run.status,
         "record_count": run.record_count,
+        "include_comments": _meta_sync_includes_comments(run),
         "started_at": run.started_at.isoformat() if run.started_at else None,
         "completed_at": run.completed_at.isoformat() if run.completed_at else None,
     }
     if run.status == META_SYNC_FAILED:
         payload["message"] = run.error_message or "Não foi possível concluir a sincronização. Nenhum dado foi salvo."
     elif run.status == META_SYNC_COMPLETED:
-        count = run.record_count
-        payload["message"] = "Sincronização concluída. " + (
-            "1 conteúdo foi processado." if count == 1 else f"{count} conteúdos foram processados."
-        )
+        payload["message"] = _meta_sync_completion_message(run)
     return jsonify(payload)
 
 

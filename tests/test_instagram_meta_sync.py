@@ -15,12 +15,26 @@ from sqlalchemy import func, select
 
 from platform_helpers import create_user, csrf_from, isolated_platform, login
 from platform_core.extensions import db
+from platform_core.instagram_comment_import import (
+    COMMENT_IMPORT_PROCESSOR_VERSION,
+    COMMENT_IMPORT_SCHEMA_VERSION,
+    InstagramCommentImportDataset,
+    InstagramCommentImportRow,
+    comment_text_hash,
+)
+from platform_core.instagram_comment_storage import (
+    InstagramMetaCommentPersistenceRow,
+    persist_instagram_comment_import,
+    persist_instagram_meta_comments,
+)
 from platform_core.instagram_meta import (
+    CanonicalMetaComment,
     FACEBOOK_LOGIN_SCOPES,
     INSTAGRAM_LOGIN_SCOPES,
     FacebookLoginProvider,
     InstagramMetaError,
     InstagramMetaSettings,
+    MetaCommentCollection,
     persist_validated_connection,
 )
 from platform_core.instagram_meta_sync import (
@@ -34,6 +48,7 @@ from platform_core.instagram_meta_sync_jobs import (
     META_SYNC_FAILED,
     META_SYNC_PENDING,
     META_SYNC_RUNNING,
+    enqueue_meta_sync_run,
     process_next_meta_sync_run,
     recover_stale_meta_sync_runs,
 )
@@ -43,6 +58,9 @@ from platform_core.models import (
     InstagramAccountSnapshot,
     InstagramApiConnection,
     InstagramComment,
+    InstagramCommentAssessment,
+    InstagramCommentObservation,
+    InstagramCommentTextVersion,
     InstagramMedia,
     InstagramMediaClassification,
     InstagramMediaObservation,
@@ -60,6 +78,7 @@ class FakeMetaSyncClient:
     def __init__(
         self, *, profile=None, media=None, metrics=None, metric_errors_by_media=None,
         batch_omissions_by_media=None, account_reach=900, profile_enrichment=None,
+        comments_by_media=None, replies_by_comment=None,
     ):
         self.profile = profile or {
             "id": "ig-official-42", "username": "revista_reels", "followers_count": 120,
@@ -83,6 +102,8 @@ class FakeMetaSyncClient:
         self.batch_omissions_by_media = batch_omissions_by_media or {}
         self.account_reach = account_reach
         self.profile_enrichment = profile_enrichment
+        self.comments_by_media = comments_by_media or {}
+        self.replies_by_comment = replies_by_comment or {}
         self.calls = []
 
     def instagram_profile(self, account_id, token):
@@ -134,6 +155,24 @@ class FakeMetaSyncClient:
         values = [] if self.account_reach is None else [{"value": self.account_reach}]
         return {"data": [{"name": "reach", "values": values}]}
 
+    def list_media_comments(self, media_id, token):
+        self.calls.append(("list_media_comments", media_id, token))
+        result = self.comments_by_media.get(media_id, ())
+        if isinstance(result, Exception):
+            raise result
+        if isinstance(result, MetaCommentCollection):
+            return result
+        return MetaCommentCollection(comments=tuple(result), pages_queried=1)
+
+    def list_comment_replies(self, comment_id, token):
+        self.calls.append(("list_comment_replies", comment_id, token))
+        result = self.replies_by_comment.get(comment_id, ())
+        if isinstance(result, Exception):
+            raise result
+        if isinstance(result, MetaCommentCollection):
+            return result
+        return MetaCommentCollection(comments=tuple(result), pages_queried=1)
+
 
 class InstagramMetaSyncTests(unittest.TestCase):
     def setUp(self):
@@ -180,6 +219,23 @@ class InstagramMetaSyncTests(unittest.TestCase):
 
     def _sync_url(self, project=None):
         return f"/analytics/instagram/projects/{(project or self.project).id}/imports/meta/sync"
+
+    @staticmethod
+    def _meta_comment(
+        external_id, text, *, media_external_id=None, parent_comment_external_id=None,
+        like_count=0, replies_count=0,
+    ):
+        return CanonicalMetaComment(
+            external_id=external_id,
+            parent_comment_external_id=parent_comment_external_id,
+            media_external_id=media_external_id,
+            text=text,
+            published_at=datetime(2026, 10, 3, 12, 0, tzinfo=timezone.utc),
+            author_username="leitora",
+            author_external_id="author-42",
+            like_count=like_count,
+            replies_count=replies_count,
+        )
 
     def test_facebook_full_sync_persists_only_canonical_models_and_keeps_zero(self):
         connection = self._connection()
@@ -526,12 +582,17 @@ class InstagramMetaSyncTests(unittest.TestCase):
         self.assertIn("Sincronizar dados", markup)
         self.assertIn('<option value="last_90_days" selected>', markup)
         self.assertIn("Período da sincronização", markup)
+        self.assertIn('name="include_comments"', markup)
+        self.assertIn('value="true"', markup)
+        self.assertIn("Incluir comentários e respostas", markup)
+        self.assertIn("publicações fora do período selecionado não são coletados", markup)
         self.assertEqual(self.client.post(self._sync_url()).status_code, 400)
         success = self.client.post(self._sync_url(), data={"csrf_token": csrf_from(page)}, follow_redirects=True)
         self.assertEqual(success.status_code, 200)
         self.assertIn("Sincronização iniciada", success.get_data(as_text=True))
         run = db.session.scalar(select(AnalyticsRun).where(AnalyticsRun.analytics_project_id == self.project.id))
         self.assertEqual(run.status, META_SYNC_PENDING)
+        self.assertIs(run.parameters_json["include_comments"], False)
         self.assertEqual(fake.calls, [])
 
         logout_page = self.client.get("/")
@@ -547,6 +608,51 @@ class InstagramMetaSyncTests(unittest.TestCase):
         self.assertEqual(self.client.post(self._sync_url(), data={"csrf_token": csrf_from(page)}).status_code, 404)
         self.assertEqual(connection.status, "connected")
 
+    def test_sync_route_validates_and_persists_the_explicit_comment_option(self):
+        self._connection()
+        page = self.client.get(f"/analytics/instagram/projects/{self.project.id}/imports/new")
+        invalid = self.client.post(
+            self._sync_url(),
+            data={"csrf_token": csrf_from(page), "include_comments": "yes"},
+            headers={"Accept": "application/json"},
+        )
+        self.assertEqual(invalid.status_code, 400)
+        self.assertIn("opção de comentários", invalid.get_json()["message"])
+        self.assertEqual(db.session.scalar(select(func.count()).select_from(AnalyticsRun)), 0)
+
+        queued = self.client.post(
+            self._sync_url(),
+            data={
+                "csrf_token": csrf_from(page), "include_comments": "true", "sync_period": "last_30_days",
+            },
+            headers={"Accept": "application/json"},
+        )
+        self.assertEqual(queued.status_code, 202)
+        queued_payload = queued.get_json()
+        self.assertTrue(queued_payload["include_comments"])
+        run = db.session.get(AnalyticsRun, queued_payload["status_url"].split("/")[-2])
+        self.assertIs(run.parameters_json["include_comments"], True)
+        self.assertEqual(run.parameters_json["period_preset"], "last_30_days")
+
+        active_markup = self.client.get(
+            f"/analytics/instagram/projects/{self.project.id}/imports/new"
+        ).get_data(as_text=True)
+        self.assertIn("incluindo comentários e respostas", active_markup)
+        self.assertIn('name="include_comments" type="checkbox" value="true" aria-describedby="instagram-meta-sync-include-comments-help" checked disabled', active_markup)
+
+        reused = self.client.post(
+            self._sync_url(),
+            data={"csrf_token": csrf_from(page), "include_comments": "false", "sync_period": "last_7_days"},
+            headers={"Accept": "application/json"},
+        )
+        self.assertEqual(reused.status_code, 202)
+        reused_payload = reused.get_json()
+        self.assertTrue(reused_payload["reused_active_run"])
+        self.assertTrue(reused_payload["include_comments"])
+        db.session.refresh(run)
+        self.assertIs(run.parameters_json["include_comments"], True)
+        self.assertEqual(run.parameters_json["period_preset"], "last_30_days")
+
     def test_sync_post_is_short_enqueues_once_and_status_requires_ownership(self):
         self._connection()
         fake = FakeMetaSyncClient()
@@ -559,11 +665,22 @@ class InstagramMetaSyncTests(unittest.TestCase):
         payload = first.get_json()
         self.assertEqual(payload["status"], META_SYNC_PENDING)
         self.assertFalse(payload["reused_active_run"])
+        self.assertFalse(payload["include_comments"])
         self.assertEqual(fake.calls, [])
 
-        second = self.client.post(self._sync_url(), data=data, headers={"Accept": "application/json"})
+        second = self.client.post(
+            self._sync_url(),
+            data={**data, "include_comments": "true"},
+            headers={"Accept": "application/json"},
+        )
         self.assertEqual(second.status_code, 202)
-        self.assertTrue(second.get_json()["reused_active_run"])
+        second_payload = second.get_json()
+        self.assertTrue(second_payload["reused_active_run"])
+        self.assertFalse(second_payload["include_comments"])
+        active_markup = self.client.get(
+            f"/analytics/instagram/projects/{self.project.id}/imports/new"
+        ).get_data(as_text=True)
+        self.assertIn("somente conteúdos e métricas", active_markup)
         self.assertEqual(db.session.scalar(select(func.count()).select_from(AnalyticsRun)), 1)
         self.assertEqual(self.client.get(payload["status_url"]).get_json()["status"], META_SYNC_PENDING)
 
@@ -774,6 +891,50 @@ class InstagramMetaSyncTests(unittest.TestCase):
         self.assertEqual(status["status"], "completed")
         self.assertIn("2 conteúdos foram processados", status["message"])
 
+    def test_comment_enabled_run_exposes_safe_aggregate_result_without_changing_record_count(self):
+        self._connection()
+        root = self._meta_comment("sync-root", "Comentário da sincronização", media_external_id="media-reel-1")
+        reply = self._meta_comment("sync-reply", "Resposta da sincronização", parent_comment_external_id="sync-root")
+        fake = FakeMetaSyncClient(
+            comments_by_media={"media-reel-1": (root,)},
+            replies_by_comment={"sync-root": (reply,)},
+        )
+        self.app.extensions["instagram_meta_client_factory"] = lambda _settings, _provider: fake
+        page = self.client.get(f"/analytics/instagram/projects/{self.project.id}/imports/new")
+        response = self.client.post(
+            self._sync_url(),
+            data={"csrf_token": csrf_from(page), "include_comments": "true"},
+            headers={"Accept": "application/json"},
+        )
+        self.assertEqual(response.status_code, 202)
+        payload = response.get_json()
+        run = process_next_meta_sync_run()
+        self.assertEqual(run.status, "completed")
+        self.assertEqual(run.record_count, 2)
+        self.assertIs(run.parameters_json["include_comments"], True)
+        self.assertEqual(run.parameters_json["comments"]["root_comments_found"], 1)
+        self.assertEqual(run.parameters_json["comments"]["replies_found"], 1)
+
+        status = self.client.get(payload["status_url"]).get_json()
+        self.assertEqual(status["record_count"], 2)
+        self.assertTrue(status["include_comments"])
+        self.assertIn("1 comentário coletado", status["message"])
+        self.assertIn("1 resposta coletada", status["message"])
+        self.assertNotIn("sync-root", status["message"])
+        self.assertNotIn("Comentário da sincronização", status["message"])
+
+        listing = self.client.get(
+            f"/analytics/instagram/projects/{self.project.id}/comments?period=all"
+        ).get_data(as_text=True)
+        self.assertIn("Comentários coletados", listing)
+        self.assertIn("Comentário da sincronização", listing)
+        root_comment = db.session.scalar(select(InstagramComment).where(InstagramComment.external_id == "sync-root"))
+        detail = self.client.get(
+            f"/analytics/instagram/projects/{self.project.id}/comments/{root_comment.id}"
+        ).get_data(as_text=True)
+        self.assertIn('<h2 id="instagram-comment-replies" class="h5">Respostas</h2>', detail)
+        self.assertIn("Resposta da sincronização", detail)
+
     def test_worker_failure_marks_run_failed_without_partial_canonical_data_and_stale_running_recovers(self):
         self._connection()
         fake = FakeMetaSyncClient()
@@ -872,6 +1033,12 @@ class InstagramMetaSyncTests(unittest.TestCase):
         self.assertIn("data-instagram-meta-sync-status-url", template)
         self.assertIn("select_name='sync_period'", template)
         self.assertIn("sync_period_options", template)
+        self.assertIn('name="include_comments"', template)
+        self.assertIn('value="true"', template)
+        self.assertIn("Incluir comentários e respostas", template)
+        self.assertIn("A coleta pode aumentar o tempo da sincronização", template)
+        self.assertIn("publicações fora do período selecionado não são coletados", template)
+        self.assertIn("active_meta_sync_include_comments", template)
         self.assertIn("data-meta-sync-custom-period", temporal_partial)
         self.assertIn("data-meta-sync-all-history-warning", temporal_partial)
         self.assertIn("A sincronização de todo o histórico pode levar mais tempo", temporal_partial)
@@ -940,6 +1107,457 @@ pageshowHandler();assert.equal(overlay.hidden,true);assert.equal(button.disabled
         self.assertEqual(failed.status, META_SYNC_FAILED)
         self.assertNotIn("token-very-secret-for-tests", failed.error_message)
         self.assertEqual(db.session.scalar(select(func.count()).select_from(AnalyticsRun)), 1)
+
+    def test_comment_sync_is_disabled_by_default_for_new_and_legacy_runs(self):
+        connection = self._connection()
+        root = self._meta_comment("comment-root", "Comentário que não deve ser buscado.", media_external_id="media-reel-1")
+        fake = FakeMetaSyncClient(comments_by_media={"media-reel-1": (root,)})
+
+        window = resolve_publication_window("all_history", None, None, "America/Maceio")
+        queued, created = enqueue_meta_sync_run(self.project, connection.id, connection.provider, window)
+        self.assertTrue(created)
+        self.assertEqual(queued.status, META_SYNC_PENDING)
+        self.assertIs(queued.parameters_json["include_comments"], False)
+
+        first = sync_meta_connection(self.project, connection, self.settings, fake)
+        self.assertEqual(db.session.scalar(select(func.count()).select_from(InstagramComment)), 0)
+        self.assertFalse(any(call[0] == "list_media_comments" for call in fake.calls))
+        self.assertIs(db.session.get(AnalyticsRun, first.run_id).parameters_json["include_comments"], False)
+
+        legacy = AnalyticsRun(
+            analytics_project=self.project,
+            source_kind=META_SYNC_SOURCE_KIND,
+            status=META_SYNC_RUNNING,
+            processor_version=META_SYNC_VERSION,
+            parameters_json={"connection_id": connection.id, "provider": connection.provider},
+        )
+        db.session.add(legacy)
+        db.session.commit()
+        sync_meta_connection(self.project, connection, self.settings, fake, run=legacy, include_comments=True)
+
+        self.assertEqual(db.session.scalar(select(func.count()).select_from(InstagramComment)), 0)
+        self.assertFalse(any(call[0] == "list_media_comments" for call in fake.calls))
+        self.assertIs(db.session.get(AnalyticsRun, legacy.id).parameters_json["include_comments"], False)
+
+    def test_comment_sync_persists_roots_replies_and_same_external_id_per_media(self):
+        connection = self._connection()
+        root = self._meta_comment("root-1", "Raiz", media_external_id="media-reel-1", replies_count=1)
+        repeated_first_media = self._meta_comment("same-external", "Mesmo ID em Reel", media_external_id="media-reel-1")
+        repeated_second_media = self._meta_comment("same-external", "Mesmo ID em Imagem", media_external_id="media-image-1")
+        reply = self._meta_comment("reply-1", "Resposta", parent_comment_external_id="root-1", like_count=None)
+        fake = FakeMetaSyncClient(
+            comments_by_media={
+                "media-reel-1": (root, repeated_first_media),
+                "media-image-1": (repeated_second_media,),
+            },
+            replies_by_comment={"root-1": (reply,)},
+        )
+
+        result = sync_meta_connection(self.project, connection, self.settings, fake, include_comments=True)
+
+        run = db.session.get(AnalyticsRun, result.run_id)
+        self.assertEqual(run.record_count, 2)
+        self.assertEqual(result.comments_found, 3)
+        self.assertEqual(result.replies_found, 1)
+        self.assertEqual(result.comment_observations_created, 4)
+        self.assertEqual(db.session.scalar(select(func.count()).select_from(InstagramComment)), 4)
+        self.assertEqual(db.session.scalar(select(func.count()).select_from(InstagramCommentObservation)), 4)
+        self.assertEqual(db.session.scalar(select(func.count()).select_from(InstagramCommentTextVersion)), 4)
+        comments = db.session.scalars(select(InstagramComment)).all()
+        root_object = next(comment for comment in comments if comment.external_id == "root-1")
+        reply_object = next(comment for comment in comments if comment.external_id == "reply-1")
+        self.assertEqual(reply_object.parent_comment_id, root_object.id)
+        self.assertIsNone(db.session.scalar(select(InstagramCommentObservation.like_count).where(
+            InstagramCommentObservation.instagram_comment_id == reply_object.id
+        )))
+        same_id_comments = [comment for comment in comments if comment.external_id == "same-external"]
+        self.assertEqual(len(same_id_comments), 2)
+        self.assertEqual({comment.instagram_media.external_id for comment in same_id_comments}, {
+            "media-reel-1", "media-image-1",
+        })
+        metadata = run.parameters_json["comments"]
+        self.assertEqual(metadata["root_comments_found"], 3)
+        self.assertEqual(metadata["replies_found"], 1)
+        self.assertEqual(metadata["observations_created"], 4)
+        self.assertEqual(metadata["pages_queried"], 5)
+        self.assertNotIn("Raiz", str(metadata))
+        self.assertNotIn("leitora", str(metadata))
+
+    def test_comment_sync_accepts_an_empty_collection_as_a_successful_execution(self):
+        connection = self._connection()
+        fake = FakeMetaSyncClient()
+
+        result = sync_meta_connection(self.project, connection, self.settings, fake, include_comments=True)
+
+        run = db.session.get(AnalyticsRun, result.run_id)
+        self.assertEqual(run.status, "completed")
+        self.assertEqual(run.record_count, 2)
+        self.assertEqual(result.comments_found, 0)
+        self.assertEqual(result.replies_found, 0)
+        self.assertEqual(result.comment_observations_created, 0)
+        self.assertEqual(run.parameters_json["comments"]["pages_queried"], 2)
+        self.assertEqual(db.session.scalar(select(func.count()).select_from(InstagramComment)), 0)
+
+    def test_comment_sync_is_idempotent_and_preserves_manual_assessment_when_text_changes(self):
+        connection = self._connection()
+        initial = self._meta_comment("comment-1", "Texto original", media_external_id="media-reel-1")
+        first = sync_meta_connection(
+            self.project, connection, self.settings,
+            FakeMetaSyncClient(comments_by_media={"media-reel-1": (initial,)}),
+            include_comments=True,
+        )
+        comment = db.session.scalar(select(InstagramComment).where(InstagramComment.external_id == "comment-1"))
+        first_version = db.session.scalar(select(InstagramCommentTextVersion).where(
+            InstagramCommentTextVersion.instagram_comment_id == comment.id
+        ))
+        assessment = InstagramCommentAssessment(
+            instagram_comment=comment,
+            text_version=first_version,
+            source="manual",
+            sentiment="positive",
+        )
+        db.session.add(assessment)
+        db.session.commit()
+
+        changed = self._meta_comment("comment-1", "Texto editado", media_external_id="media-reel-1")
+        second = sync_meta_connection(
+            self.project, connection, self.settings,
+            FakeMetaSyncClient(comments_by_media={"media-reel-1": (changed,)}),
+            include_comments=True,
+        )
+
+        self.assertNotEqual(first.run_id, second.run_id)
+        self.assertEqual(db.session.scalar(select(func.count()).select_from(InstagramComment)), 1)
+        self.assertEqual(comment.original_text, "Texto original")
+        self.assertEqual(db.session.scalar(select(func.count()).select_from(InstagramCommentTextVersion)), 2)
+        self.assertEqual(db.session.scalar(select(func.count()).select_from(InstagramCommentAssessment)), 1)
+        self.assertEqual(db.session.scalar(select(func.count()).select_from(InstagramCommentObservation)), 2)
+        self.assertEqual(db.session.get(AnalyticsRun, second.run_id).parameters_json["comments"]["comments_reused"], 1)
+
+        # Uma nova leitura vazia não é uma ordem de exclusão de evidência
+        # histórica, nem das classificações humanas ligadas a ela.
+        sync_meta_connection(self.project, connection, self.settings, FakeMetaSyncClient(), include_comments=True)
+        self.assertEqual(db.session.scalar(select(func.count()).select_from(InstagramComment)), 1)
+        self.assertEqual(db.session.scalar(select(func.count()).select_from(InstagramCommentAssessment)), 1)
+        self.assertEqual(db.session.scalar(select(func.count()).select_from(InstagramCommentObservation)), 2)
+
+    def test_comment_sync_persists_roots_and_replies_when_text_is_unavailable(self):
+        connection = self._connection()
+        root = self._meta_comment("root-without-text", None, media_external_id="media-reel-1")
+        reply = self._meta_comment("reply-without-text", None, parent_comment_external_id="root-without-text")
+
+        result = sync_meta_connection(
+            self.project,
+            connection,
+            self.settings,
+            FakeMetaSyncClient(
+                comments_by_media={"media-reel-1": (root,)},
+                replies_by_comment={"root-without-text": (reply,)},
+            ),
+            include_comments=True,
+        )
+
+        comments = {
+            item.external_id: item
+            for item in db.session.scalars(select(InstagramComment)).all()
+        }
+        self.assertEqual(set(comments), {"root-without-text", "reply-without-text"})
+        self.assertIsNone(comments["root-without-text"].original_text)
+        self.assertIsNone(comments["reply-without-text"].original_text)
+        self.assertEqual(comments["reply-without-text"].parent_comment_id, comments["root-without-text"].id)
+        self.assertEqual(db.session.scalar(select(func.count()).select_from(InstagramCommentTextVersion)), 0)
+        self.assertEqual(db.session.scalar(select(func.count()).select_from(InstagramCommentObservation)), 2)
+        self.assertEqual(result.comments_found, 1)
+        self.assertEqual(result.replies_found, 1)
+
+    def test_unavailable_meta_text_never_overwrites_existing_text_or_assessment(self):
+        connection = self._connection()
+        original = self._meta_comment("comment-text-preserved", "Texto preservado", media_external_id="media-reel-1")
+        sync_meta_connection(
+            self.project, connection, self.settings,
+            FakeMetaSyncClient(comments_by_media={"media-reel-1": (original,)}),
+            include_comments=True,
+        )
+        comment = db.session.scalar(select(InstagramComment).where(
+            InstagramComment.external_id == "comment-text-preserved"
+        ))
+        version = db.session.scalar(select(InstagramCommentTextVersion).where(
+            InstagramCommentTextVersion.instagram_comment_id == comment.id
+        ))
+        db.session.add(InstagramCommentAssessment(
+            instagram_comment=comment,
+            text_version=version,
+            source="manual",
+            sentiment="positive",
+        ))
+        db.session.commit()
+
+        unavailable = self._meta_comment("comment-text-preserved", None, media_external_id="media-reel-1")
+        sync_meta_connection(
+            self.project, connection, self.settings,
+            FakeMetaSyncClient(comments_by_media={"media-reel-1": (unavailable,)}),
+            include_comments=True,
+        )
+
+        self.assertEqual(comment.original_text, "Texto preservado")
+        self.assertEqual(db.session.scalar(select(func.count()).select_from(InstagramCommentTextVersion)), 1)
+        self.assertEqual(db.session.scalar(select(func.count()).select_from(InstagramCommentAssessment)), 1)
+        self.assertEqual(db.session.scalar(select(func.count()).select_from(InstagramCommentObservation)), 2)
+
+    def test_first_text_available_after_unavailable_comment_fills_the_single_gap_idempotently(self):
+        connection = self._connection()
+        unavailable = self._meta_comment("later-text", None, media_external_id="media-reel-1")
+        sync_meta_connection(
+            self.project, connection, self.settings,
+            FakeMetaSyncClient(comments_by_media={"media-reel-1": (unavailable,)}),
+            include_comments=True,
+        )
+        comment = db.session.scalar(select(InstagramComment).where(InstagramComment.external_id == "later-text"))
+        self.assertIsNone(comment.original_text)
+        self.assertEqual(db.session.scalar(select(func.count()).select_from(InstagramCommentTextVersion)), 0)
+
+        available = self._meta_comment("later-text", "Texto disponibilizado depois", media_external_id="media-reel-1")
+        sync_meta_connection(
+            self.project, connection, self.settings,
+            FakeMetaSyncClient(comments_by_media={"media-reel-1": (available,)}),
+            include_comments=True,
+        )
+        sync_meta_connection(
+            self.project, connection, self.settings,
+            FakeMetaSyncClient(comments_by_media={"media-reel-1": (available,)}),
+            include_comments=True,
+        )
+
+        version = db.session.scalar(select(InstagramCommentTextVersion).where(
+            InstagramCommentTextVersion.instagram_comment_id == comment.id
+        ))
+        self.assertEqual(comment.original_text, "Texto disponibilizado depois")
+        self.assertEqual(version.text, "Texto disponibilizado depois")
+        self.assertTrue(version.is_original)
+        self.assertEqual(db.session.scalar(select(func.count()).select_from(InstagramCommentTextVersion)), 1)
+        self.assertEqual(db.session.scalar(select(func.count()).select_from(InstagramCommentObservation)), 3)
+
+    def test_csv_text_can_complete_a_meta_comment_previously_without_text(self):
+        connection = self._connection()
+        sync_meta_connection(
+            self.project, connection, self.settings,
+            FakeMetaSyncClient(comments_by_media={
+                "media-reel-1": (self._meta_comment("csv-after-meta", None, media_external_id="media-reel-1"),),
+            }),
+            include_comments=True,
+        )
+        observed_at = datetime(2026, 10, 4, 12, 0, tzinfo=timezone.utc)
+        imported_text = "Texto preservado pela importação manual"
+        dataset = InstagramCommentImportDataset(
+            schema_version=COMMENT_IMPORT_SCHEMA_VERSION,
+            processor_version=COMMENT_IMPORT_PROCESSOR_VERSION,
+            source_kind="csv",
+            original_filename="comentarios.csv",
+            source_hash="b" * 64,
+            source_row_count=1,
+            rows=(InstagramCommentImportRow(
+                line_number=2,
+                media_external_id="media-reel-1",
+                comment_external_id="csv-after-meta",
+                comment_text=imported_text,
+                comment_text_hash=comment_text_hash(imported_text),
+                published_at=observed_at,
+                observed_at=observed_at,
+                parent_comment_external_id=None,
+                author_username=None,
+                author_external_id=None,
+                like_count=0,
+                replies_count=None,
+            ),),
+            warnings=(),
+        )
+        persist_instagram_comment_import(self.project, dataset)
+
+        comment = db.session.scalar(select(InstagramComment).where(InstagramComment.external_id == "csv-after-meta"))
+        version = db.session.scalar(select(InstagramCommentTextVersion).where(
+            InstagramCommentTextVersion.instagram_comment_id == comment.id
+        ))
+        self.assertEqual(comment.original_text, imported_text)
+        self.assertEqual(version.text, imported_text)
+        self.assertTrue(version.is_original)
+        self.assertEqual(db.session.scalar(select(func.count()).select_from(InstagramComment)), 1)
+        self.assertEqual(db.session.scalar(select(func.count()).select_from(InstagramCommentObservation)), 2)
+
+    def test_comment_edge_failure_rolls_back_all_canonical_writes_for_the_run(self):
+        connection = self._connection()
+        window = resolve_publication_window("all_history", None, None, "America/Maceio")
+        run, created = enqueue_meta_sync_run(
+            self.project, connection.id, connection.provider, window, include_comments=True,
+        )
+        self.assertTrue(created)
+        fake = FakeMetaSyncClient(comments_by_media={
+            "media-image-1": InstagramMetaError("permission_denied", "Sem permissão."),
+        })
+
+        processed = process_next_meta_sync_run(
+            settings_factory=lambda: self.settings,
+            client_factory=lambda _settings, _provider: fake,
+        )
+
+        self.assertEqual(processed.id, run.id)
+        self.assertEqual(processed.status, META_SYNC_FAILED)
+        self.assertEqual(db.session.scalar(select(func.count()).select_from(InstagramMedia)), 0)
+        self.assertEqual(db.session.scalar(select(func.count()).select_from(InstagramMediaObservation)), 0)
+        self.assertEqual(db.session.scalar(select(func.count()).select_from(InstagramAccountSnapshot)), 0)
+        self.assertEqual(db.session.scalar(select(func.count()).select_from(InstagramComment)), 0)
+        self.assertEqual(db.session.scalar(select(func.count()).select_from(InstagramCommentObservation)), 0)
+
+    def test_comment_sync_global_page_and_reply_thread_limits_roll_back_the_run(self):
+        connection = self._connection()
+        with patch("platform_core.instagram_meta_sync.SYNC_COMMENT_MAX_PAGES_PER_SYNC", 1):
+            pages_exceeded = FakeMetaSyncClient(comments_by_media={
+                "media-reel-1": MetaCommentCollection(comments=(), pages_queried=2),
+            })
+            with self.assertRaises(InstagramMetaSyncError) as raised:
+                sync_meta_connection(self.project, connection, self.settings, pages_exceeded, include_comments=True)
+            self.assertEqual(raised.exception.category, "pagination_limit")
+        self.assertEqual(db.session.scalar(select(func.count()).select_from(InstagramMedia)), 0)
+        self.assertEqual(db.session.scalar(select(func.count()).select_from(InstagramComment)), 0)
+
+        first = self._meta_comment("root-first", "Primeira", media_external_id="media-reel-1")
+        second = self._meta_comment("root-second", "Segunda", media_external_id="media-reel-1")
+        with patch("platform_core.instagram_meta_sync.SYNC_COMMENT_MAX_RECORDS_PER_SYNC", 1):
+            records_exceeded = FakeMetaSyncClient(comments_by_media={"media-reel-1": (first, second)})
+            with self.assertRaises(InstagramMetaSyncError) as raised:
+                sync_meta_connection(self.project, connection, self.settings, records_exceeded, include_comments=True)
+            self.assertEqual(raised.exception.category, "pagination_limit")
+        self.assertEqual(db.session.scalar(select(func.count()).select_from(InstagramMedia)), 0)
+        self.assertEqual(db.session.scalar(select(func.count()).select_from(InstagramComment)), 0)
+
+        with patch("platform_core.instagram_meta_sync.SYNC_COMMENT_MAX_REPLY_EDGES_PER_SYNC", 1):
+            threads_exceeded = FakeMetaSyncClient(comments_by_media={"media-reel-1": (first, second)})
+            with self.assertRaises(InstagramMetaSyncError) as raised:
+                sync_meta_connection(self.project, connection, self.settings, threads_exceeded, include_comments=True)
+            self.assertEqual(raised.exception.category, "pagination_limit")
+        self.assertEqual(db.session.scalar(select(func.count()).select_from(InstagramMedia)), 0)
+        self.assertEqual(db.session.scalar(select(func.count()).select_from(InstagramComment)), 0)
+
+    def test_durable_comment_sync_preserves_existing_run_metadata_and_period(self):
+        connection = self._connection()
+        window = resolve_publication_window(
+            "custom", "2026-10-01", "2026-10-31", "America/Maceio",
+            now=datetime(2026, 10, 15, 12, tzinfo=timezone.utc),
+        )
+        queued, created = enqueue_meta_sync_run(
+            self.project, connection.id, connection.provider, window, include_comments=True,
+        )
+        self.assertTrue(created)
+        root = self._meta_comment("durable-root", "Persistido", media_external_id="media-reel-1")
+        completed = process_next_meta_sync_run(
+            settings_factory=lambda: self.settings,
+            client_factory=lambda _settings, _provider: FakeMetaSyncClient(
+                comments_by_media={"media-reel-1": (root,)},
+            ),
+        )
+
+        self.assertEqual(completed.id, queued.id)
+        self.assertEqual(completed.status, "completed")
+        parameters = completed.parameters_json
+        self.assertEqual(parameters["schema_version"], META_SYNC_VERSION)
+        self.assertTrue(parameters["include_comments"])
+        self.assertEqual(parameters["media_count"], 2)
+        self.assertEqual(parameters["period_preset"], "custom")
+        self.assertEqual(parameters["published_from"], window.published_from.isoformat())
+        self.assertEqual(parameters["published_to"], window.published_to.isoformat())
+        self.assertIn("metric_statuses", parameters)
+        self.assertEqual(parameters["comments"]["root_comments_found"], 1)
+        self.assertEqual(completed.record_count, 2)
+
+    def test_comment_sync_reuses_an_existing_csv_comment_only_by_canonical_identity(self):
+        connection = self._connection()
+        sync_meta_connection(self.project, connection, self.settings, FakeMetaSyncClient())
+        observed_at = datetime(2026, 10, 3, 12, 0, tzinfo=timezone.utc)
+        imported_text = "Comentário importado manualmente"
+        imported_row = InstagramCommentImportRow(
+            line_number=2,
+            media_external_id="media-reel-1",
+            comment_external_id="shared-comment-id",
+            comment_text=imported_text,
+            comment_text_hash=comment_text_hash(imported_text),
+            published_at=observed_at,
+            observed_at=observed_at,
+            parent_comment_external_id=None,
+            author_username=None,
+            author_external_id=None,
+            like_count=None,
+            replies_count=None,
+        )
+        dataset = InstagramCommentImportDataset(
+            schema_version=COMMENT_IMPORT_SCHEMA_VERSION,
+            processor_version=COMMENT_IMPORT_PROCESSOR_VERSION,
+            source_kind="csv",
+            original_filename="comentarios.csv",
+            source_hash="a" * 64,
+            source_row_count=1,
+            rows=(imported_row,),
+            warnings=(),
+        )
+        persist_instagram_comment_import(self.project, dataset)
+
+        from_meta = self._meta_comment(
+            "shared-comment-id", imported_text, media_external_id="media-reel-1", like_count=0,
+        )
+        result = sync_meta_connection(
+            self.project, connection, self.settings,
+            FakeMetaSyncClient(comments_by_media={"media-reel-1": (from_meta,)}),
+            include_comments=True,
+        )
+
+        comment = db.session.scalar(select(InstagramComment).where(
+            InstagramComment.external_id == "shared-comment-id"
+        ))
+        self.assertEqual(db.session.scalar(select(func.count()).select_from(InstagramComment)), 1)
+        self.assertEqual(comment.original_text, imported_text)
+        self.assertEqual(comment.author_username, "leitora")
+        self.assertEqual(db.session.scalar(select(func.count()).select_from(InstagramCommentTextVersion)), 1)
+        self.assertEqual(db.session.scalar(select(func.count()).select_from(InstagramCommentObservation)), 2)
+        self.assertEqual(db.session.get(AnalyticsRun, result.run_id).parameters_json["comments"]["comments_reused"], 1)
+
+    def test_comment_persistence_resolves_a_reply_that_arrives_before_its_parent(self):
+        connection = self._connection()
+        sync_meta_connection(self.project, connection, self.settings, FakeMetaSyncClient())
+        observed_at = datetime(2026, 10, 3, 12, 0, tzinfo=timezone.utc)
+        run = AnalyticsRun(
+            analytics_project=self.project,
+            source_kind=META_SYNC_SOURCE_KIND,
+            status="completed",
+            processor_version=META_SYNC_VERSION,
+            started_at=observed_at,
+            completed_at=observed_at,
+            record_count=0,
+        )
+        db.session.add(run)
+        db.session.flush()
+        child = InstagramMetaCommentPersistenceRow(
+            media_external_id="media-reel-1", comment_external_id="reply-before-parent",
+            parent_comment_external_id="parent-after-child", comment_text="Resposta primeiro",
+            published_at=observed_at, observed_at=observed_at, author_username=None,
+            author_external_id=None, like_count=0, replies_count=0,
+        )
+        parent = InstagramMetaCommentPersistenceRow(
+            media_external_id="media-reel-1", comment_external_id="parent-after-child",
+            parent_comment_external_id=None, comment_text="Pai depois", published_at=observed_at,
+            observed_at=observed_at, author_username=None, author_external_id=None,
+            like_count=0, replies_count=1,
+        )
+
+        persisted = persist_instagram_meta_comments(self.project, run, (child, parent))
+        db.session.commit()
+
+        reply = db.session.scalar(select(InstagramComment).where(
+            InstagramComment.external_id == "reply-before-parent"
+        ))
+        parent_object = db.session.scalar(select(InstagramComment).where(
+            InstagramComment.external_id == "parent-after-child"
+        ))
+        self.assertEqual(persisted.replies_created, 1)
+        self.assertEqual(persisted.root_comments_created, 1)
+        self.assertEqual(reply.parent_comment_id, parent_object.id)
 
 
 class FacebookMediaPaginationTests(unittest.TestCase):

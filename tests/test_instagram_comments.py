@@ -8,12 +8,16 @@ import re
 import tempfile
 import unittest
 from datetime import datetime, timezone
+from importlib import import_module
 from pathlib import Path
 from unittest.mock import patch
 
 from openpyxl import Workbook, load_workbook
+import sqlalchemy as sa
 from flask_migrate import downgrade, upgrade
-from sqlalchemy import delete, func, select
+from alembic.migration import MigrationContext
+from alembic.operations import Operations
+from sqlalchemy import delete, func, select, text
 from sqlalchemy import inspect
 from sqlalchemy.exc import IntegrityError
 
@@ -39,6 +43,7 @@ from platform_core.models import (
     InstagramMedia,
     InstagramMediaObservation,
     PlanTool,
+    User,
 )
 from platform_core.services import ANALYTICS_INSTAGRAM_TOOL
 
@@ -148,6 +153,82 @@ class InstagramCommentsTests(unittest.TestCase):
             original.original_text = "Não permitido"
             db.session.commit()
         db.session.rollback()
+
+    def test_comment_without_available_text_has_a_safe_presentation_and_cannot_be_classified(self):
+        comment = InstagramComment(
+            instagram_media=self.media,
+            external_id="comment-without-text",
+            published_at=datetime(2026, 10, 2, tzinfo=timezone.utc),
+            original_text=None,
+        )
+        db.session.add(comment)
+        db.session.commit()
+
+        listing = self.client.get(f"/analytics/instagram/projects/{self.project.id}/comments?period=all")
+        detail = self.client.get(
+            f"/analytics/instagram/projects/{self.project.id}/comments/{comment.id}"
+        )
+        self.assertEqual(listing.status_code, 200)
+        self.assertEqual(detail.status_code, 200)
+        self.assertIn("Texto não disponibilizado pela API.", listing.get_data(as_text=True))
+        self.assertIn("A API ainda não disponibilizou o texto deste comentário.", detail.get_data(as_text=True))
+        self.assertIn("Texto ainda indisponível", detail.get_data(as_text=True))
+        with self.assertRaisesRegex(ValueError, "não possui uma versão textual classificável"):
+            classify_comment(comment, self.user.id, {"sentiment": "positive"})
+
+    def test_original_text_allows_only_a_proven_first_fill_after_reload_or_expire(self):
+        comment = InstagramComment(
+            instagram_media=self.media,
+            external_id="comment-original-text-immutable",
+            published_at=datetime(2026, 10, 2, tzinfo=timezone.utc),
+            original_text=None,
+        )
+        db.session.add(comment)
+        db.session.commit()
+
+        # The sole permitted transition is the first real text after the API
+        # previously reported a valid comment identity without its body.
+        comment.original_text = "Primeiro texto disponibilizado."
+        db.session.commit()
+        self.assertEqual(comment.original_text, "Primeiro texto disponibilizado.")
+
+        # Repeating the same value is idempotent and does not manufacture a
+        # second mutation in SQLAlchemy history.
+        comment.original_text = "Primeiro texto disponibilizado."
+        db.session.commit()
+        self.assertEqual(comment.original_text, "Primeiro texto disponibilizado.")
+
+        for forbidden_value in ("Texto substituído.", None):
+            with self.subTest(forbidden_value=forbidden_value):
+                comment.original_text = forbidden_value
+                with self.assertRaisesRegex(ValueError, "não pode ser alterado"):
+                    db.session.commit()
+                db.session.rollback()
+                db.session.refresh(comment)
+                self.assertEqual(comment.original_text, "Primeiro texto disponibilizado.")
+
+        # active_history=True must load the old value before assignment even
+        # when this attribute has been explicitly expired.
+        db.session.expire(comment, ["original_text"])
+        comment.original_text = "Texto sobrescrito após expire."
+        with self.assertRaisesRegex(ValueError, "não pode ser alterado"):
+            db.session.commit()
+        db.session.rollback()
+
+        # The same protection holds when the row is loaded in a brand-new ORM
+        # session, where no prior in-memory history exists.
+        comment_id = comment.id
+        db.session.remove()
+        reloaded = db.session.get(InstagramComment, comment_id)
+        self.assertEqual(reloaded.original_text, "Primeiro texto disponibilizado.")
+        reloaded.original_text = "Texto sobrescrito em nova sessão."
+        with self.assertRaisesRegex(ValueError, "não pode ser alterado"):
+            db.session.commit()
+        db.session.rollback()
+        self.assertEqual(
+            db.session.get(InstagramComment, comment_id).original_text,
+            "Primeiro texto disponibilizado.",
+        )
 
     def test_xlsx_schema_template_and_parser_are_canonical(self):
         page = self.client.get(f"/analytics/instagram/projects/{self.project.id}/comments/imports/new")
@@ -305,8 +386,32 @@ class InstagramCommentsTests(unittest.TestCase):
         html = self.client.get(f"/analytics/instagram/projects/{self.project.id}/comments?period=all").get_data(as_text=True)
         self.assertIn("40 / 100", html)
         self.assertIn("40% classificados", html)
-        self.assertIn("Comentários importados", html)
+        self.assertIn("Comentários coletados", html)
+        self.assertNotIn("Comentários importados", html)
         self.assertNotIn("80 / 100", html)
+
+    def test_comments_presentation_is_neutral_about_collection_source_and_keeps_replies(self):
+        reply = dict(
+            BASE,
+            comment_external_id="comment-reply",
+            comment_text="Resposta vinculada.",
+            parent_comment_external_id="comment-1",
+        )
+        self.import_rows(BASE, reply)
+        root = db.session.scalar(select(InstagramComment).where(InstagramComment.external_id == "comment-1"))
+
+        listing = self.client.get(
+            f"/analytics/instagram/projects/{self.project.id}/comments?period=all"
+        ).get_data(as_text=True)
+        self.assertIn("Comentários coletados, observações históricas e classificação rastreável.", listing)
+        self.assertNotIn("Comentários importados", listing)
+
+        detail = self.client.get(
+            f"/analytics/instagram/projects/{self.project.id}/comments/{root.id}"
+        ).get_data(as_text=True)
+        self.assertIn('<h2 id="instagram-comment-replies" class="h5">Respostas</h2>', detail)
+        self.assertNotIn("Respostas importadas", detail)
+        self.assertIn("Resposta vinculada.", detail)
 
     def test_routes_ownership_csrf_archived_read_only_and_partial_filters(self):
         self.import_rows(BASE)
@@ -423,6 +528,236 @@ class InstagramCommentsTests(unittest.TestCase):
 
 
 class InstagramCommentsMigrationTests(unittest.TestCase):
+    def test_text_unavailable_migration_is_reversible_when_no_unavailable_text_exists(self):
+        from app import create_app
+
+        migrations = str(Path(__file__).resolve().parents[1] / "migrations")
+        with tempfile.TemporaryDirectory(prefix="pesquisapdf-comment-text-migration-") as root:
+            database = Path(root) / "platform.sqlite3"
+            app = create_app({
+                "TESTING": True,
+                "SQLALCHEMY_DATABASE_URI": f"sqlite:///{database.as_posix()}",
+                "PLATFORM_DATA_DIR": root,
+                "SECRET_KEY": "comments-text-migration-test-only",
+            })
+            with app.app_context():
+                upgrade(directory=migrations, revision="d2e1f0a9b8c7")
+                with db.engine.connect() as connection:
+                    self.assertEqual(connection.exec_driver_sql("PRAGMA foreign_keys").scalar_one(), 1)
+                before = {column["name"]: column for column in inspect(db.engine).get_columns("instagram_comments")}
+                self.assertFalse(before["original_text"]["nullable"])
+
+                # Seed a complete pre-existing comment lineage before the
+                # nullable change: root/reply links, a text version and its
+                # human assessment must all survive both schema operations.
+                user = User(name="Migration user", email="migration@example.org")
+                user.set_password("migration-test-only")
+                db.session.add(user)
+                db.session.flush()
+                project = AnalyticsProject(owner_user_id=user.id, name="Projeto de migration")
+                account = InstagramAccount(
+                    analytics_project=project,
+                    username="migration_account",
+                    username_normalized="migration_account",
+                )
+                media = InstagramMedia(
+                    instagram_account=account,
+                    external_id="migration-media",
+                    caption_original="Publicação preservada",
+                    published_at=datetime(2026, 10, 1, tzinfo=timezone.utc),
+                )
+                root = InstagramComment(
+                    instagram_media=media,
+                    external_id="migration-root",
+                    published_at=datetime(2026, 10, 2, tzinfo=timezone.utc),
+                    original_text="Texto original preservado.",
+                )
+                reply = InstagramComment(
+                    instagram_media=media,
+                    external_id="migration-reply",
+                    parent=root,
+                    published_at=datetime(2026, 10, 2, 1, tzinfo=timezone.utc),
+                    original_text="Resposta preservada.",
+                )
+                text_version = InstagramCommentTextVersion(
+                    instagram_comment=root,
+                    text="Texto original preservado.",
+                    content_hash="a" * 64,
+                    first_observed_at=datetime(2026, 10, 2, tzinfo=timezone.utc),
+                    is_original=True,
+                )
+                assessment = InstagramCommentAssessment(
+                    instagram_comment=root,
+                    text_version=text_version,
+                    source="manual",
+                    reviewer_user_id=user.id,
+                    sentiment="positive",
+                    needs_response=False,
+                    risk="none",
+                )
+                db.session.add_all((project, account, media, root, reply, text_version, assessment))
+                db.session.commit()
+                root_id, reply_id = root.id, reply.id
+                version_id, assessment_id = text_version.id, assessment.id
+
+                upgrade(directory=migrations, revision="e3f4a5b6c7d8")
+                after_upgrade = {
+                    column["name"]: column for column in inspect(db.engine).get_columns("instagram_comments")
+                }
+                self.assertTrue(after_upgrade["original_text"]["nullable"])
+                self.assertIn(
+                    "ck_instagram_comment_original_text",
+                    {item["name"] for item in inspect(db.engine).get_check_constraints("instagram_comments")},
+                )
+                with db.engine.connect() as connection:
+                    self.assertEqual(connection.exec_driver_sql("PRAGMA foreign_keys").scalar_one(), 1)
+                    self.assertEqual(
+                        connection.exec_driver_sql("SELECT version_num FROM alembic_version").scalar_one(),
+                        "e3f4a5b6c7d8",
+                    )
+
+                # Existing canonical rows and their linked history remain
+                # intact after SQLite's batch table rebuild.
+                db.session.remove()
+                preserved_root = db.session.get(InstagramComment, root_id)
+                preserved_reply = db.session.get(InstagramComment, reply_id)
+                preserved_version = db.session.get(InstagramCommentTextVersion, version_id)
+                preserved_assessment = db.session.get(InstagramCommentAssessment, assessment_id)
+                self.assertEqual(preserved_root.original_text, "Texto original preservado.")
+                self.assertEqual(preserved_reply.parent_comment_id, root_id)
+                self.assertEqual(preserved_version.instagram_comment_id, root_id)
+                self.assertEqual(preserved_assessment.instagram_comment_text_version_id, version_id)
+                self.assertEqual(db.session.execute(text("PRAGMA foreign_key_check")).all(), [])
+
+                # A populated NULL is a deliberate data state after this
+                # revision. Downgrade must fail rather than inventing or
+                # destroying content in order to restore NOT NULL.
+                unavailable = InstagramComment(
+                    instagram_media_id=preserved_root.instagram_media_id,
+                    external_id="migration-text-unavailable",
+                    published_at=datetime(2026, 10, 3, tzinfo=timezone.utc),
+                    original_text=None,
+                )
+                db.session.add(unavailable)
+                db.session.commit()
+                unavailable_id = unavailable.id
+                # flask_migrate translates a migration RuntimeError into the
+                # CLI-compatible SystemExit(1); that is the explicit block.
+                with self.assertRaises(SystemExit) as blocked_downgrade:
+                    downgrade(directory=migrations, revision="d2e1f0a9b8c7")
+                self.assertEqual(blocked_downgrade.exception.code, 1)
+                db.session.remove()
+                with db.engine.connect() as connection:
+                    self.assertEqual(connection.exec_driver_sql("PRAGMA foreign_keys").scalar_one(), 1)
+                    self.assertEqual(
+                        connection.exec_driver_sql("SELECT version_num FROM alembic_version").scalar_one(),
+                        "e3f4a5b6c7d8",
+                    )
+                self.assertEqual(db.session.get(InstagramComment, root_id).original_text, "Texto original preservado.")
+                self.assertEqual(db.session.get(InstagramComment, reply_id).parent_comment_id, root_id)
+                self.assertIsNotNone(db.session.get(InstagramCommentAssessment, assessment_id))
+
+                # Removing only the synthetic unavailable row permits a safe
+                # rollback while preserving all pre-existing linked records.
+                db.session.delete(db.session.get(InstagramComment, unavailable_id))
+                db.session.commit()
+                downgrade(directory=migrations, revision="d2e1f0a9b8c7")
+                after_downgrade = {
+                    column["name"]: column for column in inspect(db.engine).get_columns("instagram_comments")
+                }
+                self.assertFalse(after_downgrade["original_text"]["nullable"])
+                with db.engine.connect() as connection:
+                    self.assertEqual(connection.exec_driver_sql("PRAGMA foreign_keys").scalar_one(), 1)
+                    self.assertEqual(
+                        connection.exec_driver_sql("SELECT version_num FROM alembic_version").scalar_one(),
+                        "d2e1f0a9b8c7",
+                    )
+                db.session.remove()
+                self.assertEqual(db.session.get(InstagramComment, root_id).original_text, "Texto original preservado.")
+                self.assertEqual(db.session.get(InstagramComment, reply_id).parent_comment_id, root_id)
+                self.assertEqual(db.session.get(InstagramCommentTextVersion, version_id).instagram_comment_id, root_id)
+                self.assertEqual(
+                    db.session.get(InstagramCommentAssessment, assessment_id).instagram_comment_text_version_id,
+                    version_id,
+                )
+                self.assertEqual(db.session.execute(text("PRAGMA foreign_key_check")).all(), [])
+                db.session.remove()
+                db.engine.dispose()
+
+    def test_sqlite_fk_guard_rejects_an_active_transaction_without_touching_schema(self):
+        migration = import_module(
+            "migrations.versions.e3f4a5b6c7d8_permite_texto_indisponivel_em_comentarios"
+        )
+        engine = sa.create_engine("sqlite://")
+        statements: list[str] = []
+
+        def record_sql(_connection, _cursor, statement, _parameters, _context, _executemany):
+            statements.append(statement)
+
+        sa.event.listen(engine, "before_cursor_execute", record_sql)
+        try:
+            with engine.connect() as connection:
+                self.assertEqual(connection.exec_driver_sql("PRAGMA foreign_keys").scalar_one(), 1)
+                connection.exec_driver_sql("CREATE TABLE migration_fk_guard_probe (id INTEGER PRIMARY KEY)")
+                connection.commit()
+                transaction = connection.begin()
+                try:
+                    connection.exec_driver_sql("INSERT INTO migration_fk_guard_probe (id) VALUES (1)")
+                    self.assertTrue(migration._sqlite_driver_transaction_active(connection))
+                    with Operations.context(MigrationContext.configure(connection)):
+                        with self.assertRaisesRegex(RuntimeError, "transação SQLite ativa"):
+                            migration._alter_original_text_nullability(
+                                nullable=True,
+                                constraint_sql="original_text IS NULL OR length(trim(original_text)) > 0",
+                            )
+                    self.assertEqual(connection.exec_driver_sql("PRAGMA foreign_keys").scalar_one(), 1)
+                    self.assertTrue(migration._sqlite_driver_transaction_active(connection))
+                    self.assertFalse(any("FOREIGN_KEYS=OFF" in statement.upper().replace(" ", "") for statement in statements))
+                    self.assertFalse(any("DROP TABLE INSTAGRAM_COMMENTS" in statement.upper() for statement in statements))
+                finally:
+                    transaction.rollback()
+                self.assertEqual(connection.exec_driver_sql("PRAGMA foreign_keys").scalar_one(), 1)
+                self.assertEqual(connection.exec_driver_sql("PRAGMA foreign_key_check").all(), [])
+        finally:
+            sa.event.remove(engine, "before_cursor_execute", record_sql)
+            engine.dispose()
+
+    def test_sqlite_fk_state_is_restored_after_a_controlled_batch_failure(self):
+        migration = import_module(
+            "migrations.versions.e3f4a5b6c7d8_permite_texto_indisponivel_em_comentarios"
+        )
+        engine = sa.create_engine("sqlite://")
+        statements: list[str] = []
+
+        def record_sql(_connection, _cursor, statement, _parameters, _context, _executemany):
+            statements.append(statement)
+
+        sa.event.listen(engine, "before_cursor_execute", record_sql)
+        try:
+            with engine.connect() as connection:
+                self.assertEqual(connection.exec_driver_sql("PRAGMA foreign_keys").scalar_one(), 1)
+                with Operations.context(MigrationContext.configure(connection)):
+                    with patch.object(
+                        migration.op,
+                        "batch_alter_table",
+                        side_effect=RuntimeError("batch controlado"),
+                    ):
+                        with self.assertRaisesRegex(RuntimeError, "batch controlado"):
+                            migration._alter_original_text_nullability(
+                                nullable=True,
+                                constraint_sql="original_text IS NULL OR length(trim(original_text)) > 0",
+                            )
+                normalized = [statement.upper().replace(" ", "") for statement in statements]
+                self.assertLess(
+                    normalized.index("PRAGMAFOREIGN_KEYS=OFF"),
+                    normalized.index("PRAGMAFOREIGN_KEYS=ON"),
+                )
+                self.assertEqual(connection.exec_driver_sql("PRAGMA foreign_keys").scalar_one(), 1)
+                self.assertEqual(connection.exec_driver_sql("PRAGMA foreign_key_check").all(), [])
+        finally:
+            sa.event.remove(engine, "before_cursor_execute", record_sql)
+            engine.dispose()
+
     def test_comments_migration_is_a_reversible_child_of_phase_six_head(self):
         from app import create_app
 

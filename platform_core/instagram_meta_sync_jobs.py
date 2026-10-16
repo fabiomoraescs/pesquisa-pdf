@@ -67,6 +67,8 @@ def enqueue_meta_sync_run(
     connection_id: str,
     provider: str,
     publication_window: PublicationWindow,
+    *,
+    include_comments: bool = False,
 ) -> tuple[AnalyticsRun, bool]:
     """Cria uma execução pendente, ou reutiliza a ativa do mesmo projeto.
 
@@ -95,6 +97,9 @@ def enqueue_meta_sync_run(
             "execution_mode": "durable_worker",
             "connection_id": connection_id,
             "provider": provider,
+            # O default explícito preserva o custo e a semântica de jobs já
+            # existentes. Somente a futura interface poderá habilitar a coleta.
+            "include_comments": include_comments is True,
             **publication_window.as_parameters(),
         },
         record_count=0,

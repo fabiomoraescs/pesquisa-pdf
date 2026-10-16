@@ -1,8 +1,10 @@
 """Sincronização Meta para os modelos canônicos do Analytics Instagram.
 
 CSV/XLSX e Meta API convergem em ``AnalyticsRun``, ``InstagramMedia``,
-``InstagramMediaObservation`` e ``InstagramAccountSnapshot``. Este módulo não
-persiste comentários: essa coleta pertence deliberadamente à Fase 10.2.2.
+``InstagramMediaObservation``, ``InstagramAccountSnapshot`` e, quando
+explicitamente solicitado, comentários canônicos. A coleta de comentários
+permanece opcional para preservar runs anteriores e o custo da sincronização
+padrão.
 """
 
 from __future__ import annotations
@@ -17,12 +19,19 @@ from sqlalchemy import select
 
 from .extensions import db
 from .instagram_meta import (
+    CanonicalMetaComment,
     INSTAGRAM_LOGIN_INSIGHTS_SCOPE,
     InstagramMetaError,
     InstagramMetaSettings,
     InstagramTokenCipher,
     log_meta_capability_failure,
     profile_identity,
+)
+from .instagram_comment_storage import (
+    InstagramCommentMetaPersistenceError,
+    InstagramMetaCommentPersistenceResult,
+    InstagramMetaCommentPersistenceRow,
+    persist_instagram_meta_comments,
 )
 from .models import (
     AnalyticsProject,
@@ -67,6 +76,12 @@ ACCOUNT_FIELDS = (
 _PARTIAL_META_CATEGORIES = frozenset({
     "permission_denied", "unsupported_metric", "not_applicable", "rate_limited", "temporary", "temporary_error",
 })
+# Limites da fotografia completa de comentários dentro de uma única execução.
+# São globais, complementares aos limites por edge do provider: ultrapassá-los
+# falha a run inteira em vez de persistir uma amostra incompleta como total.
+SYNC_COMMENT_MAX_PAGES_PER_SYNC = 1_000
+SYNC_COMMENT_MAX_RECORDS_PER_SYNC = 50_000
+SYNC_COMMENT_MAX_REPLY_EDGES_PER_SYNC = 5_000
 
 
 class InstagramMetaSyncError(ValueError):
@@ -273,6 +288,20 @@ class MetaSyncResult:
     observations_created: int
     snapshot_created: bool
     partial_metric_count: int
+    comments_found: int
+    replies_found: int
+    comment_observations_created: int
+    comment_pages_queried: int
+
+
+@dataclass(frozen=True)
+class _PreparedMetaComments:
+    """Coleta Meta completa, ainda sem qualquer escrita no banco."""
+
+    rows: tuple[InstagramMetaCommentPersistenceRow, ...]
+    root_comments_found: int
+    replies_found: int
+    pages_queried: int
 
 
 @dataclass
@@ -711,6 +740,140 @@ def _prepare_media(
     return profile, prepared, snapshot_values, snapshot_statuses
 
 
+def _comments_requested(run: AnalyticsRun | None, include_comments: bool) -> bool:
+    """Lê a opção imutável do job; runs legados permanecem sem comentários."""
+    if run is None:
+        return include_comments is True
+    parameters = run.parameters_json if isinstance(run.parameters_json, dict) else {}
+    return parameters.get("include_comments") is True
+
+
+def _comment_collection_parts(collection: object) -> tuple[tuple[CanonicalMetaComment, ...], int]:
+    """Verifica o contrato paginado antes de aceitar a coleta como completa."""
+    comments = getattr(collection, "comments", None)
+    pages_queried = getattr(collection, "pages_queried", None)
+    if not isinstance(comments, tuple) or not isinstance(pages_queried, int) or pages_queried < 1:
+        raise InstagramMetaSyncError(
+            "payload_invalid", "A API retornou comentários em formato inesperado."
+        )
+    if any(not isinstance(comment, CanonicalMetaComment) for comment in comments):
+        raise InstagramMetaSyncError(
+            "payload_invalid", "A API retornou comentários em formato inesperado."
+        )
+    return comments, pages_queried
+
+
+def _collect_meta_comments(
+    media_items: list[CanonicalMetaMedia],
+    client: Any,
+    access_token: str,
+    observed_at: datetime,
+) -> _PreparedMetaComments:
+    """Lê raiz e respostas da janela já selecionada, sem persistir nada.
+
+    Uma falha em qualquer edge é propagada para o motor transacional antes de
+    haver escrita canônica. IDs externos só são deduplicados dentro da mesma
+    mídia: o mesmo ID em mídias distintas continua sendo uma identidade válida.
+    """
+    list_roots = getattr(client, "list_media_comments", None)
+    list_replies = getattr(client, "list_comment_replies", None)
+    if not callable(list_roots) or not callable(list_replies):
+        raise InstagramMetaSyncError(
+            "connection_unavailable", "O provider não suporta sincronização de comentários."
+        )
+
+    rows: list[InstagramMetaCommentPersistenceRow] = []
+    seen_keys: set[tuple[str, str]] = set()
+    root_comments_found = replies_found = pages_queried = reply_edges_queried = 0
+
+    def add_pages(pages: int) -> None:
+        nonlocal pages_queried
+        pages_queried += pages
+        if pages_queried > SYNC_COMMENT_MAX_PAGES_PER_SYNC:
+            raise InstagramMetaSyncError(
+                "pagination_limit", "A sincronização excedeu o limite seguro de páginas de comentários."
+            )
+
+    def append_comment(comment: CanonicalMetaComment, media_external_id: str, parent_external_id: str | None) -> None:
+        if comment.media_external_id not in {None, media_external_id}:
+            raise InstagramMetaSyncError(
+                "payload_invalid", "A API retornou um comentário associado a outra publicação."
+            )
+        if comment.parent_comment_external_id != parent_external_id:
+            raise InstagramMetaSyncError(
+                "payload_invalid", "A API retornou uma hierarquia de comentários inconsistente."
+            )
+        key = (media_external_id, comment.external_id)
+        if key in seen_keys:
+            raise InstagramMetaSyncError(
+                "payload_invalid", "A API retornou o mesmo comentário mais de uma vez para a mesma publicação."
+            )
+        seen_keys.add(key)
+        if len(seen_keys) > SYNC_COMMENT_MAX_RECORDS_PER_SYNC:
+            raise InstagramMetaSyncError(
+                "pagination_limit", "A sincronização excedeu o limite seguro de comentários."
+            )
+        rows.append(InstagramMetaCommentPersistenceRow(
+            media_external_id=media_external_id,
+            comment_external_id=comment.external_id,
+            parent_comment_external_id=parent_external_id,
+            comment_text=comment.text,
+            published_at=comment.published_at,
+            observed_at=observed_at,
+            author_username=comment.author_username,
+            author_external_id=comment.author_external_id,
+            like_count=comment.like_count,
+            replies_count=comment.replies_count,
+        ))
+
+    for media in media_items:
+        root_comments, root_pages = _comment_collection_parts(list_roots(media.external_id, access_token))
+        add_pages(root_pages)
+        for root in root_comments:
+            append_comment(root, media.external_id, None)
+            root_comments_found += 1
+            reply_edges_queried += 1
+            if reply_edges_queried > SYNC_COMMENT_MAX_REPLY_EDGES_PER_SYNC:
+                raise InstagramMetaSyncError(
+                    "pagination_limit", "A sincronização excedeu o limite seguro de threads de comentários."
+                )
+            # O contrato atual dos dois providers não inclui replies_count no
+            # request. Assim não se presume que uma resposta nula ou ausente
+            # equivale a zero: cada raiz recebe sua edge de respostas.
+            replies, reply_pages = _comment_collection_parts(list_replies(root.external_id, access_token))
+            add_pages(reply_pages)
+            for reply in replies:
+                append_comment(reply, media.external_id, root.external_id)
+                replies_found += 1
+
+    return _PreparedMetaComments(
+        rows=tuple(rows),
+        root_comments_found=root_comments_found,
+        replies_found=replies_found,
+        pages_queried=pages_queried,
+    )
+
+
+def _comment_sync_metadata(
+    prepared: _PreparedMetaComments,
+    persisted: InstagramMetaCommentPersistenceResult,
+) -> dict[str, int]:
+    """Metadados agregados: nunca inclui texto, autoria, IDs ou tokens."""
+    return {
+        "root_comments_found": prepared.root_comments_found,
+        "replies_found": prepared.replies_found,
+        "comments_created": persisted.comments_created,
+        "comments_reused": persisted.comments_reused,
+        "root_comments_created": persisted.root_comments_created,
+        "root_comments_reused": persisted.root_comments_reused,
+        "replies_created": persisted.replies_created,
+        "replies_reused": persisted.replies_reused,
+        "text_versions_created": persisted.text_versions_created,
+        "observations_created": persisted.observations_created,
+        "pages_queried": prepared.pages_queried,
+    }
+
+
 def _update_media_from_meta(media: InstagramMedia, item: CanonicalMetaMedia, observed_at: datetime) -> None:
     """Atualiza somente metadados objetivos oficiais, sem apagar informação.
 
@@ -741,6 +904,7 @@ def sync_meta_connection(
     client: Any,
     *,
     run: AnalyticsRun | None = None,
+    include_comments: bool = False,
 ) -> MetaSyncResult:
     """Lê a API e persiste uma execução canônica de modo transacional.
 
@@ -762,8 +926,13 @@ def sync_meta_connection(
         access_token = InstagramTokenCipher(settings.token_encryption_key).decrypt(connection.encrypted_access_token)
         observed_at = utcnow()
         publication_window = publication_window_from_run(run) if run is not None else None
+        comments_enabled = _comments_requested(run, include_comments)
         _, media_items, snapshot_values, snapshot_statuses = _prepare_media(
             connection, client, access_token, _MetricCapabilityCache(), publication_window,
+        )
+        prepared_comments = (
+            _collect_meta_comments(media_items, client, access_token, observed_at)
+            if comments_enabled else None
         )
 
         existing_media = {
@@ -814,6 +983,7 @@ def sync_meta_connection(
             "schema_version": META_SYNC_VERSION,
             "provider": connection.provider,
             "execution_mode": "durable_worker" if is_durable_run else "inline",
+            "include_comments": comments_enabled,
             "media_count": len(media_items),
             "metric_statuses": {
                 "media": {item.external_id: item.metric_statuses for item in media_items if item.metric_statuses},
@@ -854,6 +1024,26 @@ def sync_meta_connection(
                 **item.metrics,
             ))
 
+        # A mídia precisa existir para a chave canônica do comentário, mas o
+        # flush ainda pertence à mesma transação: uma edge com falha desfaz
+        # também estas mídias, suas observações e o snapshot posterior.
+        db.session.flush()
+        comment_persistence: InstagramMetaCommentPersistenceResult | None = None
+        if prepared_comments is not None:
+            try:
+                comment_persistence = persist_instagram_meta_comments(project, run, prepared_comments.rows)
+            except InstagramCommentMetaPersistenceError as error:
+                raise InstagramMetaSyncError(
+                    "payload_invalid", "A API retornou comentários em formato inconsistente."
+                ) from error
+            # ``parameters_json`` não rastreia mutações internas de dict no
+            # SQLAlchemy; uma nova referência garante a gravação da telemetria
+            # depois do flush que criou mídias e comentários.
+            run.parameters_json = {
+                **existing_parameters,
+                "comments": _comment_sync_metadata(prepared_comments, comment_persistence),
+            }
+
         db.session.add(InstagramAccountSnapshot(
             instagram_account=account,
             analytics_run=run,
@@ -871,6 +1061,12 @@ def sync_meta_connection(
             observations_created=len(media_items),
             snapshot_created=True,
             partial_metric_count=partial_metric_count,
+            comments_found=prepared_comments.root_comments_found if prepared_comments is not None else 0,
+            replies_found=prepared_comments.replies_found if prepared_comments is not None else 0,
+            comment_observations_created=(
+                comment_persistence.observations_created if comment_persistence is not None else 0
+            ),
+            comment_pages_queried=prepared_comments.pages_queried if prepared_comments is not None else 0,
         )
         db.session.commit()
         return result
