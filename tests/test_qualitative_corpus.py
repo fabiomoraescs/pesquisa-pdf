@@ -566,7 +566,7 @@ class QualitativeCorpusTests(unittest.TestCase):
     def test_project_creation_routes_permission_and_sidebar(self):
         self.assertEqual(self.client.get("/analise-qualitativa").status_code, 403)
         self.assertEqual(self.client.get("/projetos/qualitativos/novo").status_code, 403)
-        self.assertIn('platform-nav-unavailable', self.client.get("/").get_data(as_text=True))
+        self.assertIn('platform-nav-tool-unavailable', self.client.get("/").get_data(as_text=True))
         self.allow()
         page = self.client.get("/projetos/qualitativos/novo")
         self.assertEqual(page.status_code, 200)

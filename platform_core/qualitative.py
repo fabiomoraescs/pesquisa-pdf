@@ -17,7 +17,7 @@ from .models import (
     QualitativeExcerpt, QualitativeMemo, QualitativeRejection, User,
 )
 from .scraping_types import QUALITATIVE, QUALITATIVE_TOOL
-from .services import can_use_tool, get_project_for_user
+from .services import can_access_tool, get_project_for_user
 
 
 QUALITATIVE_STRATEGIES = frozenset({"deductive", "inductive", "hybrid"})
@@ -44,7 +44,12 @@ def get_qualitative_analysis(analysis_id: str, user: User, *, manage: bool = Fal
     from .analyses import get_analysis
 
     analysis = get_analysis(analysis_id, user)
-    if analysis.tool_id != QUALITATIVE_TOOL or not can_use_tool(user, QUALITATIVE_TOOL):
+    if analysis.tool_id != QUALITATIVE_TOOL:
+        abort(404)
+    # Este resolvedor historicamente usa 404 para não distinguir ausência de
+    # autorização de ausência da Base. ``can_access_tool`` agrega a nova
+    # visibilidade administrativa sem alterar esse contrato.
+    if not can_access_tool(user, QUALITATIVE_TOOL):
         abort(404)
     if not analysis.project_id:
         abort(404)

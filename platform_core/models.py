@@ -94,6 +94,31 @@ class Tool(db.Model):
     active: Mapped[bool] = mapped_column(db.Boolean, default=True, nullable=False)
 
 
+class ToolVisibilitySetting(db.Model):
+    """Preferência administrativa de apresentação, independente de acesso."""
+
+    __tablename__ = "tool_visibility_settings"
+
+    id: Mapped[str] = mapped_column(db.String(36), primary_key=True, default=lambda: str(uuid4()))
+    scope_type: Mapped[str] = mapped_column(db.String(16), nullable=False)
+    scope_id: Mapped[str] = mapped_column(db.String(80), nullable=False)
+    visible: Mapped[bool] = mapped_column(db.Boolean, nullable=False, default=True)
+    changed_at: Mapped[datetime] = mapped_column(
+        db.DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
+    # O snapshot preserva autoria de uma decisão mesmo se a conta
+    # administrativa for removida de acordo com o fluxo existente.
+    changed_by_id: Mapped[str | None] = mapped_column(
+        db.ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
+    changed_by_name_snapshot: Mapped[str | None] = mapped_column(db.String(160))
+
+    __table_args__ = (
+        UniqueConstraint("scope_type", "scope_id", name="uq_tool_visibility_setting_scope"),
+        CheckConstraint("scope_type IN ('group', 'tool')", name="ck_tool_visibility_setting_scope_type"),
+    )
+
+
 class AssistantAISettings(db.Model):
     """Configuração operacional global dos providers; nunca contém credenciais."""
 

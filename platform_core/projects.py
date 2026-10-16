@@ -14,7 +14,7 @@ from .extensions import db
 from .library_access import available_libraries
 from .models import Project, ProjectLibrary, ProjectVocabularyVersion, VocabularyLibrary
 from .project_lifecycle import ProjectActionError, archive, delete_archived, restore
-from .services import ACCOUNT_LIFECYCLE_LOCK, account_accepts_new_work, can_use_tool, get_project_for_user
+from .services import ACCOUNT_LIFECYCLE_LOCK, account_accepts_new_work, get_project_for_user, require_tool_access
 from .scraping_types import FREE, QUALITATIVE, SYSTEMATIC, TOOL_BY_TYPE
 from .vocabularies import create_project_vocabulary, project_store
 
@@ -22,8 +22,7 @@ projects_bp = Blueprint("projects", __name__)
 
 
 def _require_tool(scrape_type: str) -> None:
-    if not can_use_tool(current_user, TOOL_BY_TYPE[scrape_type]):
-        abort(403)
+    require_tool_access(current_user, TOOL_BY_TYPE[scrape_type])
 
 
 def _summaries(projects: list[Project]) -> dict:

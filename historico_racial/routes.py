@@ -19,7 +19,7 @@ from werkzeug.utils import secure_filename
 from platform_core.extensions import db
 from platform_core.models import Analysis, Project, ProjectLibrary, ProjectVocabularyVersion, VocabularyLibrary
 from platform_core.analyses import analysis_dir, create_analysis, document_paths, get_analysis, preserve_documents, save_error, save_success, systematic_chart_data
-from platform_core.services import ACCOUNT_LIFECYCLE_LOCK, account_accepts_new_work, can_use_tool, get_project_for_user
+from platform_core.services import ACCOUNT_LIFECYCLE_LOCK, account_accepts_new_work, get_project_for_user, require_tool_access
 from platform_core.scraping_types import SYSTEMATIC
 from platform_core.semantic_threshold import DEFAULT as SEMANTIC_THRESHOLD_DEFAULT, normalize as normalize_semantic_threshold
 from platform_core.vocabularies import project_store, register_version
@@ -44,8 +44,7 @@ VOCABULARIO_STORE = VocabularyStore()
 
 
 def _require_project(project_id: UUID):
-    if not can_use_tool(current_user, "document_analysis"):
-        abort(403)
+    require_tool_access(current_user, "document_analysis")
     project = get_project_for_user(str(project_id), current_user)
     if project.scrape_type != SYSTEMATIC:
         abort(404)
@@ -151,8 +150,7 @@ def _executar_job(
 @historico_racial_bp.get("/analise-documental")
 @login_required
 def entrada():
-    if not can_use_tool(current_user, "document_analysis"):
-        abort(403)
+    require_tool_access(current_user, "document_analysis")
     return redirect(url_for("projects.list_projects"))
 
 

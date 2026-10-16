@@ -546,8 +546,9 @@ class DashboardRefinementsTests(unittest.TestCase):
         self.assertNotIn('cdn.plot.ly', html)
         for label in ("Projetos", "Bases", "Documentos nas Bases", "Bases concluídas"):
             self.assertRegex(html, rf'<strong>0</strong>\s*<span>{re.escape(label)}</span>')
-        for name in ("Pesquisa Quanti",):
-            self.assertRegex(html, r'(?s)<span class="platform-nav-unavailable" aria-disabled="true">\s*<svg[^>]*>.*?</svg>\s*<span>' + name + r'</span></span>')
+        # Grupos sem ferramenta disponível não ocupam espaço na navegação.
+        self.assertNotIn("Pesquisa Quanti", html)
+        self.assertNotIn("Editorial", html)
         self.assertFalse(any("chatdoc" in rule.rule.lower() for rule in self.app.url_map.iter_rules()))
         self.assertFalse(any("chatdoc" in name.lower() for name in db.metadata.tables))
 

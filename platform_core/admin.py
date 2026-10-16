@@ -35,7 +35,11 @@ from .scraping_types import LABEL_BY_TOOL
 from .official_libraries import LibraryError, add_entity, add_group, add_variant, change_publication, create_draft, create_imported_draft, set_item_active
 from .library_spreadsheets import MAX_XLSX_BYTES, SpreadsheetImportError, parse_library_xlsx, previews
 from .instagram_meta import InstagramMetaSettings
-from .services import ACCOUNT_LIFECYCLE_LOCK, access_is_active, current_grant, record_audit, replace_grant, tool_catalog
+from .services import (
+    ACCOUNT_LIFECYCLE_LOCK, access_is_active, current_grant, record_audit,
+    replace_grant, set_visibility_preference, tool_catalog,
+    visibility_control_catalog,
+)
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
 
@@ -367,7 +371,85 @@ def permanently_delete_user(user_id: UUID):
 @admin_bp.get("/ferramentas")
 @admin_only
 def tools():
-    return render_template("platform/admin.html", section="tools", tools=tool_catalog())
+    return render_template(
+        "platform/admin.html",
+        section="tools",
+        tools=tool_catalog(),
+        visibility_groups=visibility_control_catalog(),
+    )
+
+
+@admin_bp.post("/visibilidade/<scope_type>/<scope_id>")
+@admin_only
+def set_tool_visibility(scope_type: str, scope_id: str):
+    wants_json = (
+        request.headers.get("X-Requested-With") == "XMLHttpRequest"
+        or request.accept_mimetypes.best == "application/json"
+    )
+
+    def respond(*, ok: bool, changed: bool, visible: bool | None, message: str, status_code: int):
+        if wants_json:
+            return jsonify({
+                "ok": ok,
+                "changed": changed,
+                "scope_type": scope_type,
+                "scope_id": scope_id,
+                "visible": visible,
+                "message": message,
+            }), status_code
+        if ok:
+            flash(message, "success" if changed else "info")
+            return redirect(url_for("admin.tools"))
+        flash(message, "danger")
+        return redirect(url_for("admin.tools"))
+
+    raw_visible = request.form.get("visible")
+    if raw_visible not in {"true", "false"}:
+        if wants_json:
+            return respond(
+                ok=False,
+                changed=False,
+                visible=None,
+                message="Estado de visibilidade inválido.",
+                status_code=400,
+            )
+        abort(400)
+    visible = raw_visible == "true"
+    try:
+        changed = set_visibility_preference(
+            current_user,
+            scope_type=scope_type,
+            scope_id=scope_id,
+            visible=visible,
+        )
+        if changed:
+            db.session.commit()
+    except ValueError:
+        if wants_json:
+            return respond(
+                ok=False,
+                changed=False,
+                visible=None,
+                message="Configuração de visibilidade inválida.",
+                status_code=400,
+            )
+        abort(400)
+    except SQLAlchemyError:
+        db.session.rollback()
+        return respond(
+            ok=False,
+            changed=False,
+            visible=None,
+            message="Não foi possível atualizar a visibilidade com segurança.",
+            status_code=500,
+        )
+    return respond(
+        ok=True,
+        changed=changed,
+        visible=visible,
+        message="Visibilidade atualizada." if changed else "A visibilidade já estava configurada dessa forma.",
+        status_code=200 if wants_json else 302,
+    )
 
 
 @admin_bp.post("/ferramentas/<tool_id>/estado")

@@ -213,7 +213,7 @@ from .models import (
     InstagramTaxonomyCategory,
     InstagramTaxonomyDimension,
 )
-from .services import ANALYTICS_INSTAGRAM_TOOL, can_use_tool
+from .services import ANALYTICS_INSTAGRAM_TOOL, require_tool_access
 
 
 instagram_bp = Blueprint("instagram", __name__, url_prefix="/analytics/instagram")
@@ -223,8 +223,7 @@ _META_OAUTH_STATE_TTL_SECONDS = 600
 
 
 def _require_tool() -> None:
-    if not can_use_tool(current_user, ANALYTICS_INSTAGRAM_TOOL):
-        abort(403)
+    require_tool_access(current_user, ANALYTICS_INSTAGRAM_TOOL)
 
 
 def _project_for_current_user(project_id: UUID, *, active: bool = False) -> AnalyticsProject:

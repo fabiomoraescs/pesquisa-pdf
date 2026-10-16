@@ -19,6 +19,8 @@
   --plot-text: #183142;
   --plot-grid: #d9e1e7;
   --sankey-link: rgba(31, 78, 120, .35);
+  --tool-visibility-switch-on: #198754;
+  --tool-visibility-switch-focus: rgba(25, 135, 84, .32);
 }
 
 html[data-theme="dark"] {
@@ -42,6 +44,8 @@ html[data-theme="dark"] {
   --plot-text: #edf4f8;
   --plot-grid: #415866;
   --sankey-link: rgba(163, 212, 246, .36);
+  --tool-visibility-switch-on: #3dbd7d;
+  --tool-visibility-switch-focus: rgba(61, 189, 125, .48);
   color-scheme: dark;
 }
 
@@ -291,6 +295,14 @@ html[data-theme="dark"] .alert-warning { background: #493817; color: #fff0bf; }
 .form-check-input { background-color: var(--input); border-color: var(--border); cursor: pointer; }
 .form-check-input:checked { background-color: var(--blue); border-color: var(--blue); }
 .form-check-input:focus { border-color: var(--blue); box-shadow: 0 0 0 .25rem var(--focus-ring); }
+.form-check-input.tool-visibility-child-switch:checked {
+  background-color: var(--tool-visibility-switch-on);
+  border-color: var(--tool-visibility-switch-on);
+}
+.form-check-input.tool-visibility-child-switch:checked:focus {
+  border-color: var(--tool-visibility-switch-on);
+  box-shadow: 0 0 0 .25rem var(--tool-visibility-switch-focus);
+}
 .v3-threshold output { color: var(--blue); font-variant-numeric: tabular-nums; font-weight: 700; }
 .threshold-labels { color: var(--muted); font-size: .75rem; gap: .5rem; }
 .semantic-warning {
@@ -407,6 +419,15 @@ html[data-theme="dark"] .terms-separator-error span { color: #fecaca; opacity: .
 }
 html[data-theme="dark"] .btn-close { filter: invert(1) grayscale(1) brightness(2); }
 html[data-theme="dark"] .form-check-input:checked { background-color: var(--blue); border-color: var(--blue); }
+/* Declarada após o padrão escuro: esta regra precisa vencê-lo para os filhos. */
+html[data-theme="dark"] .form-check-input.tool-visibility-child-switch:checked {
+  background-color: var(--tool-visibility-switch-on);
+  border-color: var(--tool-visibility-switch-on);
+}
+html[data-theme="dark"] .form-check-input.tool-visibility-child-switch:checked:focus {
+  border-color: var(--tool-visibility-switch-on);
+  box-shadow: 0 0 0 .25rem var(--tool-visibility-switch-focus);
+}
 .loading-overlay {
   align-items: center;
   background: rgba(7, 15, 21, .62);

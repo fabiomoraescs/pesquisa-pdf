@@ -21,7 +21,7 @@ class SidebarHeaderTests(unittest.TestCase):
         html = self.client.get("/").get_data(as_text=True)
         nav = html.split('<nav class="platform-nav"', 1)[1].split("</nav>", 1)[0]
         icons = re.findall(r'<svg class="platform-icon"[^>]*>(.*?)</svg>', nav, re.S)
-        self.assertGreaterEqual(len(icons), 6)
+        self.assertGreaterEqual(len(icons), 4)
         self.assertEqual(len(icons), len(set(icons)))
         analytics = re.search(r'<summary[^>]*>(<svg.*?</svg>)<span>Analytics</span></summary>', nav, re.S)
         self.assertIsNotNone(analytics)
@@ -69,9 +69,7 @@ class SidebarHeaderTests(unittest.TestCase):
         positions = [nav.index(marker) for marker in (
             'href="/"', '<span>Pesquisa Quali</span>',
             '>Raspagem por termos<', '>Raspagem estruturada<', '>Análise Documental<',
-            '>Análise de Comentários<', '<span>Pesquisa Quanti</span>',
-            '<span>Editorial</span>', '>ChatDoc<', '>Diagramador<',
-            '<span>Analytics</span>', '>Instagram<', '>SEO<',
+            '<span>Analytics</span>', '>Instagram<',
             'id="platform-admin-toggle"',
         )]
         self.assertEqual(positions, sorted(positions))
@@ -85,13 +83,13 @@ class SidebarHeaderTests(unittest.TestCase):
         self.assertIn('Raspagem por termos', nav)
         self.assertIn('Raspagem estruturada', nav)
         self.assertIn('Análise Documental', nav)
-        self.assertIn('Análise de Comentários', nav)
-        self.assertIn('Pesquisa Quanti', nav)
-        self.assertIn('Editorial', nav)
-        self.assertIn('ChatDoc', nav)
-        self.assertIn('Diagramador', nav)
         self.assertIn('Instagram', nav)
-        self.assertIn('SEO', nav)
+        self.assertNotIn('Análise de Comentários', nav)
+        self.assertNotIn('Pesquisa Quanti', nav)
+        self.assertNotIn('Editorial', nav)
+        self.assertNotIn('ChatDoc', nav)
+        self.assertNotIn('Diagramador', nav)
+        self.assertNotIn('SEO', nav)
         self.assertNotIn('>Bases de análise</a>', nav)
         self.assertNotIn('Projetos arquivados', nav)
         self.assertNotIn('href="/chatdoc"', nav)
@@ -106,10 +104,9 @@ class SidebarHeaderTests(unittest.TestCase):
         ):
             self.assertNotIn(legacy_name, nav)
         self.assertNotIn('class="platform-nav-subdropdown"', nav)
-        self.assertIn('aria-disabled="true"', nav)
+        self.assertNotIn('aria-disabled="true"', nav)
         self.assertIn('aria-expanded="true"', nav)
-        self.assertEqual(nav.count('class="platform-admin-submenu platform-nav-dropdown-menu"'), 3)
-        self.assertNotIn('platform-nav-dropdown-menu">\n      <span class="platform-nav-unavailable"', nav)
+        self.assertEqual(nav.count('class="platform-admin-submenu platform-nav-dropdown-menu"'), 2)
         self.assertIn('aria-controls="platform-admin-submenu"', nav)
         self.assertIn('id="platform-admin-submenu"', nav)
         self.assertIn('id="platform-menu-toggle"', html)

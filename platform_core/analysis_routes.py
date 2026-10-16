@@ -13,7 +13,7 @@ from .analyses import analysis_dir, delete_analysis, documents_for, get_analysis
 from .extensions import db
 from .models import Analysis, Project
 from .scraping_types import FREE, QUALITATIVE, QUALITATIVE_TOOL, SYSTEMATIC, TOOL_BY_TYPE, tool_for_project
-from .services import can_use_tool, get_project_for_user
+from .services import get_project_for_user, require_tool_access
 
 
 analyses_bp = Blueprint("analyses", __name__, url_prefix="/analises")
@@ -21,8 +21,7 @@ analyses_bp = Blueprint("analyses", __name__, url_prefix="/analises")
 
 def _authorized(analysis_id: UUID) -> Analysis:
     analysis = get_analysis(str(analysis_id), current_user)
-    if not can_use_tool(current_user, analysis.tool_id):
-        abort(403)
+    require_tool_access(current_user, analysis.tool_id)
     if analysis.project_id:
         get_project_for_user(analysis.project_id, current_user, include_inactive=True)
     return analysis
@@ -47,8 +46,7 @@ def _project_for_analysis(analysis: Analysis) -> Project | None:
 @analyses_bp.get("")
 @login_required
 def standard_history():
-    if not can_use_tool(current_user, "pdf_scraper"):
-        abort(403)
+    require_tool_access(current_user, "pdf_scraper")
     items = db.session.scalars(select(Analysis).where(
         Analysis.user_id == current_user.id, Analysis.project_id.is_(None)
     ).order_by(Analysis.created_at.desc())).all()
@@ -74,8 +72,7 @@ def systematic_history():
 
 def _type_history(scrape_type: str):
     tool_id = TOOL_BY_TYPE[scrape_type]
-    if not can_use_tool(current_user, tool_id):
-        abort(403)
+    require_tool_access(current_user, tool_id)
     owned_projects = db.session.scalars(select(Project).where(
         Project.owner_user_id == current_user.id, Project.scrape_type == scrape_type,
         Project.deleted_at.is_(None)
@@ -96,8 +93,7 @@ def _type_history(scrape_type: str):
 @login_required
 def project_history(project_id: UUID):
     project = get_project_for_user(str(project_id), current_user, include_inactive=True)
-    if not can_use_tool(current_user, tool_for_project(project)):
-        abort(403)
+    require_tool_access(current_user, tool_for_project(project))
     if project.scrape_type == QUALITATIVE:
         return redirect(url_for("qualitative.project_workspace", project_id=project.id))
     items = db.session.scalars(select(Analysis).where(

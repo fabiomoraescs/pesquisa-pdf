@@ -7,7 +7,7 @@ from sqlalchemy import or_
 
 from .extensions import db
 from .models import VocabularyLibrary
-from .services import can_use_tool
+from .services import require_tool_access
 
 user_libraries_bp = Blueprint("user_libraries", __name__, url_prefix="/busca-estruturada/bibliotecas")
 
@@ -21,8 +21,7 @@ def library_editor(view):
     @login_required
     def wrapped(*args, **kwargs):
         if private_library_flow():
-            if not can_use_tool(current_user, "document_analysis"):
-                abort(403)
+            require_tool_access(current_user, "document_analysis")
             if "library_id" in kwargs:
                 library = db.session.get(VocabularyLibrary, kwargs["library_id"])
                 if library is None or library.owner_user_id != current_user.id:

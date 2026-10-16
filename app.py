@@ -47,7 +47,7 @@ from platform_core.analysis_routes import analyses_bp
 from platform_core.qualitative_routes import qualitative_bp
 from platform_core.presentation import register_presentation
 from platform_core.cli import register_cli
-from platform_core.services import ANALYTICS_INSTAGRAM_TOOL, ACCOUNT_LIFECYCLE_LOCK, access_is_active, account_accepts_new_work, can_use_tool, get_project_for_user, tool_catalog
+from platform_core.services import ANALYTICS_INSTAGRAM_TOOL, ACCOUNT_LIFECYCLE_LOCK, access_is_active, account_accepts_new_work, can_access_tool, get_project_for_user, navigation_groups_for_user, require_tool_access, tool_catalog
 from platform_core.scraping_types import FREE, LABEL_BY_TOOL, QUALITATIVE, QUALITATIVE_TOOL, SYSTEMATIC, TOOL_BY_TYPE, tool_for_project
 from platform_core.semantic_threshold import normalize as normalize_semantic_threshold, template_settings
 from platform_core.term_input import has_invalid_term_separator
@@ -147,10 +147,11 @@ def _semantic_threshold_template_context():
         assistant_context = assistant_context_for_endpoint(request.endpoint, request.view_args)
     help_registry = load_help_registry()
     return {"semantic_threshold": template_settings(),
-            "free_access": bool(current_user.is_authenticated and can_use_tool(current_user, "pdf_scraper")),
-            "systematic_access": bool(current_user.is_authenticated and can_use_tool(current_user, "document_analysis")),
-            "qualitative_access": bool(current_user.is_authenticated and can_use_tool(current_user, QUALITATIVE_TOOL)),
-            "instagram_access": bool(current_user.is_authenticated and can_use_tool(current_user, ANALYTICS_INSTAGRAM_TOOL)),
+            "free_access": bool(current_user.is_authenticated and can_access_tool(current_user, "pdf_scraper")),
+            "systematic_access": bool(current_user.is_authenticated and can_access_tool(current_user, "document_analysis")),
+            "qualitative_access": bool(current_user.is_authenticated and can_access_tool(current_user, QUALITATIVE_TOOL)),
+            "instagram_access": bool(current_user.is_authenticated and can_access_tool(current_user, ANALYTICS_INSTAGRAM_TOOL)),
+            "navigation_groups": navigation_groups_for_user(current_user) if current_user.is_authenticated else (),
             "assistant_context": assistant_context,
             "platform_help": tutorial_for(assistant_context.get("key")),
             "platform_help_for": tutorial_for,
@@ -200,19 +201,16 @@ def _enforce_platform_access():
     elif ((request.path == "/" and request.method == "POST")
           or request.path == "/raspagem-livre"
           or request.path.startswith(("/resultado/", "/download/", "/api/progresso/"))):
-        if not can_use_tool(current_user, "pdf_scraper"):
-            abort(403)
+        require_tool_access(current_user, "pdf_scraper")
     elif request.path.startswith(("/historico-racial", "/analise-documental")):
-        if not can_use_tool(current_user, "document_analysis"):
-            abort(403)
+        require_tool_access(current_user, "document_analysis")
     else:
         # Ferramentas futuras cadastradas com prefixo próprio também recebem
         # proteção por plano, sem criar constantes duplicadas na navegação.
         for tool in db.session.scalars(select(Tool).where(Tool.route.notin_(("/", "/analise-documental")))):
             prefix = tool.route.rstrip("/")
             if prefix and (request.path == prefix or request.path.startswith(prefix + "/")):
-                if not can_use_tool(current_user, tool.id):
-                    abort(403)
+                require_tool_access(current_user, tool.id)
                 break
     return None
 
@@ -774,7 +772,7 @@ def home():
     """Mesa de trabalho baseada apenas em metadados persistidos e autorizados."""
     available_project_types = [
         kind for kind in TOOL_BY_TYPE
-        if can_use_tool(current_user, TOOL_BY_TYPE[kind])
+        if can_access_tool(current_user, TOOL_BY_TYPE[kind])
     ]
     project_filter = (Project.owner_user_id == current_user.id,
                       Project.status == "active", Project.deleted_at.is_(None),
@@ -905,8 +903,7 @@ def inicio():
                 abort(403)
             if duplicate.project_id:
                 previous_project = get_project_for_user(duplicate.project_id, current_user)
-                if not can_use_tool(current_user, tool_for_project(previous_project)):
-                    abort(403)
+                require_tool_access(current_user, tool_for_project(previous_project))
         selected_project_id = request.args.get("project_id") or (duplicate.project_id if duplicate else None)
         selected_project = None
         if selected_project_id:
@@ -933,8 +930,7 @@ def inicio():
             abort(403)
         if duplicate.project_id:
             previous_project = get_project_for_user(duplicate.project_id, current_user)
-            if not can_use_tool(current_user, tool_for_project(previous_project)):
-                abort(403)
+            require_tool_access(current_user, tool_for_project(previous_project))
 
     selected_project_id = request.form.get("project_id", "").strip()
     if request.args.get("project_id"):

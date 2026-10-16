@@ -12,8 +12,19 @@ from historico_racial.vocabulary import _contagens, _seed, hash_vocabulario
 
 from .extensions import db
 from .models import (
-    AccessGrant, AssistantAISettings, AuditLog, Plan, PlanTool, Project, Tool, User,
-    UserToolOverride, VocabularyLibrary, utcnow,
+    AccessGrant, AssistantAISettings, AuditLog, Plan, PlanTool, Project, Tool,
+    ToolVisibilitySetting, User, UserToolOverride, VocabularyLibrary, utcnow,
+)
+from .tool_catalog import (
+    ANALYTICS_INSTAGRAM_TOOL,
+    administrative_catalog_entries,
+    groups_in_display_order,
+    legacy_unavailable_tool_entries,
+    persistent_tool_seed_rows,
+    tool_definition,
+    tools_in_display_order,
+    validate_visibility_target,
+    visible_navigation_groups,
 )
 
 PLANOS = (
@@ -22,49 +33,16 @@ PLANOS = (
     ("pro", "Pro", "Plano avançado"),
     ("institutional", "Institucional", "Plano institucional"),
 )
-ANALYTICS_INSTAGRAM_TOOL = "analytics_instagram"
-FERRAMENTAS = (
-    ("pdf_scraper", "Raspagem por termos", "/"),
-    ("document_analysis", "Raspagem estruturada", "/analise-documental"),
-    ("qualitative_analysis", "Análise Documental", "/analise-qualitativa"),
-    (ANALYTICS_INSTAGRAM_TOOL, "Instagram", "/analytics/instagram"),
-)
-# Somente apresentação: não semear Tool/PlanTool nem conceder acesso funcional.
-# As entradas representam ferramentas futuras sem rota, banco ou permissões próprias.
-UNAVAILABLE_TOOLS = (
-    {"id": "quantitative_analysis", "name": "Pesquisa Quanti", "icon": "quantitativa"},
-    {"id": "comments_analysis", "name": "Análise de Comentários", "icon": "comentarios"},
-    {"id": "chatdoc", "name": "ChatDoc", "icon": "chatdoc"},
-    {"id": "diagramador", "name": "Diagramador", "icon": "diagramador"},
-    {"id": "analytics_seo", "name": "SEO", "icon": "seo"},
-)
+# Adaptadores de compatibilidade: consumidores legados continuam recebendo os
+# mesmos formatos, mas a definição canônica passou para ``tool_catalog``.
+FERRAMENTAS = persistent_tool_seed_rows()
+UNAVAILABLE_TOOLS = legacy_unavailable_tool_entries()
 ACCOUNT_LIFECYCLE_LOCK = RLock()
 
 
 def tool_catalog() -> list[dict]:
     """Catálogo administrativo completo, sem omitir ferramentas inativas/sem uso."""
-    unavailable_ids = {tool["id"] for tool in UNAVAILABLE_TOOLS}
-    labels = {code: name for code, name, _ in FERRAMENTAS}
-    # Ordem exclusivamente visual das áreas e de suas ferramentas. As chaves
-    # e as rotas continuam estáveis, inclusive para itens futuros inativos.
-    order = {
-        "pdf_scraper": 0,
-        "document_analysis": 1,
-        "qualitative_analysis": 2,
-        "comments_analysis": 3,
-        "quantitative_analysis": 4,
-        "chatdoc": 5,
-        "diagramador": 6,
-        ANALYTICS_INSTAGRAM_TOOL: 7,
-        "analytics_seo": 8,
-    }
-    persisted = db.session.scalars(select(Tool)).all()
-    catalog = [{"id": tool.id, "name": labels.get(tool.id, tool.name),
-                "active": tool.active, "implemented": True, "icon": None}
-               for tool in persisted if tool.id not in unavailable_ids]
-    catalog.extend({**tool, "active": False, "implemented": False} for tool in UNAVAILABLE_TOOLS)
-    catalog.sort(key=lambda tool: (order.get(tool["id"], len(order)), tool["name"]))
-    return catalog
+    return administrative_catalog_entries(db.session.scalars(select(Tool)).all())
 
 
 def account_accepts_new_work(user_id: str) -> bool:
@@ -158,6 +136,67 @@ def can_use_tool(user: User, tool_id: str) -> bool:
     return db.session.get(PlanTool, (grant.plan_id, tool_id)) is not None
 
 
+def tool_is_administratively_visible(tool_id: str) -> bool:
+    """Aplica somente as preferências de visibilidade ao catálogo canônico.
+
+    Ferramentas fora do catálogo preservam o comportamento legado. Esta
+    decisão não consulta ``Tool.active`` nem regras comerciais: essas camadas
+    seguem explicitamente separadas em ``can_use_tool``.
+    """
+    definition = tool_definition(tool_id)
+    if definition is None:
+        return True
+    group_preferences, tool_preferences = visibility_preferences()
+    return (
+        group_preferences.get(definition.group_id, True)
+        and tool_preferences.get(definition.tool_id, True)
+    )
+
+
+def can_access_tool(user: User, tool_id: str) -> bool:
+    """Decide acesso operacional sem transformar visibilidade em permissão.
+
+    Administradores continuam podendo manter ferramentas ocultas, mas apenas
+    quando a ferramenta está operacional e seu acesso já seria permitido.
+    """
+    if user.role != "admin" and not tool_is_administratively_visible(tool_id):
+        return False
+    return can_use_tool(user, tool_id)
+
+
+def require_tool_access(user: User, tool_id: str) -> None:
+    """Centraliza o bloqueio seguro de ferramenta oculta e de acesso normal."""
+    if user.role != "admin" and not tool_is_administratively_visible(tool_id):
+        abort(404)
+    if not can_use_tool(user, tool_id):
+        abort(403)
+
+
+def navigation_groups_for_user(user: User) -> tuple[dict[str, object], ...]:
+    """Projeção de navegação sem grupos vazios, pronta para desktop e mobile."""
+    group_preferences, tool_preferences = visibility_preferences()
+    return tuple(
+        {
+            "id": group.group.group_id,
+            "name": group.group.name,
+            "icon": group.group.icon,
+            "tools": tuple(
+                {
+                    "id": tool.tool_id,
+                    "name": tool.name,
+                    "endpoint": tool.endpoint,
+                    "accessible": can_access_tool(user, tool.tool_id),
+                }
+                for tool in group.tools
+            ),
+        }
+        for group in visible_navigation_groups(
+            group_visibility=group_preferences,
+            tool_visibility=tool_preferences,
+        )
+    )
+
+
 def get_project_for_user(project_id: str, user: User, *, include_inactive: bool = False) -> Project:
     project = db.session.get(Project, project_id)
     if project is None or (project.owner_user_id != user.id and user.role != "admin"):
@@ -173,6 +212,94 @@ def record_audit(admin: User | None, action: str, target_type: str, target_id: s
         admin_name_snapshot=admin.name if admin else None,
         target_id=target_id, before_json=before or {}, after_json=after or {},
     ))
+
+
+def visibility_preferences() -> tuple[dict[str, bool], dict[str, bool]]:
+    """Retorna as preferências persistidas, sem misturá-las ao acesso."""
+    groups: dict[str, bool] = {}
+    tools: dict[str, bool] = {}
+    for setting in db.session.scalars(select(ToolVisibilitySetting)).all():
+        validate_visibility_target(setting.scope_type, setting.scope_id)
+        target = groups if setting.scope_type == "group" else tools
+        target[setting.scope_id] = bool(setting.visible)
+    return groups, tools
+
+
+def visibility_control_catalog() -> list[dict[str, object]]:
+    """Projeção administrativa das preferências, sem alterar o catálogo base."""
+    group_preferences, tool_preferences = visibility_preferences()
+    tools_by_group: dict[str, list[dict[str, object]]] = {
+        group.group_id: [] for group in groups_in_display_order()
+    }
+    for tool in tools_in_display_order():
+        individual_visible = tool_preferences.get(tool.tool_id, True)
+        tools_by_group[tool.group_id].append({
+            "id": tool.tool_id,
+            "name": tool.name,
+            "icon": tool.icon,
+            "implementation_status": tool.implementation_status,
+            "visible": individual_visible,
+            "configured": tool.tool_id in tool_preferences,
+        })
+    return [
+        {
+            "id": group.group_id,
+            "name": group.name,
+            "visible": group_preferences.get(group.group_id, True),
+            "configured": group.group_id in group_preferences,
+            "tools": tools_by_group[group.group_id],
+        }
+        for group in groups_in_display_order()
+    ]
+
+
+def set_visibility_preference(
+    admin: User,
+    *,
+    scope_type: str,
+    scope_id: str,
+    visible: bool,
+) -> bool:
+    """Persiste uma mudança efetiva de visibilidade e registra uma auditoria.
+
+    ``True`` sem registro anterior equivale ao padrão já visível e, portanto,
+    não cria ruído nem no banco nem no histórico. Preferências individuais
+    nunca são alteradas como efeito colateral de uma mudança de grupo.
+    """
+    if not isinstance(visible, bool):
+        raise ValueError("O estado de visibilidade deve ser booleano.")
+    validate_visibility_target(scope_type, scope_id)
+    setting = db.session.scalar(select(ToolVisibilitySetting).where(
+        ToolVisibilitySetting.scope_type == scope_type,
+        ToolVisibilitySetting.scope_id == scope_id,
+    ))
+    previous_visible = bool(setting.visible) if setting is not None else True
+    if previous_visible == visible:
+        return False
+
+    if setting is None:
+        setting = ToolVisibilitySetting(
+            scope_type=scope_type,
+            scope_id=scope_id,
+            visible=visible,
+            changed_by_id=admin.id,
+            changed_by_name_snapshot=admin.name,
+        )
+        db.session.add(setting)
+    else:
+        setting.visible = visible
+        setting.changed_by_id = admin.id
+        setting.changed_by_name_snapshot = admin.name
+
+    record_audit(
+        admin,
+        "tool_visibility_changed",
+        "tool_visibility",
+        f"{scope_type}:{scope_id}",
+        {"scope_type": scope_type, "scope_id": scope_id, "visible": previous_visible},
+        {"scope_type": scope_type, "scope_id": scope_id, "visible": visible},
+    )
+    return True
 
 
 def replace_grant(user: User, plan_id: str, access_mode: str, status: str, admin: User | None = None, expires_at: datetime | None = None) -> AccessGrant:

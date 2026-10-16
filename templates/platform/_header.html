@@ -37,7 +37,7 @@
 {% elif endpoint.startswith('analyses.') %}{% set section_title = 'Base de análise' %}
 {% elif endpoint == 'auth.change_password' %}{% set section_title = 'Alterar senha' %}
 {% elif request.blueprint == 'user_libraries' %}{% set section_title = 'Bibliotecas — Raspagem estruturada' %}
-{% elif request.blueprint == 'admin' %}{% set section_title = admin_sections.get(endpoint, 'Gerenciar') %}
+{% elif request.blueprint == 'admin' %}{% set section_title = admin_sections.get(endpoint, 'Painel de controle') %}
 {% elif project is defined %}{% set section_title = project.name %}
 {% else %}{% set section_title = 'Análysis' %}{% endif %}
 {% if header_project and instagram_context %}{% set project_tool_name = 'Instagram' %}
@@ -50,32 +50,20 @@
   <div class="platform-section-title" aria-label="Nome da plataforma">{{ brand_mark() }}</div>
   <nav class="platform-nav" aria-label="Navegação principal">
     <a class="{{ 'is-current' if endpoint == 'home' else '' }}" {% if endpoint == 'home' %}aria-current="page"{% endif %} href="{{ url_for('home') }}">{{ icon('grade') }}<span>Dashboard</span></a>
-    <details class="platform-nav-dropdown" {% if free_context or systematic_context or qualitative_context %}open{% endif %}>
-      <summary class="{{ 'is-current' if free_context or systematic_context or qualitative_context else '' }}">{{ icon('qualitativa') }}<span>Pesquisa Quali</span></summary>
+    {% for navigation_group in navigation_groups %}
+    {% set group_current = (navigation_group.id == 'research_quali' and (free_context or systematic_context or qualitative_context)) or (navigation_group.id == 'analytics' and instagram_context) %}
+    <details class="platform-nav-dropdown"{% if group_current %} open{% endif %}>
+      <summary class="{{ 'is-current' if group_current else '' }}">{{ icon(navigation_group.icon) }}<span>{{ navigation_group.name }}</span></summary>
       <div class="platform-admin-submenu platform-nav-dropdown-menu">
-        {% if free_access %}<a class="platform-nav-tool-link{{ ' is-current' if free_context else '' }}" href="{{ url_for('projects.list_free_projects') }}" {% if free_context %}aria-current="location"{% endif %}>Raspagem por termos</a>{% else %}<span class="platform-nav-tool-unavailable" aria-disabled="true">Raspagem por termos</span>{% endif %}
-        {% if systematic_access %}<a class="platform-nav-tool-link{{ ' is-current' if systematic_context else '' }}" href="{{ url_for('projects.list_projects') }}" {% if systematic_context %}aria-current="location"{% endif %}>Raspagem estruturada</a>{% else %}<span class="platform-nav-tool-unavailable" aria-disabled="true">Raspagem estruturada</span>{% endif %}
-        {% if qualitative_access %}<a class="platform-nav-tool-link{{ ' is-current' if qualitative_context else '' }}" href="{{ url_for('projects.list_qualitative_projects') }}" {% if qualitative_context %}aria-current="location"{% endif %}>Análise Documental</a>{% else %}<span class="platform-nav-tool-unavailable" aria-disabled="true">Análise Documental</span>{% endif %}
-        <span class="platform-nav-tool-unavailable" aria-disabled="true">Análise de Comentários</span>
+        {% for navigation_tool in navigation_group.tools %}
+        {% set tool_current = (navigation_tool.id == 'pdf_scraper' and free_context) or (navigation_tool.id == 'document_analysis' and systematic_context) or (navigation_tool.id == 'qualitative_analysis' and qualitative_context) or (navigation_tool.id == 'analytics_instagram' and instagram_context) %}
+        {% if navigation_tool.accessible %}<a class="platform-nav-tool-link{{ ' is-current' if tool_current else '' }}" href="{{ url_for(navigation_tool.endpoint) }}"{% if tool_current %} aria-current="location"{% endif %}>{{ navigation_tool.name }}</a>{% else %}<span class="platform-nav-tool-unavailable" aria-disabled="true">{{ navigation_tool.name }}</span>{% endif %}
+        {% endfor %}
       </div>
     </details>
-    {% for tool in unavailable_tools if tool.id == 'quantitative_analysis' %}<span class="platform-nav-unavailable" aria-disabled="true">{{ icon(tool.icon) }}<span>{{ tool.name }}</span></span>{% endfor %}
-    <details class="platform-nav-dropdown">
-      <summary>{{ icon('ficha') }}<span>Editorial</span></summary>
-      <div class="platform-admin-submenu platform-nav-dropdown-menu">
-        <span class="platform-nav-tool-unavailable" aria-disabled="true">ChatDoc</span>
-        <span class="platform-nav-tool-unavailable" aria-disabled="true">Diagramador</span>
-      </div>
-    </details>
-    {% if instagram_access %}<details class="platform-nav-dropdown" {% if instagram_context %}open{% endif %}>
-      <summary class="{{ 'is-current' if instagram_context else '' }}">{{ icon('analytics') }}<span>Analytics</span></summary>
-      <div class="platform-admin-submenu platform-nav-dropdown-menu">
-        <a class="platform-nav-tool-link{{ ' is-current' if instagram_context else '' }}" href="{{ url_for('instagram.home') }}" {% if instagram_context %}aria-current="location"{% endif %}>Instagram</a>
-        <span class="platform-nav-tool-unavailable" aria-disabled="true">SEO</span>
-      </div>
-    </details>{% endif %}
+    {% endfor %}
     {% if current_user.role == 'admin' %}
-    <button class="platform-admin-toggle{{ ' is-current' if request.blueprint == 'admin' else '' }}" id="platform-admin-toggle" type="button" aria-expanded="{{ 'true' if request.blueprint == 'admin' else 'false' }}" aria-controls="platform-admin-submenu">{{ icon('gerenciar') }}<span>Gerenciar</span><span class="platform-admin-chevron" aria-hidden="true">▾</span></button>
+    <button class="platform-admin-toggle{{ ' is-current' if request.blueprint == 'admin' else '' }}" id="platform-admin-toggle" type="button" aria-expanded="{{ 'true' if request.blueprint == 'admin' else 'false' }}" aria-controls="platform-admin-submenu">{{ icon('gerenciar') }}<span>Painel de controle</span><span class="platform-admin-chevron" aria-hidden="true">▾</span></button>
     <div class="platform-admin-submenu" id="platform-admin-submenu" {% if request.blueprint != 'admin' %}hidden{% endif %}>
       {% for label, target, endpoints in [
         ('Visão geral', 'admin.home', ['admin.home']),

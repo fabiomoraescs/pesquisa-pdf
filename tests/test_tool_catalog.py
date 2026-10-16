@@ -1,4 +1,4 @@
-"""Catálogo visual e uso administrativo: ferramentas sem execução não desaparecem."""
+"""Catálogo administrativo completo e navegação sem ferramentas futuras."""
 import json
 import re
 import unittest
@@ -21,7 +21,7 @@ class ToolCatalogTests(unittest.TestCase):
     def tearDown(self):
         self.scope.__exit__(None, None, None)
 
-    def test_unavailable_tools_share_icon_and_cannot_receive_access_or_activation(self):
+    def test_future_tools_remain_administrative_and_cannot_receive_access_or_activation(self):
         from jinja2 import Environment, FileSystemLoader
         env = Environment(loader=FileSystemLoader(Path(__file__).resolve().parents[1] / "templates"))
         icon = env.get_template("platform/_icons.html").module.icon
@@ -44,12 +44,7 @@ class ToolCatalogTests(unittest.TestCase):
                 for fragment in (card, row):
                     self.assertIn(name, fragment)
                     self.assertIn(str(icon(symbol)), fragment)
-                self.assertIn(name, sidebar)
-                self.assertIsNotNone(re.search(
-                    rf'<span class="platform-nav-(?:tool-)?unavailable" aria-disabled="true">.*?{re.escape(name)}',
-                    sidebar,
-                    re.S,
-                ))
+                self.assertNotIn(name, sidebar)
                 self.assertIn("Indisponível", card)
                 self.assertNotIn('<form', card)
                 inputs = re.findall(r'<input\b[^>]*>', row)

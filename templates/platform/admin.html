@@ -1,6 +1,6 @@
 {% extends 'platform/base.html' %}
-{% block title %}Administração — Raspagem de Dados{% endblock %}
-{% block heading %}Administração{% endblock %}
+{% block title %}Painel de controle — Análysis{% endblock %}
+{% block heading %}Painel de controle{% endblock %}
 {% block body %}
 {% from 'platform/_view_controls.html' import toggle, ficha, action_link %}
 {% from 'platform/_icons.html' import icon %}
@@ -131,6 +131,50 @@
 {% elif section == 'tools' %}
 <div class="platform-toolbar"><p>Disponibilidade global das ferramentas</p>{{ toggle('admin-tools-list') }}</div>
 <div class="platform-view-list" id="admin-tools-list" data-view-container>{% for tool in tools %}<article class="platform-list-item" data-tool-id="{{ tool.id }}"><div class="platform-list-title">{% if tool.icon %}{{ icon(tool.icon) }} {% endif %}{{ tool.name }}</div><div class="platform-list-meta"><span class="platform-badge">{{ ('Ativa' if tool.active else 'Inativa') if tool.implemented else 'Indisponível' }}</span></div><div class="platform-list-actions">{% if tool.implemented %}<form method="post" action="{{ url_for('admin.set_tool_state', tool_id=tool.id) }}" onsubmit="return confirm('Confirma a mudança global desta ferramenta?')"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="confirm" value="yes"><button class="btn btn-outline-primary btn-sm platform-action-button" type="submit" title="{{ 'Desativar' if tool.active else 'Ativar' }} ferramenta" aria-label="{{ 'Desativar' if tool.active else 'Ativar' }} ferramenta">{{ icon('desativar' if tool.active else 'ativar') }}</button></form>{% else %}<span class="platform-muted" aria-disabled="true">Em desenvolvimento</span>{% endif %}</div></article>{% endfor %}</div>
+<section class="platform-panel mt-4" aria-labelledby="tool-visibility-title">
+  <h2 class="h5" id="tool-visibility-title">Visibilidade na navegação</h2>
+  <p class="platform-muted">Controla somente a apresentação. A disponibilidade operacional, planos e permissões permanecem inalterados nesta etapa.</p>
+  <div class="platform-view-list" id="admin-tool-visibility-list" data-view-container>
+    {% for group in visibility_groups %}
+    <article class="platform-list-item" data-visibility-group="{{ group.id }}">
+      <div class="platform-list-title">{{ icon('qualitativa' if group.id == 'research_quali' else 'quantitativa' if group.id == 'research_quanti' else 'ficha' if group.id == 'editorial' else 'analytics') }} {{ group.name }}</div>
+      <div class="platform-list-meta"><span class="platform-badge{{ '' if group.visible else ' platform-badge-inactive' }}" data-tool-visibility-badge>{{ 'Visível' if group.visible else 'Oculta' }}</span></div>
+      <div class="platform-list-actions">
+        <form method="post" action="{{ url_for('admin.set_tool_visibility', scope_type='group', scope_id=group.id) }}" class="form-check form-switch mb-0" data-tool-visibility-form>
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input class="form-check-input" id="visibility-group-{{ group.id }}" name="visible" type="checkbox" value="true" role="switch" aria-label="Visibilidade de {{ group.name }}" aria-describedby="visibility-group-{{ group.id }}-feedback" data-tool-visibility-control data-visibility-kind="group" data-visibility-id="{{ group.id }}" data-visibility-current="{{ 'true' if group.visible else 'false' }}"{% if group.visible %} checked{% endif %}>
+          <input type="hidden" name="visible" value="false">
+          <span class="platform-muted small" id="visibility-group-{{ group.id }}-feedback" role="status" aria-live="polite" data-tool-visibility-feedback hidden></span>
+        </form>
+      </div>
+    </article>
+    {% if group.tools %}<div class="platform-admin-submenu mb-3" data-tool-visibility-children="{{ group.id }}"{% if not group.visible %} hidden{% endif %}>
+      {% for tool in group.tools %}
+      <article class="platform-list-item" data-visibility-tool="{{ tool.id }}">
+        <div class="platform-list-title">{% if tool.icon %}{{ icon(tool.icon) }} {% endif %}{{ tool.name }}</div>
+        <div class="platform-list-meta">
+          <span class="platform-badge{{ '' if tool.visible else ' platform-badge-inactive' }}" data-tool-visibility-badge>{{ 'Visível' if tool.visible else 'Oculta' }}</span>
+        </div>
+        <div class="platform-list-actions">
+          <form method="post" action="{{ url_for('admin.set_tool_visibility', scope_type='tool', scope_id=tool.id) }}" class="form-check form-switch mb-0" data-tool-visibility-form>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input class="form-check-input tool-visibility-child-switch" id="visibility-tool-{{ tool.id }}" name="visible" type="checkbox" value="true" role="switch" aria-label="Visibilidade de {{ tool.name }}" aria-describedby="visibility-tool-{{ tool.id }}-feedback" data-tool-visibility-control data-visibility-kind="tool" data-visibility-id="{{ tool.id }}" data-visibility-current="{{ 'true' if tool.visible else 'false' }}"{% if tool.visible %} checked{% endif %}>
+            <input type="hidden" name="visible" value="false">
+            <span class="platform-muted small" id="visibility-tool-{{ tool.id }}-feedback" role="status" aria-live="polite" data-tool-visibility-feedback hidden></span>
+          </form>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+    {% endif %}
+    {% endfor %}
+  </div>
+  <div class="d-flex justify-content-end mt-3">
+    <button class="btn btn-outline-primary btn-sm d-inline-flex align-items-center gap-1" type="button" data-tool-visibility-refresh aria-controls="admin-tool-visibility-list">{{ icon('restaurar') }}<span>Atualizar</span></button>
+    <noscript><a class="btn btn-outline-primary btn-sm d-inline-flex align-items-center gap-1" href="{{ url_for('admin.tools') }}">{{ icon('restaurar') }}<span>Atualizar</span></a></noscript>
+  </div>
+</section>
+<script src="{{ url_for('static', filename='js/admin_tool_visibility.js') }}"></script>
 {% elif section == 'plans' %}
 <div class="platform-toolbar"><p>Planos disponíveis</p>{{ toggle('admin-plans-list') }}</div>
 <div class="platform-view-list" id="admin-plans-list" data-view-container>{% for plan in plans %}<article class="platform-list-item"><div class="platform-list-title">{{ plan.name }}</div><div class="platform-list-meta">{{ plan.description }} · <span class="platform-badge">{{ 'Ativo' if plan.active else 'Inativo' }}</span></div><div class="platform-list-actions"><form method="post" action="{{ url_for('admin.set_plan_state', plan_id=plan.id) }}" onsubmit="return confirm('Confirma {{ 'desativar' if plan.active else 'ativar' }} este plano? As concessões existentes serão preservadas.')"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="confirm" value="yes"><input type="hidden" name="active" value="{{ 'false' if plan.active else 'true' }}"><button class="btn btn-outline-primary btn-sm platform-action-button" type="submit" title="{{ 'Desativar' if plan.active else 'Ativar' }} plano" aria-label="{{ 'Desativar' if plan.active else 'Ativar' }} plano">{{ icon('desativar' if plan.active else 'ativar') }}</button></form></div></article>{% endfor %}</div>
