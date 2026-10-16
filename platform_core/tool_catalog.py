@@ -55,8 +55,7 @@ class VisibleToolGroup:
 TOOL_GROUPS: tuple[ToolGroupDefinition, ...] = (
     ToolGroupDefinition("research_quali", "Pesquisa Quali", 0, "qualitativa"),
     ToolGroupDefinition("research_quanti", "Pesquisa Quanti", 1, "quantitativa"),
-    ToolGroupDefinition("editorial", "Editorial", 2, "ficha"),
-    ToolGroupDefinition("analytics", "Analytics", 3, "analytics"),
+    ToolGroupDefinition("analytics", "Analytics", 2, "analytics"),
 )
 
 TOOL_DEFINITIONS: tuple[ToolDefinition, ...] = (
@@ -79,8 +78,6 @@ TOOL_DEFINITIONS: tuple[ToolDefinition, ...] = (
         "research_quali", "comments_analysis", "Análise de Comentários", 3, "future",
         icon="comentarios",
     ),
-    ToolDefinition("editorial", "chatdoc", "ChatDoc", 0, "future", icon="chatdoc"),
-    ToolDefinition("editorial", "diagramador", "Diagramador", 1, "future", icon="diagramador"),
     ToolDefinition(
         "analytics", ANALYTICS_INSTAGRAM_TOOL, "Instagram", 0, "available",
         tool_code=ANALYTICS_INSTAGRAM_TOOL, route="/analytics/instagram", endpoint="instagram.home", icon="analytics",

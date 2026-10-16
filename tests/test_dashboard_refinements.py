@@ -527,16 +527,15 @@ class DashboardRefinementsTests(unittest.TestCase):
         self.assertNotIn("dashboard-chart-workspace", admin_html)
         self.assertEqual(chart_data(admin_html, "dashboard-admin-chart-data")["usage"], {
             "labels": ["Raspagem por termos", "Raspagem estruturada", "Análise Documental",
-                       "Análise de Comentários", "Pesquisa Quanti", "ChatDoc", "Diagramador",
-                       "Instagram", "SEO"],
-            "values": [1, 1, 0, 0, 0, 0, 0, 0, 0],
+                       "Análise de Comentários", "Pesquisa Quanti", "Instagram", "SEO"],
+            "values": [1, 1, 0, 0, 0, 0, 0],
         })
 
     def assert_recent_records_have_no_chart(self, html):
         section = re.search(r'<section[^>]+aria-labelledby="continue-working-heading">(.*?)</section>', html, re.DOTALL)[1]
         self.assertNotRegex(section, r'<canvas|class="(?:chart|empty-chart)|role="img"|skeleton|Plotly')
 
-    def test_empty_summaries_have_no_chart_placeholders_and_chatdoc_is_visual_only(self):
+    def test_empty_summaries_have_no_chart_placeholders_and_editorial_is_absent(self):
         create_user()
         login(self.client)
         html = self.client.get("/").text
@@ -549,8 +548,8 @@ class DashboardRefinementsTests(unittest.TestCase):
         # Grupos sem ferramenta disponível não ocupam espaço na navegação.
         self.assertNotIn("Pesquisa Quanti", html)
         self.assertNotIn("Editorial", html)
-        self.assertFalse(any("chatdoc" in rule.rule.lower() for rule in self.app.url_map.iter_rules()))
-        self.assertFalse(any("chatdoc" in name.lower() for name in db.metadata.tables))
+        self.assertFalse(any("editorial" in rule.rule.lower() for rule in self.app.url_map.iter_rules()))
+        self.assertFalse(any(name.startswith("editorial_") for name in db.metadata.tables))
 
     @staticmethod
     def _csrf(html):

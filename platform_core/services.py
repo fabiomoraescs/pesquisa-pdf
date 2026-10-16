@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from threading import RLock
 
-from flask import abort
+from flask import abort, current_app
 from sqlalchemy import func, select
 
 from historico_racial.vocabulary import _contagens, _seed, hash_vocabulario
@@ -17,6 +17,7 @@ from .models import (
 )
 from .tool_catalog import (
     ANALYTICS_INSTAGRAM_TOOL,
+    VISIBILITY_SCOPE_TYPES,
     administrative_catalog_entries,
     groups_in_display_order,
     legacy_unavailable_tool_entries,
@@ -215,11 +216,27 @@ def record_audit(admin: User | None, action: str, target_type: str, target_id: s
 
 
 def visibility_preferences() -> tuple[dict[str, bool], dict[str, bool]]:
-    """Retorna as preferências persistidas, sem misturá-las ao acesso."""
+    """Retorna as preferências persistidas, sem misturá-las ao acesso.
+
+    Uma configuração pode tornar-se obsoleta entre duas versões do catálogo
+    (por exemplo, após a remoção explícita de uma ferramenta). Ela não pode
+    impedir a renderização global da plataforma: a escrita continua validando
+    estritamente os alvos, e a leitura ignora apenas esse registro legado.
+    """
     groups: dict[str, bool] = {}
     tools: dict[str, bool] = {}
     for setting in db.session.scalars(select(ToolVisibilitySetting)).all():
-        validate_visibility_target(setting.scope_type, setting.scope_id)
+        try:
+            validate_visibility_target(setting.scope_type, setting.scope_id)
+        except ValueError:
+            if setting.scope_type not in VISIBILITY_SCOPE_TYPES:
+                raise
+            current_app.logger.warning(
+                "Ignoring stale tool visibility setting outside the current catalog: %s:%s",
+                setting.scope_type,
+                setting.scope_id,
+            )
+            continue
         target = groups if setting.scope_type == "group" else tools
         target[setting.scope_id] = bool(setting.visible)
     return groups, tools

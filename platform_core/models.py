@@ -135,10 +135,6 @@ class AssistantAISettings(db.Model):
     gemini_model: Mapped[str] = mapped_column(db.String(160), nullable=False, default="gemini-3.8-flash")
     openai_model: Mapped[str] = mapped_column(db.String(160), nullable=False, default="gpt-4.1")
     anthropic_model: Mapped[str] = mapped_column(db.String(160), nullable=False, default="")
-    # Reserva independente para o DocChat futuro. Não contém credenciais e não
-    # altera a configuração operacional do Assistente Análysis.
-    docchat_provider: Mapped[str | None] = mapped_column(db.String(32), nullable=True)
-    docchat_model: Mapped[str | None] = mapped_column(db.String(160), nullable=True)
     created_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         db.DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False

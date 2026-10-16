@@ -489,9 +489,8 @@ class AssistantAIAdminTests(unittest.TestCase):
         self.assertIn("PRIMÁRIO", html)
         self.assertIn("Habilitado", html)
         self.assertIn("Não testado", html)
-        self.assertIn('class="platform-ai-provider-card platform-ai-docchat"', html)
-        self.assertIn('form="docchat-settings-form"', html)
-        self.assertIn('action="/admin/inteligencia-artificial/docchat"', html)
+        self.assertNotIn('platform-ai-docchat', html)
+        self.assertNotIn('/admin/inteligencia-artificial/docchat', html)
         native_card = html.split('data-ai-provider-card="analysis_native"', 1)[1].split('</article>', 1)[0]
         self.assertIn('<h3 class="h5">Análysis</h3>', native_card)
         self.assertNotIn("Análysis IA", native_card)
@@ -502,12 +501,6 @@ class AssistantAIAdminTests(unittest.TestCase):
         anthropic_card = html.split('data-ai-provider-card="anthropic"', 1)[1].split('</article>', 1)[0]
         self.assertIn('<h3 class="h5">Claude</h3>', anthropic_card)
         self.assertNotIn("Claude / Anthropic", anthropic_card)
-        docchat_card = html.split('class="platform-ai-provider-card platform-ai-docchat"', 1)[1].split('</article>', 1)[0]
-        self.assertIn('<h3 class="h5" id="docchat-settings-title">DocChat</h3>', docchat_card)
-        self.assertIn("Preparação futura", docchat_card)
-        self.assertNotIn("DocChat (em breve)", docchat_card)
-        self.assertNotIn("Esta configuração prepara o provider/modelo", docchat_card)
-        self.assertNotIn('value="analysis_native"', docchat_card)
         self.assertNotIn("never-render-this-secret", html)
         self.client.post("/logout", data={"csrf_token": csrf_from(response)})
         regular = create_user("Regular", "assistant-ai-regular@example.org")
@@ -527,18 +520,6 @@ class AssistantAIAdminTests(unittest.TestCase):
         audit = db.session.scalar(db.select(AuditLog).where(AuditLog.action == "assistant_ai_settings_changed"))
         self.assertEqual(audit.after_json["primary_provider"], "gemini")
         self.assertNotIn("never-render-this-secret", json.dumps(audit.after_json))
-
-    def test_docchat_card_saves_only_its_future_provider_and_model(self):
-        page = self.client.get("/admin/inteligencia-artificial")
-        response = self.client.post("/admin/inteligencia-artificial/docchat", data={
-            "csrf_token": csrf_from(page), "docchat_provider": "gemini", "docchat_model": "gemini-docchat-future",
-        })
-        self.assertEqual(response.status_code, 302)
-        settings = db.session.get(AssistantAISettings, 1)
-        self.assertEqual((settings.docchat_provider, settings.docchat_model), ("gemini", "gemini-docchat-future"))
-        self.assertEqual(settings.primary_provider, "gemini")
-        audit = db.session.scalar(db.select(AuditLog).where(AuditLog.action == "docchat_ai_settings_changed"))
-        self.assertEqual(audit.after_json["docchat_provider"], "gemini")
 
     def test_connection_route_uses_no_corpus_and_returns_friendly_flash(self):
         page = self.client.get("/admin/inteligencia-artificial")

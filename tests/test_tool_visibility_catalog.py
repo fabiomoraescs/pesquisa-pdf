@@ -29,8 +29,6 @@ class ToolCatalogDefinitionTests(unittest.TestCase):
                 ("research_quali", "document_analysis"),
                 ("research_quali", "qualitative_analysis"),
                 ("research_quali", "comments_analysis"),
-                ("editorial", "chatdoc"),
-                ("editorial", "diagramador"),
                 ("analytics", ANALYTICS_INSTAGRAM_TOOL),
                 ("analytics", "analytics_seo"),
             ],
@@ -51,7 +49,7 @@ class ToolCatalogDefinitionTests(unittest.TestCase):
         )
         self.assertTrue(all(tool.tool_code and tool.route for tool in available))
         self.assertTrue(all(tool.tool_code is None and tool.route is None for tool in unavailable))
-        self.assertEqual({tool.tool_id for tool in unavailable}, {"comments_analysis", "chatdoc", "diagramador", "analytics_seo"})
+        self.assertEqual({tool.tool_id for tool in unavailable}, {"comments_analysis", "analytics_seo"})
 
     def test_catalog_definition_is_immutable(self):
         with self.assertRaises(Exception):
@@ -109,11 +107,11 @@ class VisibilityPolicyTests(unittest.TestCase):
 
     def test_future_tools_and_groups_without_eligible_tools_are_not_render_candidates(self):
         result = visible_navigation_groups(
-            group_visibility={"research_quanti": True, "editorial": True},
-            tool_visibility={"comments_analysis": True, "chatdoc": True, "diagramador": True, "analytics_seo": True},
+            group_visibility={"research_quanti": True},
+            tool_visibility={"comments_analysis": True, "analytics_seo": True},
         )
         self.assertNotIn("research_quanti", [item.group.group_id for item in result])
-        self.assertNotIn("editorial", [item.group.group_id for item in result])
+        self.assertEqual([item.group.group_id for item in result], ["research_quali", "analytics"])
         self.assertNotIn("comments_analysis", [tool.tool_id for group in result for tool in group.tools])
 
     def test_multiple_hidden_items_keep_the_official_order_when_reactivated(self):
@@ -136,7 +134,7 @@ class CatalogCompatibilityTests(unittest.TestCase):
     def test_seed_rows_reference_only_implemented_tools(self):
         expected_codes = {code for code, _name, _route in persistent_tool_seed_rows()}
         self.assertEqual(expected_codes, {"pdf_scraper", "document_analysis", "qualitative_analysis", ANALYTICS_INSTAGRAM_TOOL})
-        self.assertFalse(expected_codes & {"comments_analysis", "chatdoc", "diagramador", "analytics_seo", "quantitative_analysis"})
+        self.assertFalse(expected_codes & {"comments_analysis", "analytics_seo", "quantitative_analysis"})
 
     def test_administrative_adapter_preserves_existing_catalog_entries_and_order(self):
         persisted = (
@@ -147,15 +145,14 @@ class CatalogCompatibilityTests(unittest.TestCase):
         )
         rows = administrative_catalog_entries(persisted)
         self.assertEqual(
-            [row["name"] for row in rows[:9]],
+            [row["name"] for row in rows[:7]],
             [
                 "Raspagem por termos", "Raspagem estruturada", "Análise Documental",
-                "Análise de Comentários", "Pesquisa Quanti", "ChatDoc", "Diagramador",
-                "Instagram", "SEO",
+                "Análise de Comentários", "Pesquisa Quanti", "Instagram", "SEO",
             ],
         )
         self.assertTrue(all(row["implemented"] is False for row in rows if row["id"] in {
-            "comments_analysis", "quantitative_analysis", "chatdoc", "diagramador", "analytics_seo",
+            "comments_analysis", "quantitative_analysis", "analytics_seo",
         }))
 
 

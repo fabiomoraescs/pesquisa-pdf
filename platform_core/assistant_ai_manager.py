@@ -197,26 +197,6 @@ class AIProviderManager:
                 values[spec["model_field"]] = cleaned[:160]
         return values
 
-    @staticmethod
-    def normalize_docchat_configuration(raw: Mapping[str, object]) -> dict[str, str | None]:
-        """Configuração futura, deliberadamente separada do Assistente atual."""
-        provider = str(raw.get("docchat_provider", "")).strip().casefold()
-        model = raw.get("docchat_model")
-        model = model.strip() if isinstance(model, str) else ""
-        if not provider:
-            if model:
-                raise AISettingsValidationError("Informe o provider do DocChat antes de definir o modelo.")
-            return {"docchat_provider": None, "docchat_model": None}
-        # Só integrações externas já funcionais são elegíveis. O provider
-        # nativo não é um destino futuro de DocChat nesta versão.
-        if provider not in {"gemini", "openai"}:
-            raise AISettingsValidationError("O provider selecionado não é elegível para o DocChat futuro.")
-        if not model:
-            raise AISettingsValidationError("Informe o modelo do DocChat quando um provider for selecionado.")
-        if len(model) > 160:
-            raise AISettingsValidationError("O nome do modelo do DocChat pode ter no máximo 160 caracteres.")
-        return {"docchat_provider": provider, "docchat_model": model}
-
     def save_configuration(self, raw: Mapping[str, object]) -> AssistantAISettings:
         values = self.normalize_configuration(raw)
         settings = self.get_settings()
@@ -224,24 +204,6 @@ class AIProviderManager:
             setattr(settings, field, value)
         # O chamador registra a auditoria e faz um único commit atômico.
         return settings
-
-    def save_docchat_configuration(self, raw: Mapping[str, object]) -> AssistantAISettings:
-        values = self.normalize_docchat_configuration(raw)
-        settings = self.get_settings()
-        settings.docchat_provider = values["docchat_provider"]
-        settings.docchat_model = values["docchat_model"]
-        return settings
-
-    def get_docchat_ai_config(self) -> dict[str, str | None]:
-        """Retorna somente a configuração persistida; não instancia provider."""
-        settings = self.get_settings()
-        provider = settings.docchat_provider
-        model = settings.docchat_model
-        return {
-            "provider": provider,
-            "model": model,
-            "status": "configured" if provider and model else "not_configured",
-        }
 
     @staticmethod
     def connection_status_label(state: object) -> str:

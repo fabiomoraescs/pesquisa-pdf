@@ -76,19 +76,6 @@
         {% if status.implemented %}<button class="btn btn-outline-primary btn-sm" type="submit" formmethod="post" formaction="{{ url_for('admin.test_assistant_ai_connection', provider_id=status.id) }}" data-ai-connection-test="{{ status.id }}">Testar conexão</button>{% else %}<span class="platform-muted" aria-disabled="true">Provider preparado para fase futura.</span>{% endif %}
       </article>
       {% endfor %}
-      <article class="platform-ai-provider-card platform-ai-docchat" aria-labelledby="docchat-settings-title">
-        <div class="platform-ai-provider-card-heading"><h3 class="h5" id="docchat-settings-title">DocChat</h3><span class="platform-badge">Preparação futura</span></div>
-        <label class="visually-hidden" for="docchat-provider">Provider</label>
-        <select class="form-select" id="docchat-provider" name="docchat_provider" form="docchat-settings-form">
-          <option value="">Provider: Não configurado</option>
-          <option value="gemini" {% if ai_settings.docchat_provider == 'gemini' %}selected{% endif %}>Provider: Gemini</option>
-          <option value="openai" {% if ai_settings.docchat_provider == 'openai' %}selected{% endif %}>Provider: OpenAI</option>
-        </select>
-        <label class="form-label" for="docchat-model">Modelo
-          <input class="form-control" id="docchat-model" name="docchat_model" form="docchat-settings-form" value="{{ ai_settings.docchat_model or '' }}" maxlength="160">
-        </label>
-        <button class="btn btn-outline-primary" type="submit" form="docchat-settings-form">Salvar preparação do DocChat</button>
-      </article>
     </div>
     <fieldset class="platform-ai-fallback" data-ai-fallback {% if ai_settings.strategy != 'fallback' %}hidden{% endif %}>
       <legend>Ordem de fallback</legend>
@@ -100,9 +87,6 @@
       </div>
     </fieldset>
     <div class="d-flex flex-wrap gap-2"><button class="btn btn-primary" type="submit">Salvar configuração</button></div>
-  </form>
-  <form id="docchat-settings-form" method="post" action="{{ url_for('admin.save_docchat_ai_settings') }}">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   </form>
 </section>
 <script src="{{ url_for('static', filename='js/admin_ai_settings.js') }}"></script>
@@ -137,7 +121,7 @@
   <div class="platform-view-list" id="admin-tool-visibility-list" data-view-container>
     {% for group in visibility_groups %}
     <article class="platform-list-item" data-visibility-group="{{ group.id }}">
-      <div class="platform-list-title">{{ icon('qualitativa' if group.id == 'research_quali' else 'quantitativa' if group.id == 'research_quanti' else 'ficha' if group.id == 'editorial' else 'analytics') }} {{ group.name }}</div>
+      <div class="platform-list-title">{{ icon('qualitativa' if group.id == 'research_quali' else 'quantitativa' if group.id == 'research_quanti' else 'analytics') }} {{ group.name }}</div>
       <div class="platform-list-meta"><span class="platform-badge{{ '' if group.visible else ' platform-badge-inactive' }}" data-tool-visibility-badge>{{ 'Visível' if group.visible else 'Oculta' }}</span></div>
       <div class="platform-list-actions">
         <form method="post" action="{{ url_for('admin.set_tool_visibility', scope_type='group', scope_id=group.id) }}" class="form-check form-switch mb-0" data-tool-visibility-form>

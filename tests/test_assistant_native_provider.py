@@ -14,7 +14,7 @@ from app import create_app
 import test_qualitative_automatic as automatic_fixture
 import test_qualitative_context as context_fixture
 
-from platform_core.assistant_ai_manager import AIProviderManager, AISettingsValidationError
+from platform_core.assistant_ai_manager import AIProviderManager
 from platform_core.assistant_document_retrieval import _evidence_text
 from platform_core.assistant_native_intent import native_question_plan
 from platform_core.assistant_native_provider import (
@@ -222,35 +222,12 @@ class AnalysisNativeProviderTests(unittest.TestCase):
         self.assertEqual(manager.provider_ids_for_turn(), ["gemini", "analysis_native"])
 
 
-class DocChatPreparationTests(unittest.TestCase):
-    setUp = context_fixture.QualitativeContextTests.setUp
-    tearDown = context_fixture.QualitativeContextTests.tearDown
-
-    def test_docchat_is_nullable_and_rejects_native_or_unknown_provider(self):
-        manager = AIProviderManager()
-        self.assertEqual(manager.get_docchat_ai_config(), {
-            "provider": None, "model": None, "status": "not_configured",
-        })
-        for provider in ("analysis_native", "unknown"):
-            with self.subTest(provider=provider):
-                with self.assertRaisesRegex(AISettingsValidationError, "elegível"):
-                    manager.save_docchat_configuration({"docchat_provider": provider, "docchat_model": "x"})
-
-    def test_docchat_configuration_is_independent_and_does_not_instantiate_provider(self):
-        manager = AIProviderManager()
-        with patch.object(manager, "build_provider") as build:
-            settings = manager.save_docchat_configuration({"docchat_provider": "gemini", "docchat_model": "gemini-future"})
-            self.assertEqual(settings.docchat_provider, "gemini")
-            self.assertEqual(manager.get_docchat_ai_config()["status"], "configured")
-        build.assert_not_called()
-
-
-class NativeAndDocChatMigrationTests(unittest.TestCase):
+class NativeSettingsMigrationTests(unittest.TestCase):
     previous = "b8c4d3e2f1a0"
     revision = "c3d9e8a7f2b4"
     migrations = str(Path(__file__).resolve().parents[1] / "migrations")
 
-    def test_child_migration_adds_and_removes_native_and_docchat_columns(self):
+    def test_historical_child_migration_adds_and_removes_native_settings(self):
         with tempfile.TemporaryDirectory(prefix="analysis-native-migration-") as directory:
             app = create_app({
                 "TESTING": True, "SECRET_KEY": "native-migration-test-only",
@@ -262,15 +239,15 @@ class NativeAndDocChatMigrationTests(unittest.TestCase):
                 upgrade(directory=self.migrations, revision=self.revision)
                 with db.engine.connect() as connection:
                     columns = {row[1] for row in connection.exec_driver_sql("PRAGMA table_info(assistant_ai_settings)")}
-                    self.assertTrue({"analysis_native_model", "docchat_provider", "docchat_model"}.issubset(columns))
+                    self.assertIn("analysis_native_model", columns)
                     row = connection.exec_driver_sql(
-                        "SELECT analysis_native_model, docchat_provider, docchat_model FROM assistant_ai_settings"
+                        "SELECT analysis_native_model FROM assistant_ai_settings"
                     ).one()
-                    self.assertEqual(row, (DEFAULT_ANALYSIS_NATIVE_MODEL, None, None))
+                    self.assertEqual(row, (DEFAULT_ANALYSIS_NATIVE_MODEL,))
                 downgrade(directory=self.migrations, revision=self.previous)
                 with db.engine.connect() as connection:
                     columns = {row[1] for row in connection.exec_driver_sql("PRAGMA table_info(assistant_ai_settings)")}
-                    self.assertFalse({"analysis_native_model", "docchat_provider", "docchat_model"} & columns)
+                    self.assertNotIn("analysis_native_model", columns)
                 db.session.remove()
                 db.engine.dispose()
 

@@ -37,7 +37,7 @@ class ToolVisibilityPersistenceTests(unittest.TestCase):
         self.assertEqual(visibility_preferences(), ({}, {}))
         groups = visibility_control_catalog()
         self.assertEqual([group["id"] for group in groups], [
-            "research_quali", "research_quanti", "editorial", "analytics",
+            "research_quali", "research_quanti", "analytics",
         ])
         self.assertTrue(all(group["visible"] for group in groups))
         self.assertTrue(all(tool["visible"] for group in groups for tool in group["tools"]))
@@ -106,6 +106,19 @@ class ToolVisibilityPersistenceTests(unittest.TestCase):
         with self.assertRaises(IntegrityError):
             db.session.commit()
         db.session.rollback()
+
+    def test_stale_removed_visibility_target_does_not_break_the_dashboard(self):
+        """Registros legados não podem transformar a página inicial em erro 500."""
+        db.session.add(ToolVisibilitySetting(
+            scope_type="group", scope_id="editorial", visible=False,
+        ))
+        db.session.commit()
+
+        login(self.client, self.admin.email)
+        response = self.client.get("/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(visibility_preferences(), ({}, {}))
 
     def test_visibility_configuration_does_not_change_operational_access_models(self):
         tool = db.session.get(Tool, "pdf_scraper")

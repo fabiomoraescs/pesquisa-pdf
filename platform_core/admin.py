@@ -530,8 +530,6 @@ def _ai_settings_snapshot(settings: AssistantAISettings) -> dict[str, object]:
         "gemini_model": settings.gemini_model,
         "openai_model": settings.openai_model,
         "anthropic_model": settings.anthropic_model,
-        "docchat_provider": settings.docchat_provider,
-        "docchat_model": settings.docchat_model,
     }
 
 
@@ -582,32 +580,6 @@ def save_assistant_ai_settings():
         flash("Não foi possível salvar a configuração de IA com segurança.", "danger")
     else:
         flash("Configuração do Assistente Análysis atualizada.", "success")
-    return redirect(url_for("admin.assistant_ai_settings"))
-
-
-@admin_bp.post("/inteligencia-artificial/docchat")
-@admin_only
-def save_docchat_ai_settings():
-    """Persiste somente a preparação do DocChat futuro; não testa nem executa IA."""
-    manager = AIProviderManager()
-    current = manager.get_settings()
-    before = _ai_settings_snapshot(current)
-    try:
-        settings = manager.save_docchat_configuration({
-            "docchat_provider": request.form.get("docchat_provider"),
-            "docchat_model": request.form.get("docchat_model"),
-        })
-        after = _ai_settings_snapshot(settings)
-        record_audit(current_user, "docchat_ai_settings_changed", "assistant_ai_settings", "1", before, after)
-        db.session.commit()
-    except AISettingsValidationError as error:
-        db.session.rollback()
-        flash(str(error), "danger")
-    except SQLAlchemyError:
-        db.session.rollback()
-        flash("Não foi possível salvar a preparação do DocChat com segurança.", "danger")
-    else:
-        flash("Configuração futura do DocChat atualizada.", "success")
     return redirect(url_for("admin.assistant_ai_settings"))
 
 

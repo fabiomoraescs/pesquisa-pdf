@@ -34,8 +34,6 @@ class ToolCatalogTests(unittest.TestCase):
         for identifier, name, symbol in (
             ("comments_analysis", "Análise de Comentários", "comentarios"),
             ("quantitative_analysis", "Pesquisa Quanti", "quantitativa"),
-            ("chatdoc", "ChatDoc", "chatdoc"),
-            ("diagramador", "Diagramador", "diagramador"),
             ("analytics_seo", "SEO", "seo"),
         ):
             with self.subTest(tool=identifier):
@@ -62,6 +60,10 @@ class ToolCatalogTests(unittest.TestCase):
         self.assertEqual(before, {(row.plan_id, row.tool_id) for row in db.session.scalars(db.select(PlanTool))})
         self.assertEqual(self.client.post('/admin/definir-acessos', data={"access": []}).status_code, 400)
 
+    def test_editorial_tools_and_routes_are_absent(self):
+        self.assertIsNone(db.session.get(Tool, "diagramador"))
+        self.assertFalse(any("editorial" in rule.rule for rule in self.app.url_map.iter_rules()))
+
     def _usage(self):
         html = self.client.get('/').text
         data = json.loads(re.search(
@@ -76,8 +78,6 @@ class ToolCatalogTests(unittest.TestCase):
             "Análise Documental": 0,
             "Análise de Comentários": 0,
             "Pesquisa Quanti": 0,
-            "ChatDoc": 0,
-            "Diagramador": 0,
             "Instagram": 0,
             "SEO": 0,
         })
@@ -94,8 +94,7 @@ class ToolCatalogTests(unittest.TestCase):
         self.assertEqual(len(catalog), len({tool["id"] for tool in catalog}))
         self.assertEqual({tool["name"] for tool in catalog}, {
             "Raspagem por termos", "Raspagem estruturada", "Análise Documental",
-            "Análise de Comentários", "Pesquisa Quanti", "ChatDoc", "Diagramador",
-            "Instagram", "SEO", "Outra ferramenta",
+            "Análise de Comentários", "Pesquisa Quanti", "Instagram", "SEO", "Outra ferramenta",
         })
         for path in ('/admin/ferramentas', '/admin/definir-acessos'):
             html = self.client.get(path).text
@@ -107,8 +106,6 @@ class ToolCatalogTests(unittest.TestCase):
             "Análise Documental": 3,
             "Análise de Comentários": 0,
             "Pesquisa Quanti": 0,
-            "ChatDoc": 0,
-            "Diagramador": 0,
             "Instagram": 0,
             "SEO": 0,
             "Outra ferramenta": 1,

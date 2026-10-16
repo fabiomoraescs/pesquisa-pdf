@@ -93,7 +93,7 @@ class SidebarHeaderTests(unittest.TestCase):
         self.assertNotIn('>Bases de análise</a>', nav)
         self.assertNotIn('Projetos arquivados', nav)
         self.assertNotIn('href="/chatdoc"', nav)
-        self.assertNotIn('href="/diagramador"', nav)
+        self.assertNotIn('href="/editorial/diagramador/"', nav)
         self.assertNotIn('href="/analytics/seo"', nav)
         for legacy_name in (
             "Busca por termos",
