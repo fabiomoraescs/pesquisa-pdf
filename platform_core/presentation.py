@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
+from .commercial_catalog import commercial_plan_display_name
 from .services import UNAVAILABLE_TOOLS
 
 
@@ -27,12 +28,20 @@ LABELS = {
     "expired": "Expirado", "canceled": "Cancelado", "archived": "Arquivado",
     "deleted": "Excluído", "draft": "Rascunho", "published": "Publicada",
     "inactive": "Inativa", "admin": "Administrador", "user": "Usuário",
-    "paid": "Assinatura paga", "student_free": "Gratuito — Estudante",
+    "paid": "Assinatura paga",
     "admin_courtesy": "Cortesia administrativa", "inherit": "Herdar do plano",
-    "allow": "Permitir", "deny": "Bloquear", "student": "Estudante",
-    "researcher": "Pesquisador", "pro": "Pro", "institutional": "Institucional",
+    "allow": "Permitir", "deny": "Bloquear", "used": "Utilizado",
+    "research_quali": "Quali", "research_quanti": "Quanti",
+    "research_complete": "Quali + Quanti", "marketing_instagram": "Instagram",
+    "marketing_sites": "OJS", "marketing_complete": "Insta + OJS",
+    "integral": "Integral",
+    "research": "Pesquisador", "management": "Gestão", "research_management": "Pesquisador + Gestão",
+    "available": "Disponível", "partially_available": "Parcialmente disponível",
+    "development": "Em desenvolvimento",
     "pdf_scraper": "Raspagem por termos", "document_analysis": "Raspagem estruturada",
     "qualitative_analysis": "Análise Documental", "analytics_instagram": "Instagram",
+    "quantitative_analysis": "Pesquisa Quanti", "ojs_seo": "OJS SEO",
+    "ojs_analytics": "OJS Analytics", "bibliographic_search": "Busca Bibliográfica",
     "user_registered": "Usuário cadastrado", "admin_created": "Administrador criado",
     "user_status_changed": "Estado do usuário alterado",
     "access_grant_changed": "Acesso alterado", "tool_override_changed": "Permissão de ferramenta alterada",
@@ -43,6 +52,10 @@ LABELS = {
     "user_password_reset": "Senha de usuário redefinida", "password_changed_after_reset": "Senha alterada após redefinição",
     "password_recovery_requested": "Recuperação de senha solicitada", "password_recovered": "Senha redefinida por recuperação",
     "plan_state_changed": "Estado do plano alterado",
+    "plan_limit_policy_published": "Política de limites publicada",
+    "commercial_trial_activated": "Período de teste ativado",
+    "workspace_subscription_limit_adjustment_granted": "Ajuste de limite concedido",
+    "workspace_subscription_limit_adjustment_revoked": "Ajuste de limite revogado",
     "project_permanently_deleted": "Projeto excluído permanentemente",
     "library_state_changed": "Estado da biblioteca alterado",
     "library_created": "Biblioteca criada", "library_draft_changed": "Rascunho da biblioteca alterado",
@@ -54,7 +67,11 @@ LABELS = {
     "user": "Usuário", "tool": "Ferramenta", "project": "Projeto", "library": "Biblioteca",
     "tool_visibility": "Visibilidade de ferramenta", "group": "Grupo", "scope_type": "Tipo", "scope_id": "Identificador", "visible": "Visível",
     "role": "Papel", "status": "Estado", "plan": "Plano", "mode": "Forma de acesso",
-    "decision": "Permissão", "expires_at": "Validade", "deleted": "Excluído",
+    "limits": "Limites", "version": "Versão", "resource_key": "Recurso",
+    "additional_units": "Unidades adicionais", "subscription_id": "Assinatura",
+    "justification": "Justificativa", "commercial_group_id": "Grupo comercial",
+    "starts_at": "Início", "expires_at": "Término",
+    "decision": "Permissão", "deleted": "Excluído",
     "true": "Sim", "false": "Não",
     "autor": "Autor", "movimento": "Movimento", "conceito": "Conceito",
     "obra": "Obra", "categoria_racial": "Categoria racial", "pais_regiao": "País/região",
@@ -139,5 +156,11 @@ def register_presentation(app) -> None:
     app.jinja_env.filters["data_local"] = lambda value: format_local_datetime(
         value, app.config["PRESENTATION_TIMEZONE"], date_only=True
     )
-    app.jinja_env.globals.update(education_options=EDUCATION, gender_options=GENDER, race_options=RACE_COLOR,
-                                presentation_labels=LABELS, unavailable_tools=UNAVAILABLE_TOOLS)
+    app.jinja_env.globals.update(
+        education_options=EDUCATION,
+        gender_options=GENDER,
+        race_options=RACE_COLOR,
+        presentation_labels=LABELS,
+        unavailable_tools=UNAVAILABLE_TOOLS,
+        commercial_plan_name=commercial_plan_display_name,
+    )

@@ -38,11 +38,11 @@ executar o comando acima:
 
 ## Uso
 
-O cadastro comum cria uma conta `user` ativa no Plano Estudante, com acesso
-gratuito às duas ferramentas inicialmente incluídas nesse plano. O admin pode
-alterar plano, forma de acesso, validade e permissões individuais em `/admin`.
-Planos e formas de acesso são registros distintos; concessões anteriores são
-preservadas para auditoria. Ainda não há cobrança real.
+O cadastro comum cria uma conta `user` ativa, mas sem plano e sem acesso
+operacional automático. Um administrador atribui posteriormente um dos planos
+comerciais elegíveis em `/admin`; concessões anteriores permanecem registradas
+para auditoria. Os grupos comerciais são Pesquisador, Gestão e Pesquisador +
+Gestão. Ainda não há cobrança real.
 
 Após entrar, abra `/projetos`, crie um projeto e selecione uma ou mais
 bibliotecas. A biblioteca oficial **Relações raciais** contém exatamente o seed

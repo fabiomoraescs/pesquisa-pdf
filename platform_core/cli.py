@@ -7,7 +7,7 @@ from sqlalchemy import select
 from .extensions import db
 from .models import User
 from .password_policy import TEMPORARY_PASSWORD
-from .services import record_audit, replace_grant, seed_platform
+from .services import record_audit, seed_platform
 
 
 def register_cli(app: Flask) -> None:
@@ -33,7 +33,6 @@ def register_cli(app: Flask) -> None:
         user.set_password(password)
         db.session.add(user)
         db.session.flush()
-        replace_grant(user, "institutional", "admin_courtesy", "active")
         record_audit(user, "admin_created", "user", user.id, after={"role": "admin", "status": "active"})
         db.session.commit()
         click.echo("Administrador criado. A senha não foi exibida nem gravada em arquivo.")

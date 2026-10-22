@@ -311,7 +311,7 @@ class PersistentAnalysisTests(unittest.TestCase):
         self.client.post("/logout", data={"csrf_token": csrf_from(self.client.get("/projetos"))})
         login(self.client, "admin@example.org")
         token = csrf_from(self.client.get("/admin/definir-acessos"))
-        restored = current + ["student|pdf_scraper"]
+        restored = current + ["research_quali|pdf_scraper"]
         self.assertEqual(self.client.post("/admin/definir-acessos", data={
             "csrf_token": token, "access": restored,
         }).status_code, 302)
@@ -327,7 +327,7 @@ class PersistentAnalysisTests(unittest.TestCase):
         db.session.commit()
         login(self.client)
         self.assertEqual(self.client.get("/ferramenta-nova").status_code, 403)
-        db.session.add(PlanTool(plan_id="student", tool_id="future_tool"))
+        db.session.add(PlanTool(plan_id="research_quali", tool_id="future_tool"))
         db.session.commit()
         self.assertEqual(self.client.get("/ferramenta-nova").status_code, 200)
 

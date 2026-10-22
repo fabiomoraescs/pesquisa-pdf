@@ -18,7 +18,7 @@ class InstagramArchivingTests(unittest.TestCase):
         self.client = self.app.test_client()
         self.user = create_user()
         self.other = create_user("Outra", "outra@example.org")
-        db.session.add(PlanTool(plan_id="student", tool_id=ANALYTICS_INSTAGRAM_TOOL))
+        db.session.add(PlanTool(plan_id="research_quali", tool_id=ANALYTICS_INSTAGRAM_TOOL))
         db.session.commit()
         login(self.client)
         self.project = AnalyticsProject(owner_user_id=self.user.id, name="Pesquisa Instagram")

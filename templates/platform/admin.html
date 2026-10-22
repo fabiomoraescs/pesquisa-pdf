@@ -6,7 +6,7 @@
 {% from 'platform/_icons.html' import icon %}
 {% if section == 'home' %}
 <div class="platform-admin-grid mb-4">{% for label, value in [('Usuários', counts.users), ('Ativos', counts.active), ('Bloqueados', counts.blocked), ('Projetos', counts.projects)] %}<div class="metric-card"><span>{{ label }}</span><strong>{{ value }}</strong></div>{% endfor %}</div>
-<section class="platform-panel"><h2 class="h5">Distribuição por plano</h2><ul class="mb-0">{% for plan_id, total in distribution %}<li>{{ plan_id | rotulo }}: {{ total }}</li>{% else %}<li>Nenhuma concessão ativa.</li>{% endfor %}</ul></section>
+<section class="platform-panel"><h2 class="h5">Distribuição por plano</h2><ul class="mb-0">{% for plan_id, total in distribution %}<li><span class="platform-commercial-plan-name">{{ plan_id | rotulo }}</span>: {{ total }}</li>{% else %}<li>Nenhuma concessão ativa.</li>{% endfor %}</ul></section>
 {% elif section == 'users' %}
 <form class="d-flex flex-wrap gap-2 mb-3" method="get"><input class="form-control" name="q" value="{{ q }}" aria-label="Buscar usuário por nome ou e-mail" placeholder="Nome ou e-mail" style="max-width: 360px"><button class="btn btn-primary">Buscar</button></form>
 <div class="platform-toolbar"><p>{{ pagination.total }} usuário(s)</p><div class="d-flex flex-wrap gap-2 align-items-center"><a class="btn btn-outline-primary btn-sm" href="{{ url_for('admin.deleted_users') }}">Usuários excluídos</a>{{ toggle('admin-users-list') }}</div></div>
@@ -15,7 +15,7 @@
 {% elif section == 'deleted_users' %}
 <form class="d-flex flex-wrap gap-2 mb-3" method="get"><input class="form-control" name="q" value="{{ q }}" aria-label="Buscar usuário excluído por nome ou e-mail" placeholder="Nome ou e-mail" style="max-width: 360px"><button class="btn btn-primary">Buscar</button></form>
 <div class="platform-toolbar"><p>{{ pagination.total }} usuário(s) excluído(s)</p><div class="d-flex flex-wrap gap-2 align-items-center"><a class="btn btn-outline-primary btn-sm" href="{{ url_for('admin.users') }}">Voltar aos usuários</a>{{ toggle('admin-deleted-users-list') }}</div></div>
-<div class="platform-view-list" id="admin-deleted-users-list" data-view-container>{% for user in users %}<article class="platform-list-item"><div class="platform-list-title">{{ user.name }} <span class="platform-badge">Excluído</span></div><div class="platform-list-meta">{{ user.email }} · {{ user.role | rotulo }} · Plano: {{ grants[user.id].plan.name if grants[user.id] else 'Nenhum' }} · Exclusão: {{ user.deleted_at | data_br }}</div><div class="platform-list-actions">{{ action_link(url_for('admin.restore_user', user_id=user.id), 'Restaurar usuário', 'restaurar') }}{{ action_link(url_for('admin.permanently_delete_user', user_id=user.id), 'Excluir usuário permanentemente', 'lixeira', true) }}</div></article>{% else %}<div class="platform-empty-state">Nenhum usuário excluído encontrado.</div>{% endfor %}</div>
+<div class="platform-view-list" id="admin-deleted-users-list" data-view-container>{% for user in users %}<article class="platform-list-item"><div class="platform-list-title">{{ user.name }} <span class="platform-badge">Excluído</span></div><div class="platform-list-meta">{{ user.email }} · {{ user.role | rotulo }} · Plano: {% if grants[user.id] %}<span class="platform-commercial-plan-name">{{ commercial_plan_name(grants[user.id].plan.id, grants[user.id].plan.name) }}</span>{% else %}Nenhum{% endif %} · Exclusão: {{ user.deleted_at | data_br }}</div><div class="platform-list-actions">{{ action_link(url_for('admin.restore_user', user_id=user.id), 'Restaurar usuário', 'restaurar') }}{{ action_link(url_for('admin.permanently_delete_user', user_id=user.id), 'Excluir usuário permanentemente', 'lixeira', true) }}</div></article>{% else %}<div class="platform-empty-state">Nenhum usuário excluído encontrado.</div>{% endfor %}</div>
 <div class="d-flex gap-3 mt-3">{% if pagination.has_prev %}<a href="{{ url_for('admin.deleted_users', q=q, page=pagination.prev_num) }}">Anterior</a>{% endif %}{% if pagination.has_next %}<a href="{{ url_for('admin.deleted_users', q=q, page=pagination.next_num) }}">Próxima</a>{% endif %}</div>
 {% elif section == 'user_detail' %}
 <section class="platform-panel mb-3"><h2 class="h5">{{ user.name }}</h2><p>{{ user.email }} · {{ user.role | rotulo }} · <span class="platform-badge">{{ 'Excluído logicamente' if user.deleted_at else (user.status | rotulo) }}</span></p>
@@ -29,16 +29,28 @@
   <dt class="col-sm-4">Gênero</dt><dd class="col-sm-8">{{ user.profile.gender | rotulo if user.profile else 'Não informado' }}</dd>
   <dt class="col-sm-4">Raça/cor</dt><dd class="col-sm-8">{{ user.profile.race_color | rotulo if user.profile else 'Não informado' }}</dd>
 </dl></section>
-<section class="platform-panel mb-3"><h2 class="h5">Plano e forma de acesso</h2><p>Atual: {{ grant.plan.name if grant else 'Nenhum' }}{% if grant %} · {{ grant.access_mode | rotulo }} · {{ grant.status | rotulo }}{% endif %}</p>
+<section class="platform-panel mb-3"><h2 class="h5">Plano e forma de acesso</h2><p>Atual: {% if grant %}<span class="platform-commercial-plan-name">{{ commercial_plan_name(grant.plan.id, grant.plan.name) }}</span>{% else %}Aguardando ativação administrativa{% endif %}{% if grant %} · {{ grant.access_mode | rotulo }} · {{ grant.status | rotulo }}{% endif %}</p>
   <form method="post" action="{{ url_for('admin.set_user_access', user_id=user.id) }}" class="row g-3 align-items-end"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <div class="col-12 col-md-3"><label class="visually-hidden" for="plan-id">Plano</label><select class="form-select" id="plan-id" name="plan_id">{% if grant and not grant.plan.active %}<option value="" selected disabled>Plano: {{ grant.plan.name }} (inativo; escolha outro plano)</option>{% endif %}{% for plan in plans %}<option value="{{ plan.id }}" {% if grant and grant.plan_id == plan.id %}selected{% endif %}>Plano: {{ plan.name }}</option>{% endfor %}</select></div>
-    <div class="col-12 col-md-3"><label class="visually-hidden" for="access-mode">Forma de acesso</label><select class="form-select" id="access-mode" name="access_mode">{% for item in ['student_free','admin_courtesy','trial','paid'] %}<option value="{{ item }}" {% if grant and grant.access_mode == item %}selected{% endif %}>Forma de acesso: {{ item | rotulo }}</option>{% endfor %}</select></div>
-    <div class="col-12 col-md-3"><label class="visually-hidden" for="access-status">Estado</label><select class="form-select" id="access-status" name="access_status">{% for item in ['active','trial','payment_pending','expired','canceled'] %}<option value="{{ item }}" {% if grant and grant.status == item %}selected{% endif %}>Estado: {{ item | rotulo }}</option>{% endfor %}</select></div>
+    <div class="col-12 col-md-3"><label class="visually-hidden" for="plan-id">Plano</label><select class="form-select platform-commercial-plan-select" id="plan-id" name="plan_id">{% for item in commercial_plan_selection_groups %}<optgroup label="{{ item.group.name }}">{% for item_plan in item.plans %}{% set plan = item_plan.plan %}<option value="{{ item_plan.definition.plan_id }}"{% if grant and grant.plan_id == item_plan.definition.plan_id %} selected{% endif %}{% if not item_plan.action_available and not (grant and grant.plan_id == item_plan.definition.plan_id) %} disabled{% endif %}>Plano {{ item_plan.definition.name }}{% if not item_plan.action_available %} — plano inativo{% endif %}</option>{% endfor %}</optgroup>{% endfor %}</select></div>
+    <div class="col-12 col-md-3"><label class="visually-hidden" for="access-mode">Forma de acesso</label><select class="form-select" id="access-mode" name="access_mode">{% for item in ['admin_courtesy','paid'] %}<option value="{{ item }}" {% if grant and grant.access_mode == item %}selected{% endif %}>Forma de acesso: {{ item | rotulo }}</option>{% endfor %}</select></div>
+    <div class="col-12 col-md-3"><label class="visually-hidden" for="access-status">Estado</label><select class="form-select" id="access-status" name="access_status">{% for item in ['active','payment_pending','expired','canceled'] %}<option value="{{ item }}" {% if grant and grant.status == item %}selected{% endif %}>Estado: {{ item | rotulo }}</option>{% endfor %}</select></div>
     <div class="col-12 col-md-3"><label class="form-label" for="expires-at">Validade (opcional)</label><input class="form-control" id="expires-at" type="date" name="expires_at" value="{{ grant.expires_at.strftime('%Y-%m-%d') if grant and grant.expires_at else '' }}"></div>
     <div class="col-12"><button class="btn btn-primary">Conceder novo acesso</button></div>
   </form>
-  <details class="mt-3"><summary>Histórico de concessões</summary><ul class="mt-2">{% for old in grants %}<li>{{ old.created_at.strftime('%d/%m/%Y %H:%M') }} · {{ old.plan_id | rotulo }} · {{ old.access_mode | rotulo }} · {{ old.status | rotulo }}{% if old.ended_at %} (encerrado){% endif %}</li>{% endfor %}</ul></details>
+  <details class="mt-3"><summary>Histórico de concessões</summary><ul class="mt-2">{% for old in grants %}<li>{{ old.created_at.strftime('%d/%m/%Y %H:%M') }} · <span class="platform-commercial-plan-name">{{ old.plan_id | rotulo }}</span> · {{ old.access_mode | rotulo }} · {{ old.status | rotulo }}{% if old.ended_at %} (encerrado){% endif %}</li>{% endfor %}</ul></details>
 </section>
+{% if user.role != 'admin' %}
+<section class="platform-panel mb-3"><h2 class="h5">Período de teste gratuito</h2><p class="platform-muted">A ativação é única por CPF e grupo comercial, dura sete dias consecutivos e não é iniciada no cadastro.</p>
+  <form method="post" action="{{ url_for('admin.activate_user_trial', user_id=user.id) }}" class="platform-commercial-limit-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="platform-commercial-limit-fields platform-commercial-trial-fields">
+      <div class="platform-commercial-limit-field"><label class="form-label" for="trial-plan-id">Plano experimental</label><select class="form-select platform-commercial-plan-select" id="trial-plan-id" name="plan_id" required>{% for item in commercial_plan_selection_groups %}<optgroup label="{{ item.group.name }}">{% for item_plan in item.plans %}<option value="{{ item_plan.definition.plan_id }}"{% if not item_plan.action_available %} disabled{% endif %}>{{ item_plan.definition.name }}{% if not item_plan.action_available %} — plano inativo{% endif %}</option>{% endfor %}</optgroup>{% endfor %}</select></div>
+      <div class="platform-commercial-limit-field"><label class="form-label" for="trial-cpf">CPF do titular</label><input class="form-control" id="trial-cpf" name="cpf" inputmode="numeric" autocomplete="off" maxlength="14" required></div>
+      <div class="platform-commercial-limit-field platform-commercial-trial-action"><span class="form-label" aria-hidden="true">&nbsp;</span><button class="btn btn-primary" type="submit">Ativar período de teste</button></div>
+    </div>
+  </form>
+  {% if commercial_trials %}<details class="mt-3"><summary>Períodos registrados para esta conta</summary><ul class="mt-2 mb-0">{% for trial in commercial_trials %}<li>{{ trial.commercial_group_id | rotulo }} · <span class="platform-commercial-plan-name">{{ commercial_plan_name(trial.plan.id, trial.plan.name) }}</span> · CPF: {{ trial_cpf_mask_display(trial) }} · {{ trial_state(trial) | rotulo }} · até {{ trial.expires_at | data_hora_local }}</li>{% endfor %}</ul></details>{% endif %}
+</section>
+{% endif %}
 <section class="platform-panel mb-3"><h2 class="h5">Permissões por ferramenta</h2>{% for tool in tools %}<form method="post" action="{{ url_for('admin.set_override', user_id=user.id, tool_id=tool.id) }}" class="d-flex flex-wrap gap-2 align-items-end mb-3"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label class="visually-hidden" for="override-{{ tool.id }}">{{ presentation_labels.get(tool.id, tool.name) }}</label><select class="form-select" id="override-{{ tool.id }}" name="decision" style="max-width: 240px">{% for choice in ['inherit','allow','deny'] %}<option value="{{ choice }}" {% if overrides.get(tool.id, 'inherit') == choice %}selected{% endif %}>{{ presentation_labels.get(tool.id, tool.name) }}: {{ choice | rotulo }}</option>{% endfor %}</select><button class="btn btn-outline-primary" title="Salvar permissão" aria-label="Salvar permissão">Salvar</button></form>{% endfor %}</section>
 <section class="platform-panel mb-3"><h2 class="h5">Projetos do usuário</h2><ul class="mb-0">{% for project in projects %}<li><a href="{{ url_for('admin.project_detail', project_id=project.id) }}">{{ project.name }}</a> · {{ project.status | rotulo }}</li>{% else %}<li>Nenhum projeto.</li>{% endfor %}</ul></section>
 <div class="d-flex flex-wrap gap-2 align-items-center">{{ action_link(url_for('admin.reset_user_password', user_id=user.id), 'Redefinir senha', 'chave') }}{% if user.id != current_user.id %}{{ action_link(url_for('admin.delete_user', user_id=user.id), 'Excluir usuário', 'usuario_remover', true) }}{% endif %}</div>
@@ -118,7 +130,7 @@
 <section class="platform-panel mt-4" aria-labelledby="tool-visibility-title">
   <h2 class="h5" id="tool-visibility-title">Visibilidade na navegação</h2>
   <p class="platform-muted">Controla somente a apresentação. A disponibilidade operacional, planos e permissões permanecem inalterados nesta etapa.</p>
-  <div class="platform-view-list" id="admin-tool-visibility-list" data-view-container>
+  <div class="platform-view-list platform-tool-visibility-list" id="admin-tool-visibility-list">
     {% for group in visibility_groups %}
     <article class="platform-list-item" data-visibility-group="{{ group.id }}">
       <div class="platform-list-title">{{ icon('qualitativa' if group.id == 'research_quali' else 'quantitativa' if group.id == 'research_quanti' else 'analytics') }} {{ group.name }}</div>
@@ -152,6 +164,22 @@
     </div>
     {% endif %}
     {% endfor %}
+    {% for tool in visibility_standalone_tools %}
+    <article class="platform-list-item" data-visibility-tool="{{ tool.id }}">
+      <div class="platform-list-title">{% if tool.icon %}{{ icon(tool.icon) }} {% endif %}{{ tool.name }}</div>
+      <div class="platform-list-meta">
+        <span class="platform-badge{{ '' if tool.visible else ' platform-badge-inactive' }}" data-tool-visibility-badge>{{ 'Visível' if tool.visible else 'Oculta' }}</span>
+      </div>
+      <div class="platform-list-actions">
+        <form method="post" action="{{ url_for('admin.set_tool_visibility', scope_type='tool', scope_id=tool.id) }}" class="form-check form-switch mb-0" data-tool-visibility-form>
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input class="form-check-input tool-visibility-child-switch" id="visibility-tool-{{ tool.id }}" name="visible" type="checkbox" value="true" role="switch" aria-label="Visibilidade de {{ tool.name }}" aria-describedby="visibility-tool-{{ tool.id }}-feedback" data-tool-visibility-control data-visibility-kind="tool" data-visibility-id="{{ tool.id }}" data-visibility-current="{{ 'true' if tool.visible else 'false' }}"{% if tool.visible %} checked{% endif %}>
+          <input type="hidden" name="visible" value="false">
+          <span class="platform-muted small" id="visibility-tool-{{ tool.id }}-feedback" role="status" aria-live="polite" data-tool-visibility-feedback hidden></span>
+        </form>
+      </div>
+    </article>
+    {% endfor %}
   </div>
   <div class="d-flex justify-content-end mt-3">
     <button class="btn btn-outline-primary btn-sm d-inline-flex align-items-center gap-1" type="button" data-tool-visibility-refresh aria-controls="admin-tool-visibility-list">{{ icon('restaurar') }}<span>Atualizar</span></button>
@@ -160,8 +188,60 @@
 </section>
 <script src="{{ url_for('static', filename='js/admin_tool_visibility.js') }}"></script>
 {% elif section == 'plans' %}
-<div class="platform-toolbar"><p>Planos disponíveis</p>{{ toggle('admin-plans-list') }}</div>
-<div class="platform-view-list" id="admin-plans-list" data-view-container>{% for plan in plans %}<article class="platform-list-item"><div class="platform-list-title">{{ plan.name }}</div><div class="platform-list-meta">{{ plan.description }} · <span class="platform-badge">{{ 'Ativo' if plan.active else 'Inativo' }}</span></div><div class="platform-list-actions"><form method="post" action="{{ url_for('admin.set_plan_state', plan_id=plan.id) }}" onsubmit="return confirm('Confirma {{ 'desativar' if plan.active else 'ativar' }} este plano? As concessões existentes serão preservadas.')"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="confirm" value="yes"><input type="hidden" name="active" value="{{ 'false' if plan.active else 'true' }}"><button class="btn btn-outline-primary btn-sm platform-action-button" type="submit" title="{{ 'Desativar' if plan.active else 'Ativar' }} plano" aria-label="{{ 'Desativar' if plan.active else 'Ativar' }} plano">{{ icon('desativar' if plan.active else 'ativar') }}</button></form></div></article>{% endfor %}</div>
+<div class="platform-toolbar"><p>Planos comerciais</p>{{ toggle('admin-plans-list') }}</div>
+<div id="admin-plans-list" data-view-container>
+  {% for item in commercial_plan_groups %}
+  <section class="platform-panel mb-3" aria-labelledby="commercial-group-{{ item.group.group_id }}">
+    <h2 id="commercial-group-{{ item.group.group_id }}" class="h5">{{ item.group.name }}</h2>
+    <p class="platform-muted">{{ item.group.description }}</p>
+    <div class="platform-view-list">
+      {% for entry in item.plans %}
+      {% set plan = entry.plan %}
+      <article class="platform-list-item align-items-start">
+        <div>
+          <div class="platform-list-title"><span class="platform-commercial-plan-name">{{ entry.definition.name }}</span></div>
+        {% if entry.configurable_limit_resources %}<div class="platform-list-meta">
+          {{ entry.definition.description }} · <span class="platform-badge">{{ entry.definition.commercial_availability | rotulo }}</span>
+          {% if entry.available_tool_names %} · Ferramentas operacionais: {{ entry.available_tool_names | join(', ') }}{% else %} · Sem ferramenta operacional disponível{% endif %}
+        </div>{% endif %}
+        </div>
+        <div class="platform-list-actions">
+          {% if plan %}
+          <span class="platform-badge">{{ 'Ativo' if plan.active else 'Inativo' }}</span>
+          <form method="post" action="{{ url_for('admin.set_plan_state', plan_id=plan.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="confirm" value="yes"><input type="hidden" name="active" value="{{ 'false' if plan.active else 'true' }}">
+            <button class="btn btn-outline-primary btn-sm platform-action-button" type="submit" title="{{ 'Desativar' if plan.active else 'Ativar' }} plano" aria-label="{{ 'Desativar' if plan.active else 'Ativar' }} plano">{{ icon('desativar' if plan.active else 'ativar') }}</button>
+          </form>
+          {% if entry.configurable_limit_resources %}<button class="btn btn-outline-primary btn-sm platform-action-button" type="button" data-commercial-limit-open="plan-limits-{{ plan.id }}" title="Configurar limites de {{ commercial_plan_name(plan.id, plan.name) }}" aria-label="Configurar limites de {{ commercial_plan_name(plan.id, plan.name) }}">{{ icon('gerenciar') }}</button>{% endif %}
+          {% else %}<span class="platform-badge">Pendente de migration</span>{% endif %}
+        </div>
+      </article>
+      {% if plan and entry.configurable_limit_resources and entry.limits %}
+      {% set policies = entry.limit_policy_history %}
+      <dialog class="platform-modal" id="plan-limits-{{ plan.id }}" data-commercial-limit-modal aria-labelledby="plan-limits-title-{{ plan.id }}">
+        <button class="btn-close platform-modal-close" type="button" data-commercial-limit-close aria-label="Fechar"></button>
+        <h3 id="plan-limits-title-{{ plan.id }}" class="h5">Limites e recursos</h3>
+        <p class="platform-muted"><span class="platform-commercial-plan-name">{{ commercial_plan_name(plan.id, plan.name) }}</span>. A política publicada vale para novas assinaturas; contratos existentes preservam o respectivo snapshot.</p>
+        <div class="platform-list-meta mb-3">{% if policies %}Política atual: versão {{ policies[0].version }} · publicada em {{ policies[0].published_at | data_hora_local }}{% else %}Política inicial aguardando publicação pela migration.{% endif %}{% if policies | length > 1 %}<br>Valores anteriores (versão {{ policies[1].version }}): {% for resource in entry.configurable_limit_resources %}{{ resource.name }}: {{ policies[1].limits_json.get(resource.resource_id, 0) }}{% if not loop.last %} · {% endif %}{% endfor %}.{% endif %}</div>
+        <form method="post" action="{{ url_for('admin.publish_plan_limits', plan_id=plan.id) }}" class="platform-commercial-limit-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="platform-commercial-limit-fields">
+          {% for resource in entry.configurable_limit_resources %}
+          <div class="platform-commercial-limit-field"><label class="form-label" for="limit-{{ plan.id }}-{{ resource.resource_id }}">{{ resource.name }}</label><input class="form-control" id="limit-{{ plan.id }}-{{ resource.resource_id }}" name="{{ resource.resource_id }}" type="number" min="0" step="1" required value="{{ entry.limits[resource.resource_id] }}" aria-describedby="limit-help-{{ plan.id }}-{{ resource.resource_id }}"><div id="limit-help-{{ plan.id }}-{{ resource.resource_id }}" class="form-text">{{ resource.description }}</div></div>
+          {% endfor %}
+          </div>
+          <div class="platform-commercial-limit-actions"><button class="btn btn-outline-primary" type="button" data-commercial-limit-close>Cancelar</button><button class="btn btn-primary" type="submit">Salvar</button></div>
+        </form>
+      </dialog>
+      {% endif %}
+      {% endfor %}
+    </div>
+  </section>
+  {% endfor %}
+</div>
+<script src="{{ url_for('static', filename='js/admin_commercial_plans.js', v='commercial-plans-v2') }}"></script>
+{% elif section == 'trials' %}
+<section class="platform-panel" aria-labelledby="commercial-trials-title"><h2 id="commercial-trials-title" class="h5">Períodos de teste gratuitos</h2><p class="platform-muted">O CPF é apresentado somente de forma mascarada. Cada registro consome um único benefício por grupo comercial.</p><div class="platform-view-list">{% for trial in commercial_trials %}<article class="platform-list-item"><div><div class="platform-list-title">{{ trial.beneficiary.name if trial.beneficiary else 'Conta removida' }} <span class="platform-badge">{{ trial_state(trial) | rotulo }}</span></div><div class="platform-list-meta">{{ trial.commercial_group_id | rotulo }} · <span class="platform-commercial-plan-name">{{ commercial_plan_name(trial.plan.id, trial.plan.name) }}</span> · CPF: {{ trial_cpf_mask_display(trial) }} · início {{ trial.started_at | data_hora_local }} · término {{ trial.expires_at | data_hora_local }}</div></div><div class="platform-list-actions">{{ ficha(url_for('admin.user_detail', user_id=trial.user_id), 'Abrir ficha do usuário') if trial.user_id else '' }}</div></article>{% else %}<div class="platform-empty-state">Nenhum período de teste foi ativado.</div>{% endfor %}</div></section>
 {% elif section == 'projects' %}
 <div class="platform-toolbar"><p>{{ pagination.total }} projeto(s)</p>{{ toggle('admin-projects-list') }}</div>
 <div class="platform-view-list" id="admin-projects-list" data-view-container>{% for project in projects %}

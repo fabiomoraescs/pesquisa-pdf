@@ -139,7 +139,7 @@ class InstagramProjectPaginationPresentationTests(unittest.TestCase):
         self.app = self.scope.__enter__()
         self.client = self.app.test_client()
         self.user = create_user()
-        db.session.add(PlanTool(plan_id="student", tool_id=ANALYTICS_INSTAGRAM_TOOL))
+        db.session.add(PlanTool(plan_id="research_quali", tool_id=ANALYTICS_INSTAGRAM_TOOL))
         db.session.add_all(
             AnalyticsProject(
                 owner_user_id=self.user.id,

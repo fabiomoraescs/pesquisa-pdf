@@ -12,9 +12,11 @@ from platform_core.tool_catalog import (
     TOOL_GROUPS,
     administrative_catalog_entries,
     persistent_tool_seed_rows,
+    standalone_tools_in_display_order,
     tools_in_display_order,
     validate_visibility_target,
     visible_navigation_groups,
+    visible_standalone_tools,
 )
 
 
@@ -28,9 +30,11 @@ class ToolCatalogDefinitionTests(unittest.TestCase):
                 ("research_quali", "pdf_scraper"),
                 ("research_quali", "document_analysis"),
                 ("research_quali", "qualitative_analysis"),
-                ("research_quali", "comments_analysis"),
+                ("research_quanti", "quantitative_analysis"),
                 ("analytics", ANALYTICS_INSTAGRAM_TOOL),
-                ("analytics", "analytics_seo"),
+                ("analytics", "ojs_seo"),
+                ("analytics", "ojs_analytics"),
+                (None, "bibliographic_search"),
             ],
         )
         self.assertTrue(all(tool.implementation_status in IMPLEMENTATION_STATUSES for tool in TOOL_DEFINITIONS))
@@ -49,7 +53,11 @@ class ToolCatalogDefinitionTests(unittest.TestCase):
         )
         self.assertTrue(all(tool.tool_code and tool.route for tool in available))
         self.assertTrue(all(tool.tool_code is None and tool.route is None for tool in unavailable))
-        self.assertEqual({tool.tool_id for tool in unavailable}, {"comments_analysis", "analytics_seo"})
+        self.assertEqual(
+            {tool.tool_id for tool in unavailable},
+            {"quantitative_analysis", "ojs_seo", "ojs_analytics", "bibliographic_search"},
+        )
+        self.assertEqual([tool.tool_id for tool in standalone_tools_in_display_order()], ["bibliographic_search"])
 
     def test_catalog_definition_is_immutable(self):
         with self.assertRaises(Exception):
@@ -72,19 +80,23 @@ class VisibilityPolicyTests(unittest.TestCase):
     def tool_ids(self, **kwargs):
         return [tool.tool_id for group in visible_navigation_groups(**kwargs) for tool in group.tools]
 
-    def test_default_preserves_all_currently_implemented_tools_in_official_order(self):
-        self.assertEqual(self.group_ids(), ["research_quali", "analytics"])
+    def test_default_keeps_visible_future_entries_in_official_order_without_making_them_operational(self):
+        self.assertEqual(self.group_ids(), ["research_quali", "research_quanti", "analytics"])
         self.assertEqual(
             self.tool_ids(),
-            ["pdf_scraper", "document_analysis", "qualitative_analysis", ANALYTICS_INSTAGRAM_TOOL],
+            [
+                "pdf_scraper", "document_analysis", "qualitative_analysis",
+                "quantitative_analysis", ANALYTICS_INSTAGRAM_TOOL, "ojs_seo", "ojs_analytics",
+            ],
         )
+        self.assertEqual([tool.tool_id for tool in visible_standalone_tools()], ["bibliographic_search"])
 
     def test_hidden_group_removes_all_its_tools_without_mutating_individual_preferences(self):
         tools = {"pdf_scraper": False, "document_analysis": True}
         result = visible_navigation_groups(
             group_visibility={"research_quali": False}, tool_visibility=tools,
         )
-        self.assertEqual([item.group.group_id for item in result], ["analytics"])
+        self.assertEqual([item.group.group_id for item in result], ["research_quanti", "analytics"])
         self.assertEqual(tools, {"pdf_scraper": False, "document_analysis": True})
 
         reactivated = visible_navigation_groups(
@@ -103,25 +115,33 @@ class VisibilityPolicyTests(unittest.TestCase):
             "document_analysis": False,
             "qualitative_analysis": False,
         })
-        self.assertEqual([item.group.group_id for item in empty], ["analytics"])
+        self.assertEqual([item.group.group_id for item in empty], ["research_quanti", "analytics"])
 
-    def test_future_tools_and_groups_without_eligible_tools_are_not_render_candidates(self):
+    def test_future_tools_are_render_candidates_but_remain_independent_from_availability(self):
         result = visible_navigation_groups(
             group_visibility={"research_quanti": True},
-            tool_visibility={"comments_analysis": True, "analytics_seo": True},
+            tool_visibility={"quantitative_analysis": True, "ojs_seo": True},
         )
-        self.assertNotIn("research_quanti", [item.group.group_id for item in result])
-        self.assertEqual([item.group.group_id for item in result], ["research_quali", "analytics"])
-        self.assertNotIn("comments_analysis", [tool.tool_id for group in result for tool in group.tools])
+        self.assertEqual([item.group.group_id for item in result], ["research_quali", "research_quanti", "analytics"])
+        self.assertIn("quantitative_analysis", [tool.tool_id for group in result for tool in group.tools])
+        self.assertIn("ojs_seo", [tool.tool_id for group in result for tool in group.tools])
+
+        self.assertEqual(visible_standalone_tools(tool_visibility={"bibliographic_search": False}), ())
 
     def test_multiple_hidden_items_keep_the_official_order_when_reactivated(self):
         hidden = visible_navigation_groups(
             group_visibility={"analytics": False},
             tool_visibility={"pdf_scraper": False},
         )
-        self.assertEqual([item.group.group_id for item in hidden], ["research_quali"])
+        self.assertEqual([item.group.group_id for item in hidden], ["research_quali", "research_quanti"])
         self.assertEqual([tool.tool_id for tool in hidden[0].tools], ["document_analysis", "qualitative_analysis"])
-        self.assertEqual(self.tool_ids(), ["pdf_scraper", "document_analysis", "qualitative_analysis", ANALYTICS_INSTAGRAM_TOOL])
+        self.assertEqual(
+            self.tool_ids(),
+            [
+                "pdf_scraper", "document_analysis", "qualitative_analysis",
+                "quantitative_analysis", ANALYTICS_INSTAGRAM_TOOL, "ojs_seo", "ojs_analytics",
+            ],
+        )
 
     def test_invalid_or_unknown_visibility_input_fails_closed_in_the_policy_layer(self):
         with self.assertRaisesRegex(ValueError, "grupo desconhecido"):
@@ -134,7 +154,7 @@ class CatalogCompatibilityTests(unittest.TestCase):
     def test_seed_rows_reference_only_implemented_tools(self):
         expected_codes = {code for code, _name, _route in persistent_tool_seed_rows()}
         self.assertEqual(expected_codes, {"pdf_scraper", "document_analysis", "qualitative_analysis", ANALYTICS_INSTAGRAM_TOOL})
-        self.assertFalse(expected_codes & {"comments_analysis", "analytics_seo", "quantitative_analysis"})
+        self.assertFalse(expected_codes & {"quantitative_analysis", "ojs_seo", "ojs_analytics", "bibliographic_search"})
 
     def test_administrative_adapter_preserves_existing_catalog_entries_and_order(self):
         persisted = (
@@ -145,14 +165,14 @@ class CatalogCompatibilityTests(unittest.TestCase):
         )
         rows = administrative_catalog_entries(persisted)
         self.assertEqual(
-            [row["name"] for row in rows[:7]],
+            [row["name"] for row in rows[:8]],
             [
                 "Raspagem por termos", "Raspagem estruturada", "Análise Documental",
-                "Análise de Comentários", "Pesquisa Quanti", "Instagram", "SEO",
+                "Pesquisa Quanti", "Instagram", "OJS SEO", "OJS Analytics", "Busca Bibliográfica",
             ],
         )
         self.assertTrue(all(row["implemented"] is False for row in rows if row["id"] in {
-            "comments_analysis", "quantitative_analysis", "analytics_seo",
+            "quantitative_analysis", "ojs_seo", "ojs_analytics", "bibliographic_search",
         }))
 
 

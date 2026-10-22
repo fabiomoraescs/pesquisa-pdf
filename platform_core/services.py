@@ -10,6 +10,7 @@ from sqlalchemy import func, select
 
 from historico_racial.vocabulary import _contagens, _seed, hash_vocabulario
 
+from .commercial_catalog import COMMERCIAL_PLANS, commercial_plans_in_display_order
 from .extensions import db
 from .models import (
     AccessGrant, AssistantAISettings, AuditLog, Plan, PlanTool, Project, Tool,
@@ -22,17 +23,17 @@ from .tool_catalog import (
     groups_in_display_order,
     legacy_unavailable_tool_entries,
     persistent_tool_seed_rows,
+    standalone_tools_in_display_order,
     tool_definition,
     tools_in_display_order,
     validate_visibility_target,
     visible_navigation_groups,
+    visible_standalone_tools,
 )
 
-PLANOS = (
-    ("student", "Estudante", "Acesso gratuito inicial"),
-    ("researcher", "Pesquisador", "Plano de pesquisa"),
-    ("pro", "Pro", "Plano avançado"),
-    ("institutional", "Institucional", "Plano institucional"),
+PLANOS = tuple(
+    (plan.plan_id, plan.name, plan.description)
+    for plan in commercial_plans_in_display_order()
 )
 # Adaptadores de compatibilidade: consumidores legados continuam recebendo os
 # mesmos formatos, mas a definição canônica passou para ``tool_catalog``.
@@ -54,12 +55,17 @@ def account_accepts_new_work(user_id: str) -> bool:
 
 
 def seed_platform() -> None:
-    """Idempotente; nunca reescreve uma biblioteca ou permissão existente."""
+    """Semeia catálogo inicial sem reescrever permissões já configuradas."""
     initial_bootstrap = (
         db.session.scalar(select(func.count()).select_from(Plan)) == 0
         and db.session.scalar(select(func.count()).select_from(Tool)) == 0
     )
-    for code, name, description in PLANOS:
+    # Em uma base já inicializada, planos comerciais são exclusivamente dados de
+    # migration. Isso impede que um seed antecipado contorne a cadeia Alembic ou
+    # reintroduza metadados antigos. Um bootstrap genuinamente vazio continua
+    # recebendo o catálogo completo, de modo idempotente.
+    plan_rows = PLANOS if initial_bootstrap else ()
+    for code, name, description in plan_rows:
         if db.session.get(Plan, code) is None:
             db.session.add(Plan(id=code, name=name, description=description, active=True))
     for code, name, route in FERRAMENTAS:
@@ -70,17 +76,26 @@ def seed_platform() -> None:
     if db.session.get(AssistantAISettings, 1) is None:
         db.session.add(AssistantAISettings())
     db.session.flush()
-    # Somente as duas ferramentas iniciais ficam no plano gratuito. Ferramentas
-    # posteriores são cadastradas de forma idempotente, mas recebem acesso por
-    # plano ou override apenas quando essa política for definida pelo admin.
-    for plan_id, tool_id in (() if not initial_bootstrap else (
-        ("student", "pdf_scraper"), ("student", "document_analysis"),
-        ("researcher", "pdf_scraper"), ("researcher", "document_analysis"),
-        ("pro", "pdf_scraper"), ("pro", "document_analysis"),
-        ("institutional", "pdf_scraper"), ("institutional", "document_analysis"),
-    )):
+    # O bootstrap vazio recebe somente a matriz inicial. Em instalações já
+    # existentes, a migration comercial cria os novos vínculos e este seed não
+    # restaura associações que um administrador tenha removido deliberadamente.
+    initial_plan_tools = tuple(
+        (plan.plan_id, tool_id)
+        for plan in COMMERCIAL_PLANS
+        for tool_id in plan.available_tool_ids
+    )
+    for plan_id, tool_id in (() if not initial_bootstrap else initial_plan_tools):
         if db.session.get(PlanTool, (plan_id, tool_id)) is None:
             db.session.add(PlanTool(plan_id=plan_id, tool_id=tool_id))
+    if initial_bootstrap:
+        # Materializa a matriz antes de consultar políticas. Em SQLite isso
+        # evita que uma consulta de inicialização dispare um autoflush parcial
+        # de relações plano-ferramenta.
+        db.session.flush()
+        # A importação tardia preserva o módulo de seed em bancos anteriores à
+        # migration de limites e não altera políticas já publicadas.
+        from .commercial_limit_services import initialize_commercial_limit_policies
+        initialize_commercial_limit_policies()
     snapshot = _seed()
     counts = _contagens(snapshot)
     if counts != {"grupos": 8, "entidades": 75, "variantes": 117}:
@@ -104,6 +119,11 @@ def current_grant(user: User) -> AccessGrant | None:
         select(AccessGrant).where(AccessGrant.user_id == user.id, AccessGrant.ended_at.is_(None))
         .order_by(AccessGrant.created_at.desc(), AccessGrant.id.desc())
     )
+
+
+def awaiting_plan_activation(user: User) -> bool:
+    """Indica conta autenticável que ainda não recebeu concessão principal."""
+    return bool(user.is_active and user.role != "admin" and current_grant(user) is None)
 
 
 def access_is_active(user: User) -> bool:
@@ -148,10 +168,9 @@ def tool_is_administratively_visible(tool_id: str) -> bool:
     if definition is None:
         return True
     group_preferences, tool_preferences = visibility_preferences()
-    return (
-        group_preferences.get(definition.group_id, True)
-        and tool_preferences.get(definition.tool_id, True)
-    )
+    if definition.group_id is None:
+        return tool_preferences.get(definition.tool_id, True)
+    return group_preferences.get(definition.group_id, True) and tool_preferences.get(definition.tool_id, True)
 
 
 def can_access_tool(user: User, tool_id: str) -> bool:
@@ -175,6 +194,8 @@ def require_tool_access(user: User, tool_id: str) -> None:
 
 def navigation_groups_for_user(user: User) -> tuple[dict[str, object], ...]:
     """Projeção de navegação sem grupos vazios, pronta para desktop e mobile."""
+    if awaiting_plan_activation(user):
+        return ()
     group_preferences, tool_preferences = visibility_preferences()
     return tuple(
         {
@@ -186,7 +207,9 @@ def navigation_groups_for_user(user: User) -> tuple[dict[str, object], ...]:
                     "id": tool.tool_id,
                     "name": tool.name,
                     "endpoint": tool.endpoint,
-                    "accessible": can_access_tool(user, tool.tool_id),
+                    # Uma entrada futura pode ser apresentada, mas jamais
+                    # recebe link por existir um Tool acidental no banco.
+                    "accessible": tool.implementation_status == "available" and can_access_tool(user, tool.tool_id),
                 }
                 for tool in group.tools
             ),
@@ -195,6 +218,23 @@ def navigation_groups_for_user(user: User) -> tuple[dict[str, object], ...]:
             group_visibility=group_preferences,
             tool_visibility=tool_preferences,
         )
+    )
+
+
+def navigation_standalone_tools_for_user(user: User) -> tuple[dict[str, object], ...]:
+    """Ferramentas de primeiro nível da sidebar, sem grupo sintético."""
+    if awaiting_plan_activation(user):
+        return ()
+    _group_preferences, tool_preferences = visibility_preferences()
+    return tuple(
+        {
+            "id": tool.tool_id,
+            "name": tool.name,
+            "icon": tool.icon,
+            "endpoint": tool.endpoint,
+            "accessible": tool.implementation_status == "available" and can_access_tool(user, tool.tool_id),
+        }
+        for tool in visible_standalone_tools(tool_visibility=tool_preferences)
     )
 
 
@@ -249,6 +289,8 @@ def visibility_control_catalog() -> list[dict[str, object]]:
         group.group_id: [] for group in groups_in_display_order()
     }
     for tool in tools_in_display_order():
+        if tool.group_id is None:
+            continue
         individual_visible = tool_preferences.get(tool.tool_id, True)
         tools_by_group[tool.group_id].append({
             "id": tool.tool_id,
@@ -267,6 +309,22 @@ def visibility_control_catalog() -> list[dict[str, object]]:
             "tools": tools_by_group[group.group_id],
         }
         for group in groups_in_display_order()
+    ]
+
+
+def standalone_visibility_control_catalog() -> list[dict[str, object]]:
+    """Controles administrativos das ferramentas que não pertencem a grupo."""
+    _group_preferences, tool_preferences = visibility_preferences()
+    return [
+        {
+            "id": tool.tool_id,
+            "name": tool.name,
+            "icon": tool.icon,
+            "implementation_status": tool.implementation_status,
+            "visible": tool_preferences.get(tool.tool_id, True),
+            "configured": tool.tool_id in tool_preferences,
+        }
+        for tool in standalone_tools_in_display_order()
     ]
 
 
@@ -320,21 +378,31 @@ def set_visibility_preference(
 
 
 def replace_grant(user: User, plan_id: str, access_mode: str, status: str, admin: User | None = None, expires_at: datetime | None = None) -> AccessGrant:
-    plan = db.session.get(Plan, plan_id)
-    if plan is None or not plan.active:
-        raise ValueError("Este plano está inativo e não pode receber novas concessões.")
-    previous = current_grant(user)
-    if previous:
-        previous.ended_at = utcnow()
-    grant = AccessGrant(
-        user_id=user.id, plan_id=plan_id, access_mode=access_mode,
-        status=status, granted_by_id=admin.id if admin else None,
-        granted_by_name_snapshot=admin.name if admin else None,
-        expires_at=expires_at,
-    )
-    db.session.add(grant)
-    if admin:
-        record_audit(admin, "access_grant_changed", "user", user.id,
-                     {"plan": previous.plan_id, "mode": previous.access_mode, "status": previous.status} if previous else {},
-                     {"plan": plan_id, "mode": access_mode, "status": status, "expires_at": expires_at.isoformat() if expires_at else None})
-    return grant
+    """Substitui a concessão aberta sem apagar o histórico.
+
+    O lock cobre concorrência no processo Flask/CLI atual. A tabela histórica
+    ainda não possui índice único parcial para ``ended_at IS NULL``; antes de
+    uma implantação multi-processo, a operação exige auditoria de duplicidades
+    abertas e uma migration específica que só crie esse índice após a base
+    estar comprovadamente consistente. Esta fase não normaliza concessões
+    antigas nem altera esse contrato de dados.
+    """
+    with ACCOUNT_LIFECYCLE_LOCK:
+        plan = db.session.get(Plan, plan_id)
+        if plan is None or not plan.active:
+            raise ValueError("Este plano está inativo e não pode receber novas concessões.")
+        previous = current_grant(user)
+        if previous:
+            previous.ended_at = utcnow()
+        grant = AccessGrant(
+            user_id=user.id, plan_id=plan_id, access_mode=access_mode,
+            status=status, granted_by_id=admin.id if admin else None,
+            granted_by_name_snapshot=admin.name if admin else None,
+            expires_at=expires_at,
+        )
+        db.session.add(grant)
+        if admin:
+            record_audit(admin, "access_grant_changed", "user", user.id,
+                         {"plan": previous.plan_id, "mode": previous.access_mode, "status": previous.status} if previous else {},
+                         {"plan": plan_id, "mode": access_mode, "status": status, "expires_at": expires_at.isoformat() if expires_at else None})
+        return grant

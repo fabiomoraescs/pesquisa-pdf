@@ -335,6 +335,37 @@ html[data-theme="dark"] .terms-separator-error span { color: #fecaca; opacity: .
 .modal-header, .modal-footer { border-color: var(--border); }
 .modal-title, .modal-body h3 { color: var(--ink); }
 .modal-body p { color: var(--muted); }
+.platform-modal {
+  width: min(100% - 2rem, 42rem);
+  max-height: calc(100vh - 2rem);
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: .5rem;
+  background: var(--surface);
+  color: var(--ink);
+  padding: 1.25rem;
+  box-shadow: 0 1rem 3rem rgba(0, 0, 0, .3);
+}
+.platform-modal::backdrop { background: rgba(0, 0, 0, .55); }
+.platform-modal-close { float: right; }
+.platform-commercial-limit-form { display: grid; gap: 1rem; }
+.platform-commercial-limit-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); gap: 1rem; align-items: start; }
+.platform-commercial-limit-field { display: grid; grid-template-rows: auto minmax(2.375rem, auto) auto; gap: .4rem; min-width: 0; }
+.platform-commercial-limit-field .form-label, .platform-commercial-limit-field .form-text { margin: 0; }
+.platform-commercial-limit-field .form-control, .platform-commercial-limit-field .form-select { width: 100%; min-height: 2.375rem; }
+.platform-commercial-limit-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .5rem; }
+.platform-commercial-trial-fields { grid-template-columns: repeat(2, minmax(0, 1fr)) auto; }
+.platform-commercial-trial-action { min-width: max-content; }
+.platform-commercial-trial-action .btn { min-height: 2.375rem; white-space: nowrap; }
+@media (max-width: 767.98px) {
+  .platform-commercial-trial-fields { grid-template-columns: 1fr; }
+  .platform-commercial-trial-action { min-width: 0; }
+}
+.platform-commercial-plan-name { display: inline-block; white-space: nowrap; }
+.platform-commercial-plan-select { min-width: 0; }
+.platform-commercial-plan-select option { white-space: nowrap; }
+.platform-commercial-plan-matrix { min-width: 100%; width: max-content; }
+.platform-commercial-plan-matrix .platform-commercial-plan-header { min-width: max-content; white-space: nowrap; }
 .modal-help { font-size: .94rem; }
 .modal-help__intro {
   color: var(--ink) !important;

@@ -1,4 +1,4 @@
-"""Catálogo administrativo completo e navegação sem ferramentas futuras."""
+"""Catálogo administrativo completo e navegação de ferramentas futuras sem links."""
 import json
 import re
 import unittest
@@ -6,7 +6,7 @@ from pathlib import Path
 
 from platform_helpers import create_user, csrf_from, isolated_platform, login
 from platform_core.extensions import db
-from platform_core.models import Analysis, PlanTool, Tool
+from platform_core.models import Analysis, Plan, PlanTool, Tool
 from platform_core.services import tool_catalog
 
 
@@ -32,9 +32,10 @@ class ToolCatalogTests(unittest.TestCase):
         token = csrf_from(matrix_response)
         before = {(row.plan_id, row.tool_id) for row in db.session.scalars(db.select(PlanTool))}
         for identifier, name, symbol in (
-            ("comments_analysis", "Análise de Comentários", "comentarios"),
             ("quantitative_analysis", "Pesquisa Quanti", "quantitativa"),
-            ("analytics_seo", "SEO", "seo"),
+            ("ojs_seo", "OJS SEO", "seo"),
+            ("ojs_analytics", "OJS Analytics", "analytics"),
+            ("bibliographic_search", "Busca Bibliográfica", "ficha"),
         ):
             with self.subTest(tool=identifier):
                 card = re.search(rf'<article[^>]*data-tool-id="{identifier}"[^>]*>(.*?)</article>', tools_html, re.S)[1]
@@ -42,17 +43,18 @@ class ToolCatalogTests(unittest.TestCase):
                 for fragment in (card, row):
                     self.assertIn(name, fragment)
                     self.assertIn(str(icon(symbol)), fragment)
-                self.assertNotIn(name, sidebar)
+                self.assertIn(name, sidebar)
+                self.assertNotRegex(sidebar, rf'href="[^"]*">(?:<[^>]+>)*{re.escape(name)}<')
                 self.assertIn("Indisponível", card)
                 self.assertNotIn('<form', card)
                 inputs = re.findall(r'<input\b[^>]*>', row)
-                self.assertEqual(len(inputs), 4)
+                self.assertEqual(len(inputs), db.session.query(Plan).count())
                 for control in inputs:
                     self.assertIn('disabled', control)
                     self.assertNotIn('name="access"', control)
                 self.assertIsNone(db.session.get(Tool, identifier))
                 self.assertEqual(self.client.post('/admin/definir-acessos', data={
-                    "csrf_token": token, "access": [f"student|{identifier}"]}).status_code, 400)
+                    "csrf_token": token, "access": [f"research_quali|{identifier}"]}).status_code, 400)
                 self.assertEqual(self.client.post(f'/admin/ferramentas/{identifier}/estado', data={
                     "csrf_token": token, "confirm": "yes"}).status_code, 400)
                 self.assertFalse(any(identifier in rule.rule for rule in self.app.url_map.iter_rules()))
@@ -76,10 +78,11 @@ class ToolCatalogTests(unittest.TestCase):
             "Raspagem por termos": 0,
             "Raspagem estruturada": 0,
             "Análise Documental": 0,
-            "Análise de Comentários": 0,
             "Pesquisa Quanti": 0,
             "Instagram": 0,
-            "SEO": 0,
+            "OJS SEO": 0,
+            "OJS Analytics": 0,
+            "Busca Bibliográfica": 0,
         })
         # Qualquer outra ferramenta persistida permanece no catálogo administrativo
         # e é exibida como categoria mesmo quando não possui rota implementada.
@@ -94,7 +97,8 @@ class ToolCatalogTests(unittest.TestCase):
         self.assertEqual(len(catalog), len({tool["id"] for tool in catalog}))
         self.assertEqual({tool["name"] for tool in catalog}, {
             "Raspagem por termos", "Raspagem estruturada", "Análise Documental",
-            "Análise de Comentários", "Pesquisa Quanti", "Instagram", "SEO", "Outra ferramenta",
+            "Pesquisa Quanti", "Instagram", "OJS SEO", "OJS Analytics", "Busca Bibliográfica",
+            "Outra ferramenta",
         })
         for path in ('/admin/ferramentas', '/admin/definir-acessos'):
             html = self.client.get(path).text
@@ -104,9 +108,10 @@ class ToolCatalogTests(unittest.TestCase):
             "Raspagem por termos": 2,
             "Raspagem estruturada": 1,
             "Análise Documental": 3,
-            "Análise de Comentários": 0,
             "Pesquisa Quanti": 0,
             "Instagram": 0,
-            "SEO": 0,
+            "OJS SEO": 0,
+            "OJS Analytics": 0,
+            "Busca Bibliográfica": 0,
             "Outra ferramenta": 1,
         })

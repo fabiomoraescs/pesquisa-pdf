@@ -295,7 +295,7 @@ class RemainingRefinementsTests(unittest.TestCase):
     def test_inactive_plan_blocks_reset_with_clear_reason(self):
         user = create_user("Alvo", "alvo@example.org")
         original_hash = user.password_hash
-        db.session.get(Plan, "student").active = False
+        db.session.get(Plan, "research_quali").active = False
         db.session.commit()
         url = f"/admin/usuarios/{user.id}/redefinir-senha"
         self.assertIn("não possui acesso ativo", self.client.get(url).get_data(as_text=True))
@@ -306,25 +306,25 @@ class RemainingRefinementsTests(unittest.TestCase):
         self.assertFalse(user.must_change_password)
 
     def test_plan_state_admin_csrf_audit_and_existing_grant(self):
-        user = create_user("Beneficiário", "beneficiario@example.org", plan="researcher")
+        user = create_user("Beneficiário", "beneficiario@example.org", plan="research_quali")
         grant_id = current_grant(user).id
-        url = "/admin/planos/researcher/estado"
+        url = "/admin/planos/research_quali/estado"
         self.assertEqual(self.client.get(url).status_code, 405)
         self.assertEqual(self.client.post(url, data={"confirm": "yes", "active": "false"}).status_code, 400)
         token = csrf_from(self.client.get("/admin/planos"))
         self.assertEqual(self.client.post(url, data={"csrf_token": token, "confirm": "yes", "active": "false"}).status_code, 302)
-        self.assertFalse(db.session.get(Plan, "researcher").active)
+        self.assertFalse(db.session.get(Plan, "research_quali").active)
         self.assertEqual(current_grant(user).id, grant_id)
         self.assertIsNotNone(db.session.get(AccessGrant, grant_id))
         self.assertEqual(self.client.post(f"/admin/usuarios/{user.id}/acesso", data={
-            "csrf_token": token, "plan_id": "researcher", "access_mode": "paid", "access_status": "active",
+            "csrf_token": token, "plan_id": "research_quali", "access_mode": "paid", "access_status": "active",
         }).status_code, 400)
         html = self.client.get("/admin/planos").get_data(as_text=True)
         self.assertIn('title="Ativar plano" aria-label="Ativar plano"', html)
         self.assertIn('id="admin-plans-list" data-view-container', html)
         self.assertEqual(self.client.post(url, data={"csrf_token": token, "confirm": "yes", "active": "true"}).status_code, 302)
-        self.assertTrue(db.session.get(Plan, "researcher").active)
-        logs = db.session.query(AuditLog).filter_by(action="plan_state_changed", target_id="researcher").all()
+        self.assertTrue(db.session.get(Plan, "research_quali").active)
+        logs = db.session.query(AuditLog).filter_by(action="plan_state_changed", target_id="research_quali").all()
         self.assertEqual(len(logs), 2)
 
     def test_common_user_cannot_change_plan_state(self):
@@ -332,15 +332,15 @@ class RemainingRefinementsTests(unittest.TestCase):
         client = self.app.test_client()
         with self.app.app_context():
             login(client, ordinary.email)
-            self.assertEqual(client.post("/admin/planos/researcher/estado", data={
+            self.assertEqual(client.post("/admin/planos/research_quali/estado", data={
                 "csrf_token": csrf_from(client.get("/perfil")), "confirm": "yes", "active": "false",
             }).status_code, 403)
-        self.assertTrue(db.session.get(Plan, "researcher").active)
+        self.assertTrue(db.session.get(Plan, "research_quali").active)
 
-    def test_inactive_student_plan_rejects_new_registration_without_removing_old_grants(self):
-        existing = create_user("Estudante antigo", "antigo@example.org")
+    def test_inactive_commercial_plan_does_not_block_pending_registration_or_change_old_grants(self):
+        existing = create_user("Pesquisador existente", "antigo@example.org")
         grant_id = current_grant(existing).id
-        db.session.get(Plan, "student").active = False
+        db.session.get(Plan, "research_quali").active = False
         db.session.commit()
         visitor = self.app.test_client()
         with self.app.app_context():
@@ -349,11 +349,13 @@ class RemainingRefinementsTests(unittest.TestCase):
                 "name": "Estudante novo", "email": "novo@example.org",
                 "password": "senha-muito-segura-123", "confirm": "senha-muito-segura-123",
             })
-            self.assertIn("Plano Estudante está indisponível", response.get_data(as_text=True))
-        self.assertIsNone(db.session.query(User).filter_by(email="novo@example.org").first())
+            self.assertEqual(response.status_code, 302)
+        new_user = db.session.query(User).filter_by(email="novo@example.org").first()
+        self.assertIsNotNone(new_user)
+        self.assertIsNone(current_grant(new_user))
         self.assertEqual(current_grant(existing).id, grant_id)
         with self.assertRaises(ValueError):
-            replace_grant(existing, "student", "student_free", "active")
+            replace_grant(existing, "research_quali", "student_free", "active")
 
     def test_archived_project_delete_is_physical_audited_and_blocks_active_job(self):
         project_id = create_project(self.client)

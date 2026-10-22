@@ -7,7 +7,7 @@ import unicodedata
 from uuid import uuid4
 
 from flask_login import UserMixin
-from sqlalchemy import CheckConstraint, ForeignKeyConstraint, Index, UniqueConstraint, event, inspect
+from sqlalchemy import CheckConstraint, ForeignKeyConstraint, Index, UniqueConstraint, event, inspect, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -36,6 +36,15 @@ class User(UserMixin, db.Model):
     projects: Mapped[list[Project]] = relationship(back_populates="owner")
     analytics_projects: Mapped[list[AnalyticsProject]] = relationship(back_populates="owner")
     profile: Mapped[UserProfile | None] = relationship(back_populates="user", uselist=False)
+    owned_workspaces: Mapped[list[Workspace]] = relationship(
+        back_populates="owner", foreign_keys="Workspace.owner_user_id"
+    )
+    workspace_memberships: Mapped[list[WorkspaceMembership]] = relationship(
+        back_populates="user", foreign_keys="WorkspaceMembership.user_id"
+    )
+    commercial_trials: Mapped[list[CommercialTrial]] = relationship(
+        back_populates="beneficiary", foreign_keys="CommercialTrial.user_id"
+    )
 
     def set_password(self, password: str) -> None:
         self.password_hash = generate_password_hash(password, method="scrypt")
@@ -83,6 +92,278 @@ class Plan(db.Model):
     description: Mapped[str] = mapped_column(db.Text, default="", nullable=False)
     active: Mapped[bool] = mapped_column(db.Boolean, default=True, nullable=False)
     limits_json: Mapped[dict] = mapped_column(db.JSON, default=dict, nullable=False)
+    workspace_subscriptions: Mapped[list[WorkspaceSubscription]] = relationship(back_populates="plan")
+    limit_policies: Mapped[list[PlanLimitPolicy]] = relationship(
+        back_populates="plan", order_by="PlanLimitPolicy.version"
+    )
+    commercial_trials: Mapped[list[CommercialTrial]] = relationship(
+        back_populates="plan", foreign_keys="CommercialTrial.plan_id"
+    )
+
+
+class Workspace(db.Model):
+    """Área de trabalho SaaS, independente de qualquer ferramenta ou conector."""
+
+    __tablename__ = "workspaces"
+
+    id: Mapped[str] = mapped_column(db.String(36), primary_key=True, default=lambda: str(uuid4()))
+    name: Mapped[str] = mapped_column(db.String(200), nullable=False)
+    workspace_type: Mapped[str] = mapped_column(db.String(16), nullable=False)
+    status: Mapped[str] = mapped_column(db.String(16), nullable=False, default="active")
+    # O titular é uma conveniência histórica. A associação ``owner`` em
+    # WorkspaceMembership é a fonte estrutural do papel no workspace.
+    owner_user_id: Mapped[str | None] = mapped_column(
+        db.ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        db.DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
+
+    owner: Mapped[User | None] = relationship(back_populates="owned_workspaces", foreign_keys=[owner_user_id])
+    memberships: Mapped[list[WorkspaceMembership]] = relationship(
+        back_populates="workspace", cascade="all, delete-orphan"
+    )
+    subscriptions: Mapped[list[WorkspaceSubscription]] = relationship(
+        back_populates="workspace", cascade="all, delete-orphan"
+    )
+    commercial_trials: Mapped[list[CommercialTrial]] = relationship(
+        back_populates="workspace", foreign_keys="CommercialTrial.workspace_id"
+    )
+
+    __table_args__ = (
+        CheckConstraint("workspace_type IN ('individual', 'team')", name="ck_workspace_type"),
+        CheckConstraint("status IN ('active', 'inactive')", name="ck_workspace_status"),
+    )
+
+
+class WorkspaceMembership(db.Model):
+    """Participação histórica; somente uma associação ativa por pessoa e área."""
+
+    __tablename__ = "workspace_memberships"
+
+    id: Mapped[str] = mapped_column(db.String(36), primary_key=True, default=lambda: str(uuid4()))
+    workspace_id: Mapped[str] = mapped_column(
+        db.ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    user_id: Mapped[str] = mapped_column(
+        db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    role: Mapped[str] = mapped_column(db.String(16), nullable=False, default="member")
+    status: Mapped[str] = mapped_column(db.String(16), nullable=False, default="active")
+    joined_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        db.DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
+    ended_at: Mapped[datetime | None] = mapped_column(db.DateTime(timezone=True))
+
+    workspace: Mapped[Workspace] = relationship(back_populates="memberships")
+    user: Mapped[User] = relationship(back_populates="workspace_memberships", foreign_keys=[user_id])
+
+    __table_args__ = (
+        CheckConstraint("role IN ('owner', 'member')", name="ck_workspace_membership_role"),
+        CheckConstraint("status IN ('active', 'ended')", name="ck_workspace_membership_status"),
+        Index(
+            "uq_workspace_membership_active_user",
+            "workspace_id", "user_id", unique=True,
+            sqlite_where=text("status = 'active'"),
+            postgresql_where=text("status = 'active'"),
+        ),
+    )
+
+
+class WorkspaceSubscription(db.Model):
+    """Registro histórico de plano contratado por área, ainda sem cobrar ou autorizar."""
+
+    __tablename__ = "workspace_subscriptions"
+
+    id: Mapped[str] = mapped_column(db.String(36), primary_key=True, default=lambda: str(uuid4()))
+    workspace_id: Mapped[str] = mapped_column(
+        db.ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    plan_id: Mapped[str] = mapped_column(db.ForeignKey("plans.id"), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(db.String(24), nullable=False, default="active")
+    started_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+    ended_at: Mapped[datetime | None] = mapped_column(db.DateTime(timezone=True))
+    assigned_by_id: Mapped[str | None] = mapped_column(db.ForeignKey("users.id", ondelete="SET NULL"), index=True)
+    assigned_by_name_snapshot: Mapped[str | None] = mapped_column(db.String(160))
+    # Snapshot é apenas documental nesta fase; nenhuma cota é aplicada.
+    terms_json: Mapped[dict] = mapped_column(db.JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        db.DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
+
+    workspace: Mapped[Workspace] = relationship(back_populates="subscriptions")
+    plan: Mapped[Plan] = relationship(back_populates="workspace_subscriptions")
+    limit_adjustments: Mapped[list[WorkspaceSubscriptionLimitAdjustment]] = relationship(
+        back_populates="subscription", cascade="all, delete-orphan",
+        order_by="WorkspaceSubscriptionLimitAdjustment.created_at",
+    )
+    commercial_trials: Mapped[list[CommercialTrial]] = relationship(
+        back_populates="workspace_subscription", foreign_keys="CommercialTrial.workspace_subscription_id"
+    )
+
+    __table_args__ = (
+        CheckConstraint("status IN ('active', 'canceled', 'expired')", name="ck_workspace_subscription_status"),
+        Index(
+            "uq_workspace_subscription_open",
+            "workspace_id", unique=True,
+            sqlite_where=text("status = 'active' AND ended_at IS NULL"),
+            postgresql_where=text("status = 'active' AND ended_at IS NULL"),
+        ),
+    )
+
+
+class PlanLimitPolicy(db.Model):
+    """Versão imutável da política comercial publicada para um plano.
+
+    ``Plan.limits_json`` guarda a política vigente para criação de contratos.
+    Esta tabela mantém as versões já publicadas, sem reescrever snapshots em
+    ``WorkspaceSubscription.terms_json``.
+    """
+
+    __tablename__ = "plan_limit_policies"
+
+    id: Mapped[str] = mapped_column(db.String(36), primary_key=True, default=lambda: str(uuid4()))
+    plan_id: Mapped[str] = mapped_column(db.ForeignKey("plans.id"), nullable=False, index=True)
+    version: Mapped[int] = mapped_column(db.Integer, nullable=False)
+    limits_json: Mapped[dict] = mapped_column(db.JSON, nullable=False, default=dict)
+    justification: Mapped[str] = mapped_column(db.String(500), nullable=False, default="")
+    published_by_id: Mapped[str | None] = mapped_column(
+        db.ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
+    published_by_name_snapshot: Mapped[str | None] = mapped_column(db.String(160))
+    published_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+
+    plan: Mapped[Plan] = relationship(back_populates="limit_policies")
+
+    __table_args__ = (
+        UniqueConstraint("plan_id", "version", name="uq_plan_limit_policy_version"),
+        CheckConstraint("version > 0", name="ck_plan_limit_policy_positive_version"),
+    )
+
+
+class WorkspaceSubscriptionLimitAdjustment(db.Model):
+    """Acréscimo comercial explícito, sem relação com permissões de ferramenta."""
+
+    __tablename__ = "workspace_subscription_limit_adjustments"
+
+    id: Mapped[str] = mapped_column(db.String(36), primary_key=True, default=lambda: str(uuid4()))
+    workspace_subscription_id: Mapped[str] = mapped_column(
+        db.ForeignKey("workspace_subscriptions.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    resource_key: Mapped[str] = mapped_column(db.String(64), nullable=False)
+    additional_units: Mapped[int] = mapped_column(db.Integer, nullable=False)
+    status: Mapped[str] = mapped_column(db.String(16), nullable=False, default="active")
+    starts_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+    ends_at: Mapped[datetime | None] = mapped_column(db.DateTime(timezone=True))
+    justification: Mapped[str] = mapped_column(db.String(500), nullable=False, default="")
+    approved_by_id: Mapped[str | None] = mapped_column(
+        db.ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
+    approved_by_name_snapshot: Mapped[str | None] = mapped_column(db.String(160))
+    revoked_at: Mapped[datetime | None] = mapped_column(db.DateTime(timezone=True))
+    revoked_by_id: Mapped[str | None] = mapped_column(
+        db.ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
+    revoked_by_name_snapshot: Mapped[str | None] = mapped_column(db.String(160))
+    revocation_reason: Mapped[str | None] = mapped_column(db.String(500))
+    created_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        db.DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
+
+    subscription: Mapped[WorkspaceSubscription] = relationship(back_populates="limit_adjustments")
+
+    __table_args__ = (
+        CheckConstraint(
+            "resource_key IN ('instagram_accounts', 'ojs_journals')",
+            name="ck_workspace_subscription_limit_adjustment_resource",
+        ),
+        CheckConstraint("additional_units > 0", name="ck_workspace_subscription_limit_adjustment_positive"),
+        CheckConstraint(
+            "status IN ('active', 'revoked')",
+            name="ck_workspace_subscription_limit_adjustment_status",
+        ),
+        Index(
+            "ix_workspace_subscription_limit_adjustment_active",
+            "workspace_subscription_id", "resource_key", "status",
+        ),
+    )
+
+
+class CommercialTrial(db.Model):
+    """Registro imutável de elegibilidade experimental por CPF e grupo.
+
+    O CPF em texto jamais é persistido. ``cpf_fingerprint`` é HMAC-SHA-256
+    calculado com segredo de servidor estável e serve exclusivamente para
+    impedir a repetição do benefício por novas contas ou workspaces.
+    """
+
+    __tablename__ = "commercial_trials"
+
+    id: Mapped[str] = mapped_column(db.String(36), primary_key=True, default=lambda: str(uuid4()))
+    cpf_fingerprint: Mapped[str] = mapped_column(db.String(64), nullable=False)
+    cpf_key_version: Mapped[str] = mapped_column(db.String(32), nullable=False, default="v1")
+    # Dado administrativo minimizado; o CPF em texto nunca é armazenado.
+    # ``deferred`` mantém a leitura dos registros anteriores compatível até a
+    # migration aditiva estar presente no banco de cada ambiente.
+    cpf_masked: Mapped[str | None] = mapped_column(db.String(14), nullable=True, deferred=True)
+    commercial_group_id: Mapped[str] = mapped_column(db.String(48), nullable=False)
+    user_id: Mapped[str | None] = mapped_column(
+        db.ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
+    plan_id: Mapped[str] = mapped_column(db.ForeignKey("plans.id"), nullable=False, index=True)
+    workspace_id: Mapped[str | None] = mapped_column(
+        db.ForeignKey("workspaces.id", ondelete="SET NULL"), index=True
+    )
+    workspace_subscription_id: Mapped[str | None] = mapped_column(
+        db.ForeignKey("workspace_subscriptions.id", ondelete="SET NULL"), index=True
+    )
+    started_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), nullable=False)
+    activated_by_id: Mapped[str | None] = mapped_column(
+        db.ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
+    activated_by_name_snapshot: Mapped[str | None] = mapped_column(db.String(160))
+    created_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+
+    beneficiary: Mapped[User | None] = relationship(
+        back_populates="commercial_trials", foreign_keys=[user_id]
+    )
+    plan: Mapped[Plan] = relationship(back_populates="commercial_trials", foreign_keys=[plan_id])
+    workspace: Mapped[Workspace | None] = relationship(
+        back_populates="commercial_trials", foreign_keys=[workspace_id]
+    )
+    workspace_subscription: Mapped[WorkspaceSubscription | None] = relationship(
+        back_populates="commercial_trials", foreign_keys=[workspace_subscription_id]
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "cpf_fingerprint", "commercial_group_id",
+            name="uq_commercial_trial_cpf_group",
+        ),
+        CheckConstraint(
+            "commercial_group_id IN ('research', 'management', 'research_management')",
+            name="ck_commercial_trial_group",
+        ),
+        CheckConstraint("expires_at > started_at", name="ck_commercial_trial_period"),
+    )
+
+
+@event.listens_for(PlanLimitPolicy, "before_update")
+def _prevent_plan_limit_policy_mutation(_mapper, _connection, _target) -> None:
+    """Versões publicadas são somente anexadas; publique uma nova versão."""
+    raise ValueError("Políticas de limite publicadas são imutáveis.")
+
+
+@event.listens_for(PlanLimitPolicy, "before_delete")
+def _prevent_plan_limit_policy_deletion(_mapper, _connection, _target) -> None:
+    """O histórico comercial não pode ser removido pelo ORM."""
+    raise ValueError("Políticas de limite publicadas não podem ser removidas.")
 
 
 class Tool(db.Model):

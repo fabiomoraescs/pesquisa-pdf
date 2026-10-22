@@ -13,8 +13,8 @@ from platform_helpers import create_user, isolated_platform, login
 from platform_core.analyses import analysis_dir, create_analysis, delete_analysis
 from platform_core.extensions import db
 from platform_core.models import (
-    Analysis, AnalysisDocument, AuditLog, PlanTool, Project, QualitativeCode,
-    QualitativeCoding, QualitativeExcerpt, QualitativeMemo, Tool, UserToolOverride, utcnow,
+    AccessGrant, Analysis, AnalysisDocument, AuditLog, Plan, PlanTool, Project, QualitativeCode,
+    QualitativeCoding, QualitativeExcerpt, QualitativeMemo, Tool, User, UserToolOverride, utcnow,
 )
 from platform_core.project_lifecycle import archive, delete_archived
 from platform_core.qualitative import (
@@ -86,14 +86,22 @@ class QualitativeFoundationTests(unittest.TestCase):
         self.assertEqual(db.session.get(Tool, QUALITATIVE_TOOL).route, "/analise-qualitativa")
         self.assertIsNotNone(db.session.get(Tool, "pdf_scraper"))
         self.assertIsNotNone(db.session.get(Tool, "document_analysis"))
-        self.assertEqual(db.session.scalar(select(func.count()).select_from(PlanTool).where(
-            PlanTool.tool_id == QUALITATIVE_TOOL)), 0)
+        commercial_links = {
+            row.plan_id for row in db.session.scalars(select(PlanTool).where(
+                PlanTool.tool_id == QUALITATIVE_TOOL
+            ))
+        }
+        self.assertEqual(commercial_links, {"research_quali", "research_complete", "integral"})
         self.assertFalse(can_use_tool(self.user, QUALITATIVE_TOOL))
         self.assertTrue(can_use_tool(self.user, "pdf_scraper"))
         self.assertTrue(can_use_tool(self.user, "document_analysis"))
         seed_platform()
-        self.assertEqual(db.session.scalar(select(func.count()).select_from(PlanTool).where(
-            PlanTool.tool_id == QUALITATIVE_TOOL)), 0)
+        self.assertEqual(
+            {row.plan_id for row in db.session.scalars(select(PlanTool).where(
+                PlanTool.tool_id == QUALITATIVE_TOOL
+            ))},
+            commercial_links,
+        )
         db.session.add(UserToolOverride(user_id=self.user.id, tool_id=QUALITATIVE_TOOL, decision="allow"))
         db.session.commit()
         self.assertTrue(can_use_tool(self.user, QUALITATIVE_TOOL))
@@ -334,7 +342,6 @@ class QualitativeFoundationTests(unittest.TestCase):
 class QualitativeMigrationTests(unittest.TestCase):
     def test_upgrade_from_existing_schema_preserves_projects_bases_and_documents(self):
         from app import create_app
-        from platform_core.services import seed_platform
 
         with tempfile.TemporaryDirectory(prefix="pesquisapdf-qualitative-migration-") as root:
             database = Path(root) / "platform.sqlite3"
@@ -344,15 +351,42 @@ class QualitativeMigrationTests(unittest.TestCase):
             })
             migrations = str(Path(__file__).resolve().parent.parent / "migrations")
             with app.app_context():
-                from platform_helpers import seed_legacy_platform
-                seed_legacy_platform(migrations, "c94a67b2d501")
-                user = create_user("Legado", "legado-qualitativo@example.org")
+                # A remoção do Editorial é deliberadamente irreversível. Em
+                # vez de levar o banco até a head e tentar voltar por ela,
+                # criamos o cenário legado diretamente na revisão histórica.
+                upgrade(directory=migrations, revision="c94a67b2d501")
+                plan = Plan(id="student", name="Estudante", description="Legado", active=True)
+                tool = Tool(
+                    id="document_analysis", name="Raspagem estruturada",
+                    route="/analise-documental", active=True,
+                )
+                user = User(name="Legado", email="legado-qualitativo@example.org", role="user", status="active")
+                user.set_password("senha-de-teste-segura-123")
+                db.session.add_all((plan, tool, user))
+                db.session.flush()
+                db.session.add_all((
+                    PlanTool(plan_id="student", tool_id="document_analysis"),
+                    AccessGrant(user_id=user.id, plan_id="student", access_mode="student_free", status="active"),
+                ))
                 project = Project(owner_user_id=user.id, name="Projeto anterior", scrape_type=SYSTEMATIC)
                 db.session.add(project)
-                db.session.commit()
-                base = create_analysis(user_id=user.id, project_id=project.id,
-                                       tool_id="document_analysis", tool_version="lexical",
-                                       parameters={}, name="Base anterior")
+                db.session.flush()
+                base = Analysis(
+                    user_id=user.id,
+                    project_id=project.id,
+                    name="Base anterior",
+                    name_confirmed=True,
+                    source_type="project",
+                    tool_id="document_analysis",
+                    tool_version="lexical",
+                    status="concluida",
+                    document_count=1,
+                    result_count=0,
+                    parameters_json={},
+                    excel_files_json=[],
+                )
+                db.session.add(base)
+                db.session.flush()
                 document = AnalysisDocument(analysis_id=base.id, original_name="anterior.pdf",
                                             stored_name="anterior.pdf")
                 db.session.add(document)

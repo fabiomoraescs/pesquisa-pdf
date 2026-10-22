@@ -18,6 +18,7 @@ from .assistant_document_summary import (
     summarize_document_with_provider,
 )
 from .assistant_project_context import resolve_project_context
+from .commercial_catalog import commercial_plan_display_name
 from .extensions import db
 from .models import Analysis, Plan, Tool
 from .platform_help import assistant_help
@@ -118,7 +119,10 @@ def _available_tools_for_user(user: object) -> dict[str, Any]:
     if grant is not None:
         plan = db.session.get(Plan, grant.plan_id)
         if plan is not None and plan.active:
-            facts["plan"] = {"id": plan.id, "name": _compact_text(plan.name, 100)}
+            facts["plan"] = {
+                "id": plan.id,
+                "name": _compact_text(commercial_plan_display_name(plan.id, plan.name), 100),
+            }
     return facts
 
 

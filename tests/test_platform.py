@@ -16,6 +16,7 @@ from platform_core.models import (
     AccessGrant, AuditLog, Plan, Project, ProjectVocabularyVersion, Tool,
     User, UserToolOverride, VocabularyLibrary, utcnow,
 )
+from platform_core.commercial_catalog import COMMERCIAL_PLANS
 from platform_core.services import can_use_tool, current_grant, replace_grant
 from platform_core.vocabularies import merge_libraries, project_store
 from historico_racial.vocabulary import VocabularioError
@@ -50,7 +51,7 @@ class PlatformTests(unittest.TestCase):
         self.assertIn("/login", self.client.get("/").headers["Location"])
         self.assertIn("/login", self.client.get("/analise-documental").headers["Location"])
 
-    def test_registration_hash_student_access_and_logout(self):
+    def test_registration_creates_account_awaiting_administrative_activation(self):
         token = csrf_from(self.client.get("/cadastro"))
         response = self.client.post("/cadastro", data={
             "csrf_token": token, "name": "Ana", "email": "ANA@example.org",
@@ -61,13 +62,16 @@ class PlatformTests(unittest.TestCase):
         self.assertEqual((user.role, user.status), ("user", "active"))
         self.assertNotIn("senha-muito-segura-123", user.password_hash)
         self.assertTrue(user.check_password("senha-muito-segura-123"))
-        self.assertEqual((current_grant(user).plan_id, current_grant(user).access_mode), ("student", "student_free"))
-        self.assertTrue(can_use_tool(user, "pdf_scraper"))
-        self.assertTrue(can_use_tool(user, "document_analysis"))
+        self.assertIsNone(current_grant(user))
+        self.assertFalse(can_use_tool(user, "pdf_scraper"))
+        self.assertFalse(can_use_tool(user, "document_analysis"))
         self.assertIsNotNone(db.session.scalar(select(AuditLog).where(AuditLog.action == "user_registered", AuditLog.target_id == user.id)))
         self.assertEqual(self.client.get("/").status_code, 200)
-        self.assertEqual(self.client.get("/raspagem-livre").status_code, 200)
-        self.assertEqual(self.client.post("/logout", data={"csrf_token": csrf_from(self.client.get("/projetos"))}).status_code, 302)
+        self.assertIn("Conta aguardando ativação", self.client.get("/").get_data(as_text=True))
+        self.assertEqual(self.client.get("/perfil").status_code, 200)
+        self.assertEqual(self.client.get("/raspagem-livre").status_code, 403)
+        self.assertEqual(self.client.get("/analytics/instagram").status_code, 403)
+        self.assertEqual(self.client.post("/logout", data={"csrf_token": csrf_from(self.client.get("/"))}).status_code, 302)
         self.assertIn("/login", self.client.get("/").headers["Location"])
 
     def test_duplicate_email_and_invalid_login(self):
@@ -101,9 +105,19 @@ class PlatformTests(unittest.TestCase):
 
     def test_plans_grants_courtesy_expiry_and_overrides(self):
         user = create_user()
-        self.assertEqual({item.id for item in db.session.scalars(select(Plan))}, {"student", "researcher", "pro", "institutional"})
-        admin = create_user("Admin", "admin@example.org", "admin", "institutional")
-        replace_grant(user, "pro", "admin_courtesy", "active", admin, utcnow() + timedelta(days=10))
+        self.assertEqual(
+            {item.id for item in db.session.scalars(select(Plan))},
+            {definition.plan_id for definition in COMMERCIAL_PLANS},
+        )
+        admin = create_user("Admin", "admin@example.org", "admin")
+        replace_grant(
+            user,
+            "research_complete",
+            "admin_courtesy",
+            "active",
+            admin,
+            utcnow() + timedelta(days=10),
+        )
         db.session.commit()
         self.assertEqual(len(user.grants), 2)
         self.assertEqual(current_grant(user).granted_by_id, admin.id)
@@ -214,10 +228,10 @@ class PlatformTests(unittest.TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(user.status, "blocked")
         response = self.client.post(f"/admin/usuarios/{user.id}/acesso", data={
-            "csrf_token": token, "plan_id": "pro", "access_mode": "admin_courtesy", "access_status": "active",
+            "csrf_token": token, "plan_id": "research_quali", "access_mode": "admin_courtesy", "access_status": "active",
         })
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(current_grant(user).plan_id, "pro")
+        self.assertEqual(current_grant(user).plan_id, "research_quali")
         response = self.client.post(f"/admin/usuarios/{user.id}/ferramenta/document_analysis", data={"csrf_token": token, "decision": "deny"})
         self.assertEqual(response.status_code, 302)
         self.assertEqual(db.session.get(UserToolOverride, (user.id, "document_analysis")).decision, "deny")
@@ -243,7 +257,7 @@ class PlatformTests(unittest.TestCase):
         self.assertEqual(admin.role, "admin")
         self.assertTrue(admin.check_password("senha-administrativa-123"))
         self.assertNotIn("senha-administrativa-123", result.output)
-        self.assertEqual(current_grant(admin).access_mode, "admin_courtesy")
+        self.assertIsNone(current_grant(admin))
         self.assertIsNotNone(db.session.scalar(select(AuditLog).where(AuditLog.action == "admin_created", AuditLog.target_id == admin.id)))
 
     def test_global_tool_block_and_admin_ability(self):

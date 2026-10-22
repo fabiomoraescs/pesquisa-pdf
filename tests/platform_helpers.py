@@ -43,12 +43,17 @@ def seed_legacy_platform(migrations, revision):
     downgrade(directory=migrations, revision=revision)
 
 
-def create_user(name="Pesquisador", email="pesquisador@example.org", role="user", plan="student") -> User:
+def create_user(name="Pesquisador", email="pesquisador@example.org", role="user", plan="research_quali") -> User:
+    # Os quatro planos históricos foram removidos da plataforma. Adaptamos os
+    # fixtures genéricos que antes pediam acesso básico sem preservar dados
+    # legados fora dos testes específicos de migration.
+    if plan in {"student", "researcher", "pro", "institutional"}:
+        plan = "research_quali"
     user = User(name=name, email=email, role=role, status="active")
     user.set_password("senha-de-teste-segura-123")
     db.session.add(user)
     db.session.flush()
-    replace_grant(user, plan, "student_free" if plan == "student" else "admin_courtesy", "active")
+    replace_grant(user, plan, "admin_courtesy", "active")
     db.session.commit()
     return user
 

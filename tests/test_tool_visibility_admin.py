@@ -17,6 +17,7 @@ from platform_core.extensions import db
 from platform_core.models import AuditLog, PlanTool, Tool, ToolVisibilitySetting, UserToolOverride
 from platform_core.services import (
     set_visibility_preference,
+    standalone_visibility_control_catalog,
     visibility_control_catalog,
     visibility_preferences,
 )
@@ -41,6 +42,10 @@ class ToolVisibilityPersistenceTests(unittest.TestCase):
         ])
         self.assertTrue(all(group["visible"] for group in groups))
         self.assertTrue(all(tool["visible"] for group in groups for tool in group["tools"]))
+        self.assertEqual(
+            [tool["id"] for tool in standalone_visibility_control_catalog()],
+            ["bibliographic_search"],
+        )
         self.assertEqual(db.session.scalars(select(ToolVisibilitySetting)).all(), [])
 
     def test_create_update_and_group_reactivation_preserve_individual_preference(self):
@@ -141,6 +146,10 @@ class ToolVisibilityPersistenceTests(unittest.TestCase):
         self.assertIn("Visibilidade na navegação", html)
         self.assertIn('data-visibility-group="analytics"', html)
         self.assertIn('data-visibility-tool="analytics_instagram"', html)
+        self.assertIn('data-visibility-tool="quantitative_analysis"', html)
+        self.assertIn('data-visibility-tool="ojs_seo"', html)
+        self.assertIn('data-visibility-tool="ojs_analytics"', html)
+        self.assertIn('data-visibility-tool="bibliographic_search"', html)
         self.assertIn("Painel de controle", html)
 
         url = "/admin/visibilidade/group/analytics"
@@ -250,6 +259,8 @@ class ToolVisibilityPersistenceTests(unittest.TestCase):
         )
         self.assertIn('type="button" data-tool-visibility-refresh', visibility_markup)
         self.assertIn('href="/admin/ferramentas"', visibility_markup)
+        self.assertIn('class="platform-view-list platform-tool-visibility-list" id="admin-tool-visibility-list"', visibility_markup)
+        self.assertNotIn('id="admin-tool-visibility-list" data-view-container', visibility_markup)
 
         settings_after = [
             (item.scope_type, item.scope_id, item.visible)

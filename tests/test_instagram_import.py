@@ -97,7 +97,7 @@ class InstagramImportTests(unittest.TestCase):
         cls.app = cls.scope.__enter__()
         cls.client = cls.app.test_client()
         cls.user = create_user()
-        db.session.add(PlanTool(plan_id="student", tool_id=ANALYTICS_INSTAGRAM_TOOL))
+        db.session.add(PlanTool(plan_id="research_quali", tool_id=ANALYTICS_INSTAGRAM_TOOL))
         db.session.commit()
         login(cls.client)
 

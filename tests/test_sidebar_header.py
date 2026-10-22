@@ -69,7 +69,8 @@ class SidebarHeaderTests(unittest.TestCase):
         positions = [nav.index(marker) for marker in (
             'href="/"', '<span>Pesquisa Quali</span>',
             '>Raspagem por termos<', '>Raspagem estruturada<', '>Análise Documental<',
-            '<span>Analytics</span>', '>Instagram<',
+            '<span>Pesquisa Quanti</span>', '>Pesquisa Quanti<',
+            '<span>Analytics</span>', '>Instagram<', '>OJS SEO<', '>OJS Analytics<', '>Busca Bibliográfica<',
             'id="platform-admin-toggle"',
         )]
         self.assertEqual(positions, sorted(positions))
@@ -85,11 +86,13 @@ class SidebarHeaderTests(unittest.TestCase):
         self.assertIn('Análise Documental', nav)
         self.assertIn('Instagram', nav)
         self.assertNotIn('Análise de Comentários', nav)
-        self.assertNotIn('Pesquisa Quanti', nav)
+        self.assertIn('Pesquisa Quanti', nav)
         self.assertNotIn('Editorial', nav)
         self.assertNotIn('ChatDoc', nav)
         self.assertNotIn('Diagramador', nav)
-        self.assertNotIn('SEO', nav)
+        self.assertIn('OJS SEO', nav)
+        self.assertIn('OJS Analytics', nav)
+        self.assertIn('Busca Bibliográfica', nav)
         self.assertNotIn('>Bases de análise</a>', nav)
         self.assertNotIn('Projetos arquivados', nav)
         self.assertNotIn('href="/chatdoc"', nav)
@@ -104,9 +107,9 @@ class SidebarHeaderTests(unittest.TestCase):
         ):
             self.assertNotIn(legacy_name, nav)
         self.assertNotIn('class="platform-nav-subdropdown"', nav)
-        self.assertNotIn('aria-disabled="true"', nav)
+        self.assertEqual(nav.count('aria-disabled="true"'), 4)
         self.assertIn('aria-expanded="true"', nav)
-        self.assertEqual(nav.count('class="platform-admin-submenu platform-nav-dropdown-menu"'), 2)
+        self.assertEqual(nav.count('class="platform-admin-submenu platform-nav-dropdown-menu"'), 3)
         self.assertIn('aria-controls="platform-admin-submenu"', nav)
         self.assertIn('id="platform-admin-submenu"', nav)
         self.assertIn('id="platform-menu-toggle"', html)

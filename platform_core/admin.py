@@ -13,6 +13,28 @@ from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from .extensions import db
+from .commercial_catalog import (
+    COMMERCIAL_LIMIT_RESOURCES,
+    commercial_groups_in_display_order,
+    commercial_plan_definition,
+    commercial_plans_in_display_order,
+    configurable_limit_resources,
+    is_commercial_plan_assignable,
+)
+from .commercial_limit_services import (
+    CommercialLimitError,
+    current_plan_limits,
+    plan_limit_policy_history,
+    publish_plan_limit_policy,
+)
+from .commercial_trial_services import (
+    CommercialTrialError,
+    activate_commercial_trial,
+    all_commercial_trials,
+    trial_cpf_mask_display,
+    trial_state,
+    user_commercial_trials,
+)
 from .library_access import library_editor, library_url, private_library_flow, user_libraries_bp
 from .models import (
     AccessGrant, Analysis, AssistantAISettings, AuditLog, PasswordRecoveryToken, Plan, PlanTool, Project, ProjectLibrary, ProjectVocabularyVersion,
@@ -38,7 +60,7 @@ from .instagram_meta import InstagramMetaSettings
 from .services import (
     ACCOUNT_LIFECYCLE_LOCK, access_is_active, current_grant, record_audit,
     replace_grant, set_visibility_preference, tool_catalog,
-    visibility_control_catalog,
+    standalone_visibility_control_catalog, visibility_control_catalog,
 )
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
@@ -52,6 +74,103 @@ def admin_only(view):
             abort(403)
         return view(*args, **kwargs)
     return wrapped
+
+
+def _commercial_plan_groups(plans: list[Plan]) -> tuple[dict[str, object], ...]:
+    """Projeta os planos comerciais sem transformar grupos em dados de navegação."""
+    plans_by_id = {plan.id: plan for plan in plans}
+    tools_by_id = {tool.id: tool for tool in db.session.scalars(select(Tool)).all()}
+    definitions_by_group: dict[str, list[object]] = {
+        group.group_id: [] for group in commercial_groups_in_display_order()
+    }
+    for definition in commercial_plans_in_display_order():
+        definitions_by_group[definition.group_id].append(definition)
+
+    return tuple(
+        {
+            "group": group,
+            "plans": tuple(
+                {
+                    "definition": definition,
+                    "plan": plans_by_id.get(definition.plan_id),
+                    "limits": (
+                        current_plan_limits(plans_by_id[definition.plan_id])
+                        if definition.plan_id in plans_by_id and configurable_limit_resources(definition.plan_id) else None
+                    ),
+                    "limit_policy_history": (
+                        plan_limit_policy_history(plans_by_id[definition.plan_id], limit=2)
+                        if definition.plan_id in plans_by_id and configurable_limit_resources(definition.plan_id) else ()
+                    ),
+                    "configurable_limit_resources": configurable_limit_resources(definition.plan_id),
+                    "available_tool_names": tuple(
+                        tools_by_id[tool_id].name
+                        for tool_id in definition.available_tool_ids
+                        if tool_id in tools_by_id
+                    ),
+                }
+                for definition in definitions_by_group[group.group_id]
+            ),
+        }
+        for group in commercial_groups_in_display_order()
+    )
+
+
+def _persisted_commercial_plans() -> list[Plan]:
+    """Planos ofertados na ordem do catálogo, nunca na ordem do banco."""
+    plans_by_id = {
+        plan.id: plan for plan in db.session.scalars(select(Plan)).all()
+    }
+    return [
+        plans_by_id[definition.plan_id]
+        for definition in commercial_plans_in_display_order()
+        if definition.plan_id in plans_by_id
+    ]
+
+
+def _commercial_plan_selection_groups() -> tuple[dict[str, object], ...]:
+    """Expõe todos os planos comerciais, sem confundir listagem e concessão.
+
+    Um plano em desenvolvimento continua visível nos seletores administrativos,
+    mas a sua elegibilidade para concessão ou período de teste permanece uma
+    decisão separada, aplicada também pelos endpoints.
+    """
+    plans_by_id = {plan.id: plan for plan in _persisted_commercial_plans()}
+    definitions = commercial_plans_in_display_order()
+    return tuple(
+        {
+            "group": group,
+            "plans": tuple(
+                {
+                    "definition": definition,
+                    "plan": plans_by_id.get(definition.plan_id),
+                    "action_available": bool(
+                        plans_by_id.get(definition.plan_id)
+                        and plans_by_id[definition.plan_id].active
+                        and is_commercial_plan_assignable(definition.plan_id)
+                    ),
+                }
+                for definition in definitions
+                if definition.group_id == group.group_id
+            ),
+        }
+        for group in commercial_groups_in_display_order()
+    )
+
+
+def _commercial_access_plan_groups(plans: list[Plan]) -> tuple[dict[str, object], ...]:
+    """Cabeçalhos da matriz de acessos derivados do catálogo comercial."""
+    plans_by_id = {plan.id: plan for plan in plans}
+    return tuple(
+        {
+            "group": group,
+            "plans": tuple(
+                plans_by_id[definition.plan_id]
+                for definition in commercial_plans_in_display_order()
+                if definition.group_id == group.group_id and definition.plan_id in plans_by_id
+            ),
+        }
+        for group in commercial_groups_in_display_order()
+    )
 
 
 @admin_bp.get("")
@@ -114,10 +233,17 @@ def user_detail(user_id: UUID):
         abort(404)
     if user.deleted_at is not None:
         return redirect(url_for("admin.deleted_users"))
+    grant = current_grant(user)
+    # A ordem e os rótulos comerciais não dependem da ordenação alfabética do
+    # banco. Os sete planos são sempre exibidos na sequência do catálogo; a
+    # elegibilidade de uma ação permanece indicada e validada separadamente.
     return render_template(
         "platform/admin.html", section="user_detail", user=user, grant=current_grant(user),
         grants=db.session.scalars(select(AccessGrant).where(AccessGrant.user_id == user.id).order_by(AccessGrant.created_at.desc())).all(),
-        plans=db.session.scalars(select(Plan).where(Plan.active.is_(True)).order_by(Plan.name)).all(),
+        commercial_plan_selection_groups=_commercial_plan_selection_groups(),
+        commercial_trials=user_commercial_trials(user.id),
+        trial_cpf_mask_display=trial_cpf_mask_display,
+        trial_state=trial_state,
         tools=db.session.scalars(select(Tool).order_by(Tool.name)).all(),
         overrides={item.tool_id: item.decision for item in db.session.scalars(select(UserToolOverride).where(UserToolOverride.user_id == user.id))},
         projects=db.session.scalars(select(Project).where(Project.owner_user_id == user.id).order_by(Project.created_at.desc())).all(),
@@ -150,7 +276,14 @@ def set_user_access(user_id: UUID):
     plan = db.session.get(Plan, request.form.get("plan_id", ""))
     mode = request.form.get("access_mode")
     status = request.form.get("access_status")
-    if not user or not plan or not plan.active or mode not in {"paid", "student_free", "admin_courtesy", "trial"} or status not in {"trial", "active", "payment_pending", "expired", "canceled"}:
+    if (
+        not user
+        or not plan
+        or not plan.active
+        or not is_commercial_plan_assignable(plan.id)
+        or mode not in {"paid", "admin_courtesy"}
+        or status not in {"active", "payment_pending", "expired", "canceled"}
+    ):
         abort(400)
     expires = None
     if request.form.get("expires_at"):
@@ -161,6 +294,31 @@ def set_user_access(user_id: UUID):
             abort(400)
     replace_grant(user, plan.id, mode, status, current_user, expires)
     db.session.commit()
+    return redirect(url_for("admin.user_detail", user_id=user.id))
+
+
+@admin_bp.post("/usuarios/<uuid:user_id>/periodo-de-teste")
+@admin_only
+def activate_user_trial(user_id: UUID):
+    user = db.session.get(User, str(user_id))
+    if user is None:
+        abort(404)
+    try:
+        trial = activate_commercial_trial(
+            current_user,
+            user,
+            request.form.get("plan_id", ""),
+            request.form.get("cpf", ""),
+        )
+        db.session.commit()
+    except CommercialTrialError as exc:
+        db.session.rollback()
+        flash(str(exc), "danger")
+    else:
+        flash(
+            f"Período de teste ativado até {trial.expires_at.strftime('%d/%m/%Y %H:%M')}.",
+            "success",
+        )
     return redirect(url_for("admin.user_detail", user_id=user.id))
 
 
@@ -376,6 +534,7 @@ def tools():
         section="tools",
         tools=tool_catalog(),
         visibility_groups=visibility_control_catalog(),
+        visibility_standalone_tools=standalone_visibility_control_catalog(),
     )
 
 
@@ -468,13 +627,34 @@ def set_tool_state(tool_id: str):
 @admin_bp.get("/planos")
 @admin_only
 def plans():
-    return render_template("platform/admin.html", section="plans", plans=db.session.scalars(select(Plan)).all())
+    persisted_plans = db.session.scalars(select(Plan).order_by(Plan.name)).all()
+    return render_template(
+        "platform/admin.html",
+        section="plans",
+        commercial_plan_groups=_commercial_plan_groups(persisted_plans),
+        commercial_limit_resources=COMMERCIAL_LIMIT_RESOURCES,
+    )
+
+
+@admin_bp.get("/periodos-de-teste")
+@admin_only
+def trials():
+    return render_template(
+        "platform/admin.html",
+        section="trials",
+        commercial_trials=all_commercial_trials(),
+        trial_cpf_mask_display=trial_cpf_mask_display,
+        trial_state=trial_state,
+    )
 
 
 @admin_bp.route("/definir-acessos", methods=["GET", "POST"])
 @admin_only
 def define_access():
-    plans = db.session.scalars(select(Plan).order_by(Plan.name)).all()
+    # A matriz comercial não oferece e nem modifica vínculos de planos
+    # legados que possam permanecer até a migration de remoção ser aplicada.
+    plans = _persisted_commercial_plans()
+    plan_ids = {plan.id for plan in plans}
     tools = tool_catalog()
     valid = {(plan.id, tool["id"]) for plan in plans for tool in tools if tool["implemented"]}
     if request.method == "POST":
@@ -484,7 +664,11 @@ def define_access():
             if len(parts) != 2 or tuple(parts) not in valid:
                 abort(400)
             submitted.add(tuple(parts))
-        existing = {(row.plan_id, row.tool_id) for row in db.session.scalars(select(PlanTool)).all()}
+        existing = {
+            (row.plan_id, row.tool_id)
+            for row in db.session.scalars(select(PlanTool)).all()
+            if row.plan_id in plan_ids
+        }
         for plan_id, tool_id in sorted(submitted - existing):
             db.session.add(PlanTool(plan_id=plan_id, tool_id=tool_id))
             record_audit(current_user, "plan_tool_access_changed", "plan_tool", f"{plan_id}:{tool_id}",
@@ -496,16 +680,26 @@ def define_access():
         db.session.commit()
         flash("Acessos por plano atualizados.", "success")
         return redirect(url_for("admin.define_access"))
-    selected = {(row.plan_id, row.tool_id) for row in db.session.scalars(select(PlanTool)).all()}
-    return render_template("platform/access_matrix.html", plans=plans, tools=tools, selected=selected,
-                           tool_labels=LABEL_BY_TOOL)
+    selected = {
+        (row.plan_id, row.tool_id)
+        for row in db.session.scalars(select(PlanTool)).all()
+        if row.plan_id in plan_ids
+    }
+    return render_template(
+        "platform/access_matrix.html",
+        plans=plans,
+        plan_groups=_commercial_access_plan_groups(plans),
+        tools=tools,
+        selected=selected,
+        tool_labels=LABEL_BY_TOOL,
+    )
 
 
 @admin_bp.post("/planos/<plan_id>/estado")
 @admin_only
 def set_plan_state(plan_id: str):
     plan = db.session.get(Plan, plan_id)
-    if plan is None or request.form.get("confirm") != "yes":
+    if plan is None or commercial_plan_definition(plan.id) is None or request.form.get("confirm") != "yes":
         abort(400)
     requested = request.form.get("active")
     if requested not in {"true", "false"} or (requested == "true") == plan.active:
@@ -516,6 +710,34 @@ def set_plan_state(plan_id: str):
                  {"active": previous}, {"active": plan.active})
     db.session.commit()
     flash("Plano ativado." if plan.active else "Plano desativado. Concessões existentes foram preservadas.", "success")
+    return redirect(url_for("admin.plans"))
+
+
+@admin_bp.post("/planos/<plan_id>/limites")
+@admin_only
+def publish_plan_limits(plan_id: str):
+    """Publica uma política versionada; não altera contratos de workspaces."""
+    plan = db.session.get(Plan, plan_id)
+    editable_resources = configurable_limit_resources(plan_id)
+    if plan is None or not editable_resources:
+        abort(404)
+    try:
+        values = current_plan_limits(plan)
+        for resource in editable_resources:
+            values[resource.resource_id] = request.form.get(resource.resource_id)
+        policy, changed = publish_plan_limit_policy(
+            current_user,
+            plan_id,
+            values,
+        )
+    except CommercialLimitError as exc:
+        flash(str(exc), "danger")
+        return redirect(url_for("admin.plans"))
+    if not changed:
+        flash("Os limites informados já correspondem à política vigente; nada foi alterado.", "info")
+        return redirect(url_for("admin.plans"))
+    db.session.commit()
+    flash(f"Política de limites publicada na versão {policy.version}.", "success")
     return redirect(url_for("admin.plans"))
 
 

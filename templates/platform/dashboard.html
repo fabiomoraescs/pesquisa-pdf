@@ -4,6 +4,12 @@
 {% block title %}Dashboard — Análysis{% endblock %}
 
 {% block body %}
+{% if pending_plan_activation %}
+<div class="alert alert-info" role="status">
+  <strong>Conta aguardando ativação.</strong>
+  Seu cadastro foi concluído. O acesso às ferramentas será disponibilizado após a atribuição de um plano pelo administrador.
+</div>
+{% endif %}
 <section class="platform-panel platform-workspace-section" aria-labelledby="workspace-summary-heading">
   <header class="platform-workspace-section-header">
     <h1 id="workspace-summary-heading">Resumo da área de trabalho</h1>

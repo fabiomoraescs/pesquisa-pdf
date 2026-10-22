@@ -15,7 +15,7 @@
       {{ password_field('password', 'Senha', 'current-password' if mode == 'login' else 'new-password', mode == 'register') }}
       {% if mode == 'register' %}
         {{ password_field('confirm', 'Confirmar senha', 'new-password', true) }}
-        <p class="form-text">Use entre 12 e 256 caracteres. O cadastro inicia no Plano Estudante gratuito.</p>
+        <p class="form-text">Use entre 12 e 256 caracteres. O acesso às ferramentas será liberado somente após ativação administrativa.</p>
       </fieldset>
       <fieldset class="platform-form-section"><legend>Perfil</legend>
         <p class="platform-muted">As informações de perfil ajudam a caracterizar os usuários da plataforma e podem ser atualizadas posteriormente.</p>

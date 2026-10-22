@@ -47,7 +47,7 @@ from platform_core.analysis_routes import analyses_bp
 from platform_core.qualitative_routes import qualitative_bp
 from platform_core.presentation import register_presentation
 from platform_core.cli import register_cli
-from platform_core.services import ANALYTICS_INSTAGRAM_TOOL, ACCOUNT_LIFECYCLE_LOCK, access_is_active, account_accepts_new_work, can_access_tool, get_project_for_user, navigation_groups_for_user, require_tool_access, tool_catalog
+from platform_core.services import ANALYTICS_INSTAGRAM_TOOL, ACCOUNT_LIFECYCLE_LOCK, access_is_active, account_accepts_new_work, awaiting_plan_activation, can_access_tool, get_project_for_user, navigation_groups_for_user, navigation_standalone_tools_for_user, require_tool_access, tool_catalog
 from platform_core.scraping_types import FREE, LABEL_BY_TOOL, QUALITATIVE, QUALITATIVE_TOOL, SYSTEMATIC, TOOL_BY_TYPE, tool_for_project
 from platform_core.semantic_threshold import normalize as normalize_semantic_threshold, template_settings
 from platform_core.term_input import has_invalid_term_separator
@@ -93,6 +93,11 @@ app.config.update(
     SESSION_COOKIE_SAMESITE="Lax",
     SESSION_COOKIE_SECURE=os.environ.get("PESQUISAPDF_HTTPS") == "1",
     PASSWORD_RECOVERY_TTL_SECONDS=1800,
+    # A impressão HMAC do CPF nunca é uma chave de sessão nem um hash simples.
+    # A ativação de teste recusa operar enquanto esta chave está ausente, para
+    # não persistir uma referência que deixaria de ser verificável após reinício.
+    PESQUISAPDF_CPF_HMAC_SECRET=os.environ.get("PESQUISAPDF_CPF_HMAC_SECRET", ""),
+    PESQUISAPDF_CPF_HMAC_KEY_VERSION=os.environ.get("PESQUISAPDF_CPF_HMAC_KEY_VERSION", "v1"),
     PESQUISAPDF_PUBLIC_URL=os.environ.get("PESQUISAPDF_PUBLIC_URL", ""),
     MAIL_SERVER=os.environ.get("MAIL_SERVER", ""),
     MAIL_PORT=os.environ.get("MAIL_PORT", "587"),
@@ -152,6 +157,10 @@ def _semantic_threshold_template_context():
             "qualitative_access": bool(current_user.is_authenticated and can_access_tool(current_user, QUALITATIVE_TOOL)),
             "instagram_access": bool(current_user.is_authenticated and can_access_tool(current_user, ANALYTICS_INSTAGRAM_TOOL)),
             "navigation_groups": navigation_groups_for_user(current_user) if current_user.is_authenticated else (),
+            "navigation_standalone_tools": navigation_standalone_tools_for_user(current_user) if current_user.is_authenticated else (),
+            "pending_plan_activation": bool(
+                current_user.is_authenticated and awaiting_plan_activation(current_user)
+            ),
             "assistant_context": assistant_context,
             "platform_help": tutorial_for(assistant_context.get("key")),
             "platform_help_for": tutorial_for,
@@ -192,6 +201,19 @@ def _enforce_platform_access():
             return jsonify({"erro": "Altere sua senha antes de continuar."}), 403
         return redirect(url_for("auth.change_password"))
     if not access_is_active(current_user):
+        # Um cadastro sem plano é válido para autenticação e para as ações
+        # essenciais de conta. Ele não ganha acesso transitório a nenhuma
+        # ferramenta, inclusive por URL direta.
+        pending_account_endpoints = {
+            "home",
+            "profile.my_profile",
+            "profile.photo",
+            "profile.upload_photo",
+            "profile.remove_photo",
+            "auth.logout",
+        }
+        if awaiting_plan_activation(current_user) and request.endpoint in pending_account_endpoints:
+            return None
         if request.endpoint == "auth.logout":
             return None
         abort(403)
@@ -886,6 +908,7 @@ def home():
         ),
         recent_work=recent_work,
         admin_charts=admin_charts,
+        pending_plan_activation=awaiting_plan_activation(current_user),
     )
 
 

@@ -18,7 +18,7 @@
   'admin.restore_user': 'Usuários excluídos', 'admin.reset_user_password': 'Usuários',
   'admin.permanently_delete_user': 'Usuários excluídos',
   'admin.projects': 'Projetos', 'admin.project_detail': 'Projetos', 'admin.delete_project': 'Projetos',
-  'admin.tools': 'Ferramentas', 'admin.plans': 'Planos', 'admin.define_access': 'Definir acessos', 'admin.libraries': 'Bibliotecas',
+  'admin.tools': 'Ferramentas', 'admin.plans': 'Planos', 'admin.trials': 'Testes gratuitos', 'admin.define_access': 'Definir acessos', 'admin.libraries': 'Bibliotecas',
   'admin.new_library': 'Bibliotecas', 'admin.library_detail': 'Bibliotecas', 'admin.delete_library': 'Bibliotecas',
   'admin.library_template': 'Bibliotecas', 'admin.library_import': 'Bibliotecas',
   'admin.audit': 'Auditoria', 'admin.assistant_ai_settings': 'Configuração de IA',
@@ -62,6 +62,13 @@
       </div>
     </details>
     {% endfor %}
+    {% for navigation_tool in navigation_standalone_tools %}
+      {% if navigation_tool.accessible %}
+      <a class="platform-nav-tool-link" href="{{ url_for(navigation_tool.endpoint) }}">{{ icon(navigation_tool.icon) }}<span>{{ navigation_tool.name }}</span></a>
+      {% else %}
+      <span class="platform-nav-unavailable" aria-disabled="true">{{ icon(navigation_tool.icon) }}<span>{{ navigation_tool.name }}</span></span>
+      {% endif %}
+    {% endfor %}
     {% if current_user.role == 'admin' %}
     <button class="platform-admin-toggle{{ ' is-current' if request.blueprint == 'admin' else '' }}" id="platform-admin-toggle" type="button" aria-expanded="{{ 'true' if request.blueprint == 'admin' else 'false' }}" aria-controls="platform-admin-submenu">{{ icon('gerenciar') }}<span>Painel de controle</span><span class="platform-admin-chevron" aria-hidden="true">▾</span></button>
     <div class="platform-admin-submenu" id="platform-admin-submenu" {% if request.blueprint != 'admin' %}hidden{% endif %}>
@@ -70,6 +77,7 @@
         ('Usuários', 'admin.users', ['admin.users', 'admin.deleted_users', 'admin.user_detail', 'admin.delete_user', 'admin.restore_user', 'admin.reset_user_password', 'admin.permanently_delete_user']),
         ('Ferramentas', 'admin.tools', ['admin.tools']),
         ('Planos', 'admin.plans', ['admin.plans']),
+        ('Testes gratuitos', 'admin.trials', ['admin.trials']),
         ('Definir acessos', 'admin.define_access', ['admin.define_access']),
         ('Configuração de IA', 'admin.assistant_ai_settings', ['admin.assistant_ai_settings']),
         ('Integração Meta', 'admin.meta_integration', ['admin.meta_integration']),

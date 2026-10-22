@@ -32,7 +32,10 @@ class ToolGroupDefinition:
 class ToolDefinition:
     """Descrição estática de uma ferramenta, sem estado operacional."""
 
-    group_id: str
+    # ``None`` identifica uma ferramenta de primeiro nível. Ela continua
+    # participando do mesmo catálogo e da mesma política de visibilidade, mas
+    # não é artificialmente encaixada em um grupo de navegação.
+    group_id: str | None
     tool_id: str
     name: str
     tool_order: int
@@ -75,22 +78,17 @@ TOOL_DEFINITIONS: tuple[ToolDefinition, ...] = (
         authorization_points=("app._enforce_platform_access", "projects._require_tool", "qualitative._require_tool"),
     ),
     ToolDefinition(
-        "research_quali", "comments_analysis", "Análise de Comentários", 3, "future",
-        icon="comentarios",
+        "research_quanti", "quantitative_analysis", "Pesquisa Quanti", 0, "future",
+        icon="quantitativa",
     ),
     ToolDefinition(
         "analytics", ANALYTICS_INSTAGRAM_TOOL, "Instagram", 0, "available",
         tool_code=ANALYTICS_INSTAGRAM_TOOL, route="/analytics/instagram", endpoint="instagram.home", icon="analytics",
         authorization_points=("app._enforce_platform_access", "instagram._require_tool"),
     ),
-    ToolDefinition("analytics", "analytics_seo", "SEO", 1, "future", icon="seo"),
-)
-
-# A Pesquisa Quanti ainda não possui uma ferramenta concreta.  A entrada
-# existe somente para manter compatibilidade com o catálogo administrativo e
-# a navegação atuais; não é um ToolDefinition, não recebe rota nem é semeada.
-_LEGACY_GROUP_ONLY_ITEMS = (
-    {"id": "quantitative_analysis", "group_id": "research_quanti", "name": "Pesquisa Quanti", "icon": "quantitativa"},
+    ToolDefinition("analytics", "ojs_seo", "OJS SEO", 1, "future", icon="seo"),
+    ToolDefinition("analytics", "ojs_analytics", "OJS Analytics", 2, "future", icon="analytics"),
+    ToolDefinition(None, "bibliographic_search", "Busca Bibliográfica", 0, "future", icon="ficha"),
 )
 
 
@@ -108,9 +106,9 @@ def _validate_catalog() -> None:
     if len(tool_codes) != len(set(tool_codes)):
         raise RuntimeError("O catálogo contém referências Tool duplicadas.")
     valid_groups = set(group_ids)
-    group_tool_orders: set[tuple[str, int]] = set()
+    group_tool_orders: set[tuple[str | None, int]] = set()
     for tool in TOOL_DEFINITIONS:
-        if tool.group_id not in valid_groups:
+        if tool.group_id is not None and tool.group_id not in valid_groups:
             raise RuntimeError(f"Ferramenta com grupo inexistente: {tool.tool_id}")
         if tool.implementation_status not in IMPLEMENTATION_STATUSES:
             raise RuntimeError(f"Estado de implementação inválido: {tool.tool_id}")
@@ -132,8 +130,13 @@ def tools_in_display_order() -> tuple[ToolDefinition, ...]:
     group_order = {group.group_id: group.group_order for group in TOOL_GROUPS}
     return tuple(sorted(
         TOOL_DEFINITIONS,
-        key=lambda tool: (group_order[tool.group_id], tool.tool_order, tool.tool_id),
+        key=lambda tool: (group_order.get(tool.group_id, len(TOOL_GROUPS)), tool.tool_order, tool.tool_id),
     ))
+
+
+def standalone_tools_in_display_order() -> tuple[ToolDefinition, ...]:
+    """Ferramentas de primeiro nível, na ordem oficial do catálogo."""
+    return tuple(tool for tool in tools_in_display_order() if tool.group_id is None)
 
 
 def tool_definition(tool_id: str) -> ToolDefinition | None:
@@ -172,8 +175,7 @@ def persistent_tool_seed_rows() -> tuple[tuple[str, str, str], ...]:
 
 def legacy_unavailable_tool_entries() -> tuple[dict[str, object], ...]:
     """Adaptador temporário para a UI administrativa ainda não migrada."""
-    entries = [dict(item) for item in _LEGACY_GROUP_ONLY_ITEMS]
-    entries.extend(
+    return tuple(
         {
             "id": tool.tool_id,
             "group_id": tool.group_id,
@@ -183,7 +185,6 @@ def legacy_unavailable_tool_entries() -> tuple[dict[str, object], ...]:
         for tool in tools_in_display_order()
         if tool.implementation_status != "available"
     )
-    return tuple(entries)
 
 
 def _visibility_value(settings: Mapping[str, bool] | None, identifier: str, *, kind: str) -> bool:
@@ -213,14 +214,16 @@ def visible_navigation_groups(
     """Filtra o catálogo sem mutá-lo e remove grupos sem itens exibíveis.
 
     O resultado considera apenas a configuração de visibilidade e a situação
-    de implementação. Elegibilidade por plano, overrides e ``Tool.active``
+    de implementação. Ferramentas futuras permanecem candidatas à navegação
+    quando o administrador assim decidir, mas seguem sem rota ou autorização
+    operacional. Elegibilidade por plano, overrides e ``Tool.active``
     permanece deliberadamente fora desta política.
     """
     _validate_visibility_keys(group_visibility, {group.group_id for group in TOOL_GROUPS}, kind="grupo")
     _validate_visibility_keys(tool_visibility, {tool.tool_id for tool in TOOL_DEFINITIONS}, kind="ferramenta")
     tools_by_group: dict[str, list[ToolDefinition]] = {group.group_id: [] for group in TOOL_GROUPS}
     for tool in tools_in_display_order():
-        if tool.implementation_status != "available":
+        if tool.group_id is None:
             continue
         if not _visibility_value(tool_visibility, tool.tool_id, kind="ferramenta"):
             continue
@@ -234,31 +237,37 @@ def visible_navigation_groups(
     )
 
 
+def visible_standalone_tools(
+    *, tool_visibility: Mapping[str, bool] | None = None,
+) -> tuple[ToolDefinition, ...]:
+    """Ferramentas de primeiro nível filtradas antes da renderização."""
+    _validate_visibility_keys(tool_visibility, {tool.tool_id for tool in TOOL_DEFINITIONS}, kind="ferramenta")
+    return tuple(
+        tool for tool in standalone_tools_in_display_order()
+        if _visibility_value(tool_visibility, tool.tool_id, kind="ferramenta")
+    )
+
+
 def administrative_catalog_entries(persisted_tools: Iterable[object]) -> list[dict[str, object]]:
     """Projeção compatível com a administração atual, sem consultar o banco."""
     persisted_by_id = {str(tool.id): tool for tool in persisted_tools}
     rows: list[tuple[tuple[int, int, str], dict[str, object]]] = []
     groups = {group.group_id: group for group in TOOL_GROUPS}
     for tool in tools_in_display_order():
-        group = groups[tool.group_id]
+        group = groups.get(tool.group_id) if tool.group_id is not None else None
         persisted = persisted_by_id.pop(tool.tool_code, None) if tool.tool_code else None
         if tool.implementation_status == "available":
             if persisted is None:
                 continue
-            rows.append(((group.group_order, tool.tool_order, tool.tool_id), {
+            rows.append(((group.group_order if group else len(TOOL_GROUPS), tool.tool_order, tool.tool_id), {
                 "id": str(persisted.id), "group_id": tool.group_id, "name": tool.name,
                 "active": bool(persisted.active), "implemented": True, "icon": tool.icon,
             }))
         else:
-            rows.append(((group.group_order, tool.tool_order, tool.tool_id), {
+            rows.append(((group.group_order if group else len(TOOL_GROUPS), tool.tool_order, tool.tool_id), {
                 "id": tool.tool_id, "group_id": tool.group_id, "name": tool.name,
                 "active": False, "implemented": False, "icon": tool.icon,
             }))
-    for item in _LEGACY_GROUP_ONLY_ITEMS:
-        group = groups[str(item["group_id"])]
-        rows.append(((group.group_order, -1, str(item["id"])), {
-            **item, "active": False, "implemented": False,
-        }))
     for tool_id, tool in persisted_by_id.items():
         rows.append(((len(TOOL_GROUPS), len(rows), tool_id), {
             "id": tool_id, "group_id": None, "name": str(tool.name),

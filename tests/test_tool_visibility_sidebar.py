@@ -8,7 +8,7 @@ from pathlib import Path
 
 from platform_helpers import create_user, csrf_from, isolated_platform, login
 from platform_core.extensions import db
-from platform_core.models import AnalyticsProject, AnalyticsRun, PlanTool, Tool
+from platform_core.models import AnalyticsProject, AnalyticsRun, Tool
 from platform_core.services import can_access_tool, set_visibility_preference
 
 
@@ -20,9 +20,8 @@ class ToolVisibilitySidebarTests(unittest.TestCase):
     def setUp(self):
         self.scope = isolated_platform()
         self.app = self.scope.__enter__()
-        self.admin = create_user("Admin", "sidebar-admin@example.org", "admin", "researcher")
-        self.user = create_user("Pessoa", "sidebar-user@example.org", "user", "researcher")
-        db.session.add(PlanTool(plan_id="researcher", tool_id="analytics_instagram"))
+        self.admin = create_user("Admin", "sidebar-admin@example.org", "admin")
+        self.user = create_user("Pessoa", "sidebar-user@example.org", "user", "integral")
         db.session.commit()
         self.client = self.app.test_client()
 
@@ -41,9 +40,14 @@ class ToolVisibilitySidebarTests(unittest.TestCase):
     def test_sidebar_filters_groups_and_tools_without_empty_containers_and_restores_catalog_order(self):
         login(self.client, self.user.email)
         initial = _sidebar(self.client.get("/").get_data(as_text=True))
-        self.assertLess(initial.index("Pesquisa Quali"), initial.index("Analytics"))
+        self.assertLess(initial.index("Pesquisa Quali"), initial.index("Pesquisa Quanti"))
+        self.assertLess(initial.index("Pesquisa Quanti"), initial.index("Analytics"))
         self.assertIn("Raspagem estruturada", initial)
-        self.assertNotIn("Pesquisa Quanti", initial)
+        self.assertIn("OJS SEO", initial)
+        self.assertIn("OJS Analytics", initial)
+        self.assertIn("Busca Bibliográfica", initial)
+        self.assertNotIn('href="/ojs-seo"', initial)
+        self.assertNotIn('href="/ojs-analytics"', initial)
         self.assertNotIn("Editorial", initial)
 
         self._set_visibility("tool", "document_analysis", False)
@@ -61,7 +65,8 @@ class ToolVisibilitySidebarTests(unittest.TestCase):
 
         self._set_visibility("group", "research_quali", True)
         restored = _sidebar(self.client.get("/").get_data(as_text=True))
-        self.assertLess(restored.index("Pesquisa Quali"), restored.index("Analytics"))
+        self.assertLess(restored.index("Pesquisa Quali"), restored.index("Pesquisa Quanti"))
+        self.assertLess(restored.index("Pesquisa Quanti"), restored.index("Analytics"))
         self.assertLess(restored.index("Raspagem por termos"), restored.index("Análise Documental"))
         self.assertNotIn("Raspagem estruturada", restored)
         for dropdown in re.findall(r'<details class="platform-nav-dropdown".*?</details>', restored, re.S):
@@ -87,6 +92,29 @@ class ToolVisibilitySidebarTests(unittest.TestCase):
         self.assertEqual(self.client.get("/projetos").status_code, 404)
         self.assertEqual(self.client.get("/analise-documental").status_code, 404)
         self.assertEqual(self.client.get("/busca-estruturada/bibliotecas").status_code, 404)
+
+    def test_future_and_standalone_items_follow_visibility_without_receiving_operational_links(self):
+        login(self.client, self.user.email)
+        initial = _sidebar(self.client.get("/").get_data(as_text=True))
+        self.assertIn("Pesquisa Quanti", initial)
+        self.assertIn("OJS SEO", initial)
+        self.assertIn("OJS Analytics", initial)
+        self.assertIn("Busca Bibliográfica", initial)
+        self.assertNotIn('href="/busca-bibliografica"', initial)
+
+        self._set_visibility("tool", "ojs_seo", False)
+        self._set_visibility("tool", "bibliographic_search", False)
+        hidden = _sidebar(self.client.get("/").get_data(as_text=True))
+        self.assertNotIn("OJS SEO", hidden)
+        self.assertNotIn("Busca Bibliográfica", hidden)
+        self.assertIn("OJS Analytics", hidden)
+
+        self._set_visibility("tool", "ojs_seo", True)
+        self._set_visibility("tool", "bibliographic_search", True)
+        restored = _sidebar(self.client.get("/").get_data(as_text=True))
+        self.assertLess(restored.index("Instagram"), restored.index("OJS SEO"))
+        self.assertLess(restored.index("OJS SEO"), restored.index("OJS Analytics"))
+        self.assertLess(restored.index("OJS Analytics"), restored.index("Busca Bibliográfica"))
 
     def test_hidden_instagram_blocks_new_operations_without_altering_an_existing_run(self):
         project = AnalyticsProject(owner_user_id=self.user.id, module_key="instagram", name="Instagram")
@@ -128,7 +156,10 @@ class ToolVisibilitySidebarTests(unittest.TestCase):
             'class="platform-admin-submenu mb-3" data-tool-visibility-children="research_quali">',
             visibility,
         )
-        self.assertIn('css/style.css?v=tool-visibility-switch-v2', html)
+        self.assertRegex(
+            html,
+            r'<link\s+href="[^"]*/static/css/style\.css(?:\?[^"]*)?"\s+rel="stylesheet">',
+        )
         group = re.search(r'<article[^>]*data-visibility-group="research_quali"[^>]*>(.*?)</article>', visibility, re.S)
         self.assertIsNotNone(group)
         self.assertNotIn('tool-visibility-child-switch', group.group(1))

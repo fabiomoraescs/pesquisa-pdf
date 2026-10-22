@@ -490,7 +490,7 @@ class DashboardRefinementsTests(unittest.TestCase):
         self.assertRegex(first, r'<strong>1</strong>\s*<span>Projetos</span>')
         self.assertRegex(first, r'<strong>1</strong>\s*<span>Bases</span>')
         self.assertNotIn("dashboard-workspace-chart-data", first)
-        db.session.delete(db.session.get(PlanTool, ("student", "pdf_scraper")))
+        db.session.delete(db.session.get(PlanTool, ("research_quali", "pdf_scraper")))
         db.session.commit()
         restricted = self.client.get("/").get_data(as_text=True)
         self.assertNotIn("Base V3", restricted)
@@ -527,8 +527,8 @@ class DashboardRefinementsTests(unittest.TestCase):
         self.assertNotIn("dashboard-chart-workspace", admin_html)
         self.assertEqual(chart_data(admin_html, "dashboard-admin-chart-data")["usage"], {
             "labels": ["Raspagem por termos", "Raspagem estruturada", "Análise Documental",
-                       "Análise de Comentários", "Pesquisa Quanti", "Instagram", "SEO"],
-            "values": [1, 1, 0, 0, 0, 0, 0],
+                       "Pesquisa Quanti", "Instagram", "OJS SEO", "OJS Analytics", "Busca Bibliográfica"],
+            "values": [1, 1, 0, 0, 0, 0, 0, 0],
         })
 
     def assert_recent_records_have_no_chart(self, html):
@@ -545,8 +545,11 @@ class DashboardRefinementsTests(unittest.TestCase):
         self.assertNotIn('cdn.plot.ly', html)
         for label in ("Projetos", "Bases", "Documentos nas Bases", "Bases concluídas"):
             self.assertRegex(html, rf'<strong>0</strong>\s*<span>{re.escape(label)}</span>')
-        # Grupos sem ferramenta disponível não ocupam espaço na navegação.
-        self.assertNotIn("Pesquisa Quanti", html)
+        # Ferramentas futuras podem ser visíveis, mas continuam sem link operacional.
+        self.assertIn("Pesquisa Quanti", html)
+        self.assertIn("OJS SEO", html)
+        self.assertIn("OJS Analytics", html)
+        self.assertIn("Busca Bibliográfica", html)
         self.assertNotIn("Editorial", html)
         self.assertFalse(any("editorial" in rule.rule.lower() for rule in self.app.url_map.iter_rules()))
         self.assertFalse(any(name.startswith("editorial_") for name in db.metadata.tables))

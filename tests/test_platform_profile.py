@@ -31,7 +31,7 @@ class ProfileTests(unittest.TestCase):
         payload.update(extra)
         return self.client.post("/cadastro", data=payload)
 
-    def test_registration_profile_one_to_one_and_original_access(self):
+    def test_registration_profile_one_to_one_without_automatic_access(self):
         response = self.register(education_level="masters", formation_area="Sociologia",
                                  occupation="Professora", institutional_affiliation="Universidade",
                                  gender="female", race_color="brown")
@@ -41,8 +41,8 @@ class ProfileTests(unittest.TestCase):
         self.assertEqual(db.session.get(UserProfile, user.id), user.profile)
         self.assertEqual(user.profile.education_level, "masters")
         self.assertEqual(user.profile.race_color, "brown")
-        self.assertEqual((user.role, current_grant(user).plan_id, current_grant(user).access_mode),
-                         ("user", "student", "student_free"))
+        self.assertEqual(user.role, "user")
+        self.assertIsNone(current_grant(user))
         self.assertTrue(user.check_password("senha-muito-segura-123"))
         self.assertNotIn("senha-muito-segura-123", user.password_hash)
         self.assertEqual(len(UserProfile.__table__.primary_key.columns), 1)
@@ -136,7 +136,8 @@ class ProfileTests(unittest.TestCase):
                 self.assertNotEqual(unescape(visible), value)
         self.assertIn('Estado: Bloqueado</option>', html)
         self.assertIn('Permitir</option>', html)
-        self.assertIn('Forma de acesso: Gratuito — Estudante</option>', html)
+        self.assertIn('Forma de acesso: Cortesia administrativa</option>', html)
+        self.assertNotIn('Gratuito — Estudante', html)
         user_list = self.client.get("/admin/usuarios").get_data(as_text=True)
         self.assertIn("Administrador", user_list)
         self.assertNotIn(">admin<", user_list)

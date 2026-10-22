@@ -42,7 +42,7 @@ class InstagramFinalAdjustmentsTests(unittest.TestCase):
         self.client = self.app.test_client()
         self.owner = create_user("Pesquisadora", "pesquisadora-instagram@example.org")
         self.other = create_user("Outra", "outra-instagram-final@example.org")
-        db.session.add(PlanTool(plan_id="student", tool_id=ANALYTICS_INSTAGRAM_TOOL))
+        db.session.add(PlanTool(plan_id="research_quali", tool_id=ANALYTICS_INSTAGRAM_TOOL))
         db.session.commit()
         self.project, self.account, self.media = self._project_graph(self.owner, "Projeto A")
         login(self.client, self.owner.email)

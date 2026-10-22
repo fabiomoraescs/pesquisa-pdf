@@ -233,7 +233,7 @@ class InstagramMetaConnectionTests(unittest.TestCase):
         self.client = self.app.test_client()
         self.user = create_user()
         self.other = create_user("Outra pessoa", "outra-meta@example.org")
-        db.session.add(PlanTool(plan_id="student", tool_id=ANALYTICS_INSTAGRAM_TOOL))
+        db.session.add(PlanTool(plan_id="research_quali", tool_id=ANALYTICS_INSTAGRAM_TOOL))
         self.project = AnalyticsProject(owner_user_id=self.user.id, module_key="instagram", name="Meta")
         self.other_project = AnalyticsProject(owner_user_id=self.other.id, module_key="instagram", name="Outro")
         db.session.add_all((self.project, self.other_project))

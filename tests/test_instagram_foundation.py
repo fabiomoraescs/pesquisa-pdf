@@ -24,7 +24,7 @@ class InstagramFoundationTests(unittest.TestCase):
 
     @staticmethod
     def _grant_plan_access():
-        db.session.add(PlanTool(plan_id="student", tool_id=ANALYTICS_INSTAGRAM_TOOL))
+        db.session.add(PlanTool(plan_id="research_quali", tool_id=ANALYTICS_INSTAGRAM_TOOL))
         db.session.commit()
 
     def test_seed_adds_the_tool_to_an_existing_catalog_once_without_granting_all_plans(self):
@@ -34,7 +34,9 @@ class InstagramFoundationTests(unittest.TestCase):
         self.assertEqual(tool.route, "/analytics/instagram")
 
         # Simula uma instalação prévia: planos e outras ferramentas já existem,
-        # mas a nova Tool ainda não foi provisionada.
+        # mas a nova Tool ainda não foi provisionada. Os vínculos dos novos
+        # planos comerciais precisam sair antes para respeitar a FK real.
+        db.session.query(PlanTool).filter_by(tool_id=ANALYTICS_INSTAGRAM_TOOL).delete()
         db.session.delete(tool)
         db.session.commit()
         self.assertIsNone(db.session.get(Tool, ANALYTICS_INSTAGRAM_TOOL))
@@ -73,13 +75,17 @@ class InstagramFoundationTests(unittest.TestCase):
         self.assertIn('data-view-target="instagram-projects-list"', html)
         self.assertIn('href="/analytics/instagram"', html)
 
-    def test_authenticated_user_without_access_gets_403_and_does_not_see_navigation(self):
+    def test_authenticated_user_without_access_gets_403_and_sees_only_an_unavailable_navigation_item(self):
         denied = self.client.get("/analytics/instagram")
         self.assertEqual(denied.status_code, 403)
 
         navigation = self.client.get("/").get_data(as_text=True).split('<nav class="platform-nav"', 1)[1].split("</nav>", 1)[0]
-        self.assertNotIn("Analytics", navigation)
-        self.assertNotIn("Instagram", navigation)
+        # A sidebar preserva o recurso como indisponível para planos legados
+        # limitados, mas não oferece URL navegável nem acesso operacional.
+        self.assertIn("Analytics", navigation)
+        self.assertIn("Instagram", navigation)
+        self.assertIn('platform-nav-tool-unavailable', navigation)
+        self.assertNotIn('href="/analytics/instagram"', navigation)
         self.assertIn("Raspagem por termos", navigation)
         self.assertIn("Raspagem estruturada", navigation)
         self.assertIn("Análise Documental", navigation)
