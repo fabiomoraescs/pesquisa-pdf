@@ -94,7 +94,32 @@ jobs:
         run: |
           test_root="$RUNNER_TEMP/analisys-image-test"
           mkdir -p "$test_root/outputs"
+
+          # O diretório pertence somente a esta execução. O contêiner auxiliar
+          # não tem rede nem portas e ajusta sua propriedade usando a identidade
+          # real declarada pela própria imagem, sem executar a aplicação como root.
+          docker run --rm --network none --user 0:0 \
+            --entrypoint sh \
+            -v "$test_root/outputs:/app/outputs" \
+            "$LOCAL_IMAGE" -ceu '
+              app_uid="$(id -u appuser)"
+              app_gid="$(id -g appuser)"
+              case "$app_uid:$app_gid" in
+                (*[!0-9:]*)
+                  echo "Identidade inválida para appuser: $app_uid:$app_gid" >&2
+                  exit 1
+                  ;;
+              esac
+              test -n "$app_uid"
+              test -n "$app_gid"
+              test "$app_uid" -ge 0
+              test "$app_gid" -ge 0
+              chown "$app_uid:$app_gid" /app/outputs
+              printf "isolated_output_owner=%s:%s\\n" "$app_uid" "$app_gid"
+            '
+
           docker run --rm --network none \
+            --user appuser \
             --entrypoint sh \
             -v "$test_root/outputs:/app/outputs" \
             "$LOCAL_IMAGE" -ceu '
