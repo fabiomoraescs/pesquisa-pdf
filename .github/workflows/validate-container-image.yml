@@ -1,0 +1,141 @@
+name: Validate Linux amd64 container image
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish_image:
+        description: Publish the validated image to the authorized private GHCR package.
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: analisys-container-validation-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      LOCAL_IMAGE: analisys-validation:${{ github.sha }}
+      GHCR_IMAGE: ghcr.io/${{ github.repository_owner }}/pesquisa-pdf:${{ github.sha }}
+    steps:
+      - name: Check out the selected revision
+        uses: actions/checkout@v4
+
+      - name: Reject publication from a public repository
+        if: ${{ inputs.publish_image }}
+        shell: bash
+        run: |
+          if [[ "${{ github.event.repository.private }}" != "true" ]]; then
+            echo "A publicação de uma imagem com o modelo embarcado exige repositório privado."
+            exit 1
+          fi
+          if [[ -z "${{ secrets.GHCR_PUBLISH_TOKEN }}" ]]; then
+            echo "Defina o secret GHCR_PUBLISH_TOKEN antes de solicitar a publicação."
+            exit 1
+          fi
+
+      - name: Prepare an amd64 BuildKit builder
+        shell: bash
+        run: |
+          docker buildx create --name analisys-amd64 --driver docker-container --use
+          docker buildx inspect --bootstrap
+
+      - name: Check runner capacity before downloading the semantic model
+        shell: bash
+        run: |
+          available_bytes="$(df --output=avail -B1 / | tail -1 | tr -d ' ')"
+          available_memory_bytes="$(free -b | awk '/Mem:/ {print $7}')"
+          printf 'disk_available_bytes=%s\n' "$available_bytes"
+          printf 'memory_available_bytes=%s\n' "$available_memory_bytes"
+          test "$available_bytes" -ge $((10 * 1024 * 1024 * 1024))
+          test "$available_memory_bytes" -ge $((6 * 1024 * 1024 * 1024))
+
+      - name: Build the image with the declared dependencies
+        shell: bash
+        run: |
+          docker buildx build \
+            --platform linux/amd64 \
+            --load \
+            --tag "$LOCAL_IMAGE" \
+            --cache-from type=gha \
+            --cache-to type=gha,mode=max \
+            .
+
+      - name: Verify architecture, dependencies and offline semantic model
+        shell: bash
+        run: |
+          docker image inspect "$LOCAL_IMAGE" --format 'architecture={{.Architecture}} size={{.Size}}'
+          docker run --rm --entrypoint python "$LOCAL_IMAGE" -c '
+          from importlib.metadata import version
+          cryptography = version("cryptography")
+          assert (43, 0) <= tuple(map(int, cryptography.split(".")[:2])) < (45, 0), cryptography
+          assert version("defusedxml") == "0.7.1"
+          print("cryptography=" + cryptography)
+          print("defusedxml=" + version("defusedxml"))
+          '
+          docker run --rm --entrypoint python "$LOCAL_IMAGE" -m pip check
+          docker run --rm --network none --entrypoint python "$LOCAL_IMAGE" -c '
+          from analyzer.v3 import carregar_modelo_semantico
+          carregar_modelo_semantico()
+          print("offline_semantic_model=ok")
+          '
+
+      - name: Smoke test with an isolated SQLite database and no automatic CMD
+        shell: bash
+        run: |
+          test_root="$RUNNER_TEMP/analisys-image-test"
+          mkdir -p "$test_root/outputs"
+          docker run --rm --network none \
+            --entrypoint sh \
+            -v "$test_root/outputs:/app/outputs" \
+            "$LOCAL_IMAGE" -ceu '
+              flask --app app db upgrade
+              flask --app app seed-platform
+              python - <<"PY"
+          from sqlalchemy import select
+          from app import app
+          from platform_core.extensions import db
+          from platform_core.models import User
+          from platform_core.ojs_seo_activation import activate_ojs_seo_tool, provision_ojs_seo_tool
+          from platform_core.ojs_seo_exports import build_ojs_seo_export, render_ojs_seo_export
+
+          with app.app_context():
+              admin = User(name="Image validation admin", email="image-validation@example.test", role="admin", status="active")
+              admin.set_password("not-used-outside-the-isolated-container")
+              db.session.add(admin)
+              db.session.flush()
+              provision_ojs_seo_tool(admin, allow_explicit_production=True)
+              activate_ojs_seo_tool(admin, allow_explicit_production=True)
+              db.session.commit()
+              client = app.test_client()
+              with client.session_transaction() as session:
+                  session["_user_id"] = admin.id
+                  session["_fresh"] = True
+              assert client.get("/", follow_redirects=False).status_code == 200
+              home_rule = next(rule.rule for rule in app.url_map.iter_rules() if rule.endpoint == "ojs_seo.home")
+              assert client.get(home_rule, follow_redirects=False).status_code == 200
+              assert callable(build_ojs_seo_export)
+              assert callable(render_ojs_seo_export)
+              print("dashboard=ok")
+              print("ojs_seo=ok")
+              print("ojs_exports=registered")
+          PY
+            '
+
+      - name: Publish the exact validated image to private GHCR
+        if: ${{ inputs.publish_image }}
+        shell: bash
+        env:
+          GHCR_PUBLISH_TOKEN: ${{ secrets.GHCR_PUBLISH_TOKEN }}
+        run: |
+          printf '%s' "$GHCR_PUBLISH_TOKEN" | docker login ghcr.io --username "${{ github.repository_owner }}" --password-stdin
+          docker tag "$LOCAL_IMAGE" "$GHCR_IMAGE"
+          docker push "$GHCR_IMAGE"
+          digest="$(docker image inspect "$GHCR_IMAGE" --format '{{index .RepoDigests 0}}')"
+          printf 'validated_image=%s\n' "$digest" | tee "$GITHUB_STEP_SUMMARY"

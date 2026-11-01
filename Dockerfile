@@ -31,14 +31,22 @@ RUN pip install --no-cache-dir -r requirements.txt
 RUN groupadd --system appuser \
     && useradd --system --gid appuser --create-home appuser
 
-COPY --chown=appuser:appuser . /app
 RUN mkdir -p /app/uploads /app/outputs /app/.cache/huggingface /app/.cache/sentence-transformers \
     && chown -R appuser:appuser /app/uploads /app/outputs /app/.cache
 
+# A camada do modelo depende apenas do analisador. Isso preserva seu cache
+# quando módulos de plataforma, templates ou testes forem alterados, mantendo
+# os pesos dentro da imagem final para a execução offline em produção.
+COPY --chown=appuser:appuser analyzer /app/analyzer
 USER appuser
 
 # Disponibiliza o mesmo modelo multilíngue da V3 sem download durante a requisição.
 RUN python -c "from analyzer.v3 import carregar_modelo_semantico; carregar_modelo_semantico()"
+
+USER root
+COPY --chown=appuser:appuser . /app
+USER appuser
+
 ENV HF_HUB_OFFLINE=1 \
     TRANSFORMERS_OFFLINE=1
 

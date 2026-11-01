@@ -128,6 +128,17 @@ def register_cli(app: Flask) -> None:
                 "Informe --confirm-local-development para executar uma operação OJS SEO local."
             )
 
+    def _provisioning_confirmation(
+        confirm_local_development: bool, confirm_production_provisioning: bool
+    ) -> bool:
+        """Exige uma única confirmação de escopo para publicar OJS SEO."""
+        if confirm_local_development == confirm_production_provisioning:
+            raise click.ClickException(
+                "Informe exatamente uma confirmação: --confirm-local-development "
+                "ou --confirm-production-provisioning."
+            )
+        return confirm_production_provisioning
+
     def _development_admin(admin_user_id: str):
         admin = db.session.get(User, admin_user_id)
         if admin is None:
@@ -137,13 +148,22 @@ def register_cli(app: Flask) -> None:
     @app.cli.command("ojs-seo-provision")
     @click.option("--admin-user-id", required=True, help="UUID do administrador responsável.")
     @click.option("--confirm-local-development", is_flag=True, help="Confirma o ambiente local de desenvolvimento.")
-    def ojs_seo_provision(admin_user_id: str, confirm_local_development: bool) -> None:
+    @click.option("--confirm-production-provisioning", is_flag=True,
+                  help="Confirma o provisionamento controlado de produção.")
+    def ojs_seo_provision(
+        admin_user_id: str, confirm_local_development: bool, confirm_production_provisioning: bool
+    ) -> None:
         """Cria a Tool OJS SEO inativa e seus vínculos comerciais idempotentes."""
         from .ojs_seo_activation import OjsSeoActivationError, provision_ojs_seo_tool
 
-        _development_confirmation(confirm_local_development)
+        allow_explicit_production = _provisioning_confirmation(
+            confirm_local_development, confirm_production_provisioning
+        )
         try:
-            result = provision_ojs_seo_tool(_development_admin(admin_user_id))
+            result = provision_ojs_seo_tool(
+                _development_admin(admin_user_id),
+                allow_explicit_production=allow_explicit_production,
+            )
             db.session.commit()
         except OjsSeoActivationError as exc:
             db.session.rollback()
@@ -189,13 +209,22 @@ def register_cli(app: Flask) -> None:
     @app.cli.command("ojs-seo-activate")
     @click.option("--admin-user-id", required=True, help="UUID do administrador responsável.")
     @click.option("--confirm-local-development", is_flag=True, help="Confirma o ambiente local de desenvolvimento.")
-    def ojs_seo_activate(admin_user_id: str, confirm_local_development: bool) -> None:
+    @click.option("--confirm-production-provisioning", is_flag=True,
+                  help="Confirma o provisionamento controlado de produção.")
+    def ojs_seo_activate(
+        admin_user_id: str, confirm_local_development: bool, confirm_production_provisioning: bool
+    ) -> None:
         """Ativa somente a Tool OJS SEO já provisionada e migrada."""
         from .ojs_seo_activation import OjsSeoActivationError, activate_ojs_seo_tool
 
-        _development_confirmation(confirm_local_development)
+        allow_explicit_production = _provisioning_confirmation(
+            confirm_local_development, confirm_production_provisioning
+        )
         try:
-            changed = activate_ojs_seo_tool(_development_admin(admin_user_id))
+            changed = activate_ojs_seo_tool(
+                _development_admin(admin_user_id),
+                allow_explicit_production=allow_explicit_production,
+            )
             db.session.commit()
         except OjsSeoActivationError as exc:
             db.session.rollback()

@@ -9,12 +9,12 @@ import tempfile
 import unittest
 
 from flask_migrate import upgrade
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 
 from app import create_app
 from platform_core.commercial_limit_services import effective_subscription_limits
 from platform_core.extensions import db
-from platform_core.models import AccessGrant, PlanTool, Tool, User, WorkspaceSubscription, utcnow
+from platform_core.models import AuditLog, AccessGrant, PlanTool, Tool, User, WorkspaceSubscription, utcnow
 from platform_core.ojs_oai_client import (
     OaiCollectionResult,
     OaiMetadataFormat,
@@ -25,7 +25,9 @@ from platform_core.ojs_oai_client import (
 from platform_core.ojs_seo_activation import (
     OJS_SEO_DEVELOPMENT_ACCESS_MODE,
     OJS_SEO_ELIGIBLE_PLAN_IDS,
+    OJS_SEO_MINIMUM_ALEMBIC_REVISION,
     OjsSeoActivationError,
+    _revision_includes_ojs_schema,
     activate_ojs_seo_tool,
     deactivate_ojs_seo_tool,
     prepare_ojs_seo_development_environment,
@@ -123,6 +125,8 @@ class OjsSeoActivationTests(unittest.TestCase):
         return result
 
     def test_provisioning_is_explicit_inactive_and_idempotent(self):
+        users_before = db.session.scalar(select(func.count()).select_from(User))
+        grants_before = db.session.scalar(select(func.count()).select_from(AccessGrant))
         result = self._provision()
         self.assertTrue(result.tool_created)
         self.assertEqual(OJS_SEO_ELIGIBLE_PLAN_IDS, result.plan_links_created)
@@ -140,6 +144,72 @@ class OjsSeoActivationTests(unittest.TestCase):
         self.assertFalse(repeated.tool_created)
         self.assertEqual((), repeated.plan_links_created)
         self.assertEqual(1, db.session.scalar(select(func.count()).select_from(Tool).where(Tool.id == "ojs_seo")))
+        self.assertEqual(grants_before, db.session.scalar(select(func.count()).select_from(AccessGrant)))
+
+        seed_platform()
+        db.session.commit()
+        self.assertFalse(db.session.get(Tool, "ojs_seo").active)
+        self.assertEqual(users_before, db.session.scalar(select(func.count()).select_from(User)))
+        self.assertEqual(grants_before, db.session.scalar(select(func.count()).select_from(AccessGrant)))
+
+    def test_current_migrated_head_is_accepted_for_activation(self):
+        revision = db.session.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+        self.assertTrue(_revision_includes_ojs_schema(revision))
+        self.assertFalse(_revision_includes_ojs_schema("6f708192a4b5"))
+
+        self._provision()
+        self.assertTrue(activate_ojs_seo_tool(self.admin))
+        db.session.commit()
+        activation_audit = db.session.scalar(
+            select(AuditLog).where(
+                AuditLog.action == "ojs_seo_tool_activated",
+                AuditLog.target_id == "ojs_seo",
+            )
+        )
+        self.assertIsNotNone(activation_audit)
+        self.assertEqual(self.admin.id, activation_audit.admin_user_id)
+
+        client = self.app.test_client()
+        with client.session_transaction() as session:
+            session["_user_id"] = self.admin.id
+            session["_fresh"] = True
+        home_rule = next(rule.rule for rule in self.app.url_map.iter_rules() if rule.endpoint == "ojs_seo.home")
+        self.assertEqual(200, client.get(home_rule, follow_redirects=False).status_code)
+
+    def test_unprovisioned_tool_denies_administrative_access(self):
+        client = self.app.test_client()
+        with client.session_transaction() as session:
+            session["_user_id"] = self.admin.id
+            session["_fresh"] = True
+        home_rule = next(rule.rule for rule in self.app.url_map.iter_rules() if rule.endpoint == "ojs_seo.home")
+        self.assertEqual(403, client.get(home_rule, follow_redirects=False).status_code)
+
+    def test_cli_requires_and_accepts_explicit_production_confirmation(self):
+        runner = self.app.test_cli_runner()
+
+        missing_scope = runner.invoke(
+            args=["ojs-seo-provision", "--admin-user-id", self.admin.id]
+        )
+        self.assertNotEqual(0, missing_scope.exit_code)
+        self.assertIn("exatamente uma confirmação", missing_scope.output)
+
+        provision = runner.invoke(
+            args=[
+                "ojs-seo-provision",
+                "--admin-user-id", self.admin.id,
+                "--confirm-production-provisioning",
+            ]
+        )
+        self.assertEqual(0, provision.exit_code, provision.output)
+        activation = runner.invoke(
+            args=[
+                "ojs-seo-activate",
+                "--admin-user-id", self.admin.id,
+                "--confirm-production-provisioning",
+            ]
+        )
+        self.assertEqual(0, activation.exit_code, activation.output)
+        self.assertTrue(db.session.get(Tool, "ojs_seo").active)
 
     def test_development_subscription_is_dedicated_and_preserves_commercial_layers(self):
         self._provision()
@@ -239,6 +309,49 @@ class OjsSeoActivationTests(unittest.TestCase):
                 with self.assertRaisesRegex(OjsSeoActivationError, "migrations OJS SEO"):
                     activate_ojs_seo_tool(admin)
                 db.session.rollback()
+                db.session.remove()
+                db.drop_all()
+                db.engine.dispose()
+
+    def test_production_scope_requires_explicit_cli_opt_in(self):
+        with tempfile.TemporaryDirectory(prefix="pesquisapdf-ojs-production-scope-", dir=TEST_TEMP_ROOT) as directory:
+            database = Path(directory) / "production-scope.sqlite3"
+            app = create_app({
+                "TESTING": False,
+                "SECRET_KEY": "ojs-production-scope-test-only",
+                "PESQUISAPDF_LOCAL_DEVELOPMENT": False,
+                "SQLALCHEMY_DATABASE_URI": f"sqlite:///{database.as_posix()}",
+                "PLATFORM_DATA_DIR": directory,
+            })
+            with app.app_context():
+                db.create_all()
+                db.session.execute(text("CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL)"))
+                db.session.execute(
+                    text("INSERT INTO alembic_version (version_num) VALUES (:revision)"),
+                    {"revision": OJS_SEO_MINIMUM_ALEMBIC_REVISION},
+                )
+                seed_platform()
+                admin = _user("Produção", "ojs-production-scope-admin@example.test", role="admin")
+                db.session.commit()
+                grants_before = db.session.scalar(select(func.count()).select_from(AccessGrant))
+
+                with self.assertRaisesRegex(OjsSeoActivationError, "PESQUISAPDF_LOCAL_DEVELOPMENT"):
+                    provision_ojs_seo_tool(admin)
+
+                result = provision_ojs_seo_tool(admin, allow_explicit_production=True)
+                self.assertTrue(result.tool_created)
+                self.assertTrue(activate_ojs_seo_tool(admin, allow_explicit_production=True))
+                self.assertTrue(db.session.get(Tool, "ojs_seo").active)
+                self.assertEqual(
+                    set(OJS_SEO_ELIGIBLE_PLAN_IDS),
+                    {
+                        row.plan_id
+                        for row in db.session.scalars(
+                            select(PlanTool).where(PlanTool.tool_id == "ojs_seo")
+                        )
+                    },
+                )
+                self.assertEqual(grants_before, db.session.scalar(select(func.count()).select_from(AccessGrant)))
                 db.session.remove()
                 db.drop_all()
                 db.engine.dispose()

@@ -13,6 +13,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
 
+from alembic.config import Config
+from alembic.script import ScriptDirectory
 from flask import current_app
 from sqlalchemy import inspect, select, text
 from sqlalchemy.engine import make_url
@@ -27,7 +29,9 @@ from .workspace_services import create_individual_workspace, create_workspace_su
 
 
 OJS_SEO_TOOL_ID = "ojs_seo"
-OJS_SEO_REQUIRED_ALEMBIC_REVISION = "6f708192a4b5"
+# A ativação explícita exige, no mínimo, a migration que fecha a cadeia OJS
+# atual. Revisões futuras são aceitas desde que descendam desta revisão.
+OJS_SEO_MINIMUM_ALEMBIC_REVISION = "91a2b3c4d5e6"
 OJS_SEO_REQUIRED_TABLES = frozenset({
     "ojs_journals",
     "ojs_seo_audit_runs",
@@ -151,6 +155,29 @@ def _tool_definition_or_error():
     return definition
 
 
+def _revision_includes_ojs_schema(revision: str) -> bool:
+    """Indica se ``revision`` contém a migration mínima do domínio OJS.
+
+    A comparação percorre a cadeia Alembic em vez de comparar identificadores
+    textual ou numericamente. Assim, um novo head que descenda da revisão
+    mínima continua apto à ativação, enquanto uma revisão lateral ou anterior
+    permanece bloqueada.
+    """
+    migration_directory = Path(current_app.root_path) / "migrations"
+    config = Config()
+    config.set_main_option("script_location", str(migration_directory))
+    try:
+        scripts = ScriptDirectory.from_config(config)
+        return any(
+            script.revision == OJS_SEO_MINIMUM_ALEMBIC_REVISION
+            for script in scripts.iterate_revisions(revision, "base")
+        )
+    except Exception as exc:  # falha fechada para uma cadeia Alembic inválida ou incompleta
+        raise OjsSeoActivationError(
+            "A cadeia Alembic não pôde ser validada para a ativação do OJS SEO."
+        ) from exc
+
+
 def assert_ojs_seo_schema_ready() -> None:
     """Confirma a cadeia OJS antes de ativar ou preparar assinaturas."""
     inspector = inspect(db.engine)
@@ -161,19 +188,32 @@ def assert_ojs_seo_schema_ready() -> None:
             "As migrations OJS SEO ainda não foram aplicadas neste banco local."
         )
     revision = db.session.execute(text("SELECT version_num FROM alembic_version")).scalar_one_or_none()
-    if revision != OJS_SEO_REQUIRED_ALEMBIC_REVISION:
+    if not revision or not _revision_includes_ojs_schema(revision):
         raise OjsSeoActivationError(
-            "A revisão Alembic do banco não é compatível com a ativação do OJS SEO."
+            "A revisão Alembic do banco não inclui o esquema mínimo necessário ao OJS SEO."
         )
 
 
-def provision_ojs_seo_tool(actor: User) -> OjsSeoProvisioningResult:
+def _require_provisioning_environment(*, allow_explicit_production: bool) -> None:
+    """Mantém o bloqueio local, salvo a operação de CLI explicitamente confirmada.
+
+    Não há rota HTTP para solicitar esse desvio. Ele existe exclusivamente para
+    a publicação controlada, que informa o administrador responsável e registra
+    a auditoria da operação no próprio banco.
+    """
+    if not allow_explicit_production:
+        require_local_development_environment()
+
+
+def provision_ojs_seo_tool(
+    actor: User, *, allow_explicit_production: bool = False
+) -> OjsSeoProvisioningResult:
     """Cria apenas a Tool inativa e suas três relações comerciais, sem commit.
 
     Reexecutar esta função preserva os registros existentes e não duplica
     vínculos. O chamador deve confirmar ou reverter a transação inteira.
     """
-    require_local_development_environment()
+    _require_provisioning_environment(allow_explicit_production=allow_explicit_production)
     _require_active_administrator(actor)
     definition = _tool_definition_or_error()
     plan_ids = _required_plan_ids_from_catalog()
@@ -340,9 +380,9 @@ def prepare_ojs_seo_development_environment(
     )
 
 
-def activate_ojs_seo_tool(actor: User) -> bool:
+def activate_ojs_seo_tool(actor: User, *, allow_explicit_production: bool = False) -> bool:
     """Ativa somente a Tool já provisionada depois de validar as migrations."""
-    require_local_development_environment()
+    _require_provisioning_environment(allow_explicit_production=allow_explicit_production)
     _require_active_administrator(actor)
     assert_ojs_seo_schema_ready()
     _required_plan_ids_from_catalog()
@@ -426,7 +466,7 @@ __all__ = [
     "OJS_SEO_DEVELOPMENT_ACCESS_MODE",
     "OJS_SEO_DEVELOPMENT_WORKSPACE_PREFIX",
     "OJS_SEO_ELIGIBLE_PLAN_IDS",
-    "OJS_SEO_REQUIRED_ALEMBIC_REVISION",
+    "OJS_SEO_MINIMUM_ALEMBIC_REVISION",
     "OjsSeoActivationError",
     "OjsSeoDevelopmentAccessCheck",
     "OjsSeoDevelopmentEnvironment",
