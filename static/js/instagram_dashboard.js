@@ -1,5 +1,4 @@
 (() => {
-  let observer;
   let frame;
 
   function empty(target, message) {
@@ -91,15 +90,7 @@
       .forEach((chart) => Plotly.Plots.resize(chart)));
   }
 
-  function observeCharts() {
-    if (observer) observer.disconnect();
-    if (!('ResizeObserver' in window)) return;
-    observer = new ResizeObserver(resize);
-    document.querySelectorAll('.dashboard-grid .chart-card').forEach((card) => observer.observe(card));
-  }
-
   function dispose(target) {
-    if (observer) observer.disconnect();
     if (!window.Plotly || !target) return;
     target.querySelectorAll('.js-plotly-plot').forEach((chart) => Plotly.purge(chart));
   }
@@ -114,13 +105,13 @@
     draw('instagram-chart-interactions', charts.interactions, 'Interações', palette[2]);
     drawRate('instagram-chart-type-interaction-rate', charts.type_interaction_rate, palette[3]);
     drawRate('instagram-chart-taxonomy-interaction-rate', taxonomyChartData(), palette[4] || palette[0], true);
-    observeCharts();
   }
 
   window.InstagramDashboard = { render };
   render();
   document.addEventListener('tema-alterado', render);
   document.addEventListener('dashboard-redimensionar', resize);
+  window.addEventListener('resize', resize, { passive: true });
   document.addEventListener('platform:partial-before-update', (event) => {
     if (['#instagram-dashboard-content', '#instagram-taxonomy-performance'].includes(event.detail.target)) {
       dispose(event.detail.currentTarget);

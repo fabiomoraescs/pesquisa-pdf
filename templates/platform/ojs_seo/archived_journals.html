@@ -1,0 +1,36 @@
+{% extends 'platform/base.html' %}
+{% from 'platform/_icons.html' import icon %}
+{% from 'platform/_pagination.html' import pagination_controls %}
+{% from 'platform/_view_controls.html' import action_link %}
+{% block title %}Periódicos arquivados — OJS SEO{% endblock %}
+{% block page_intro %}<h1 class="visually-hidden">Periódicos arquivados de OJS SEO</h1>{% endblock %}
+{% block body %}
+<h1 class="h4 mb-1">Periódicos arquivados</h1>
+<p class="platform-muted">Periódicos arquivados ficam fora da lista principal, mas preservam o histórico de auditorias e os registros bibliográficos.</p>
+<p><a class="btn btn-outline-primary btn-sm" href="{{ url_for('ojs_seo.home') }}" data-platform-loading-overlay-link data-loading-overlay-target="ojs-seo-overlay-processamento">Voltar aos meus periódicos</a></p>
+<section id="ojs-seo-archived-journal-list" aria-label="Periódicos arquivados">
+{% if journals %}
+<div class="platform-project-grid">
+  {% for journal in journals %}{% set project = journal.analytics_project %}
+  <section class="platform-project-card">
+    <h2 class="h5">{{ project.name }}</h2>
+    <p>{{ journal.repository_name or 'Repositório ainda não identificado' }} · OJS {{ journal.observed_ojs_version or 'não identificado' }}</p>
+    <p class="platform-muted"><a href="{{ journal.public_url }}" target="_blank" rel="noopener noreferrer">{{ journal.public_url }}</a></p>
+    <p class="platform-muted"><strong>Arquivado em:</strong> {{ project.archived_at | data_hora_local }}</p>
+    <p class="platform-muted">A vaga comercial desta assinatura continua ocupada enquanto o periódico estiver arquivado.</p>
+    <div class="platform-card-actions">
+      <a class="btn btn-outline-primary btn-sm" href="{{ url_for('ojs_seo.journal_detail', journal_id=journal.id) }}" data-platform-loading-overlay-link data-loading-overlay-target="ojs-seo-overlay-processamento">Ver histórico</a>
+      <form method="post" action="{{ url_for('ojs_seo.restore_journal', journal_id=journal.id) }}" onsubmit="return confirm('Restaurar este periódico e seu acesso?')" data-partial-update data-partial-target="#ojs-seo-archived-journal-list" data-platform-loading-overlay-form data-platform-async-form data-loading-overlay-target="ojs-seo-overlay-processamento"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="confirm" value="yes"><button class="btn btn-outline-primary btn-sm platform-action-button" type="submit" title="Restaurar periódico" aria-label="Restaurar periódico {{ project.name }}" data-loading-overlay-submit>{{ icon('restaurar') }}</button></form>
+      {{ action_link(url_for('ojs_seo.delete_journal', journal_id=journal.id), 'Excluir periódico ' ~ project.name ~ ' definitivamente', 'lixeira', true, loading_overlay_target='ojs-seo-overlay-processamento') }}
+    </div>
+  </section>
+  {% endfor %}
+</div>
+{{ pagination_controls(journals_pagination, 'ojs_seo.archived_journals', 'ojs-seo-archived-journal-list', loading_overlay_target='ojs-seo-overlay-processamento') }}
+{% else %}
+<div class="platform-empty-state"><h2 class="h5">Nenhum periódico arquivado.</h2><p>Periódicos arquivados aparecerão aqui.</p><a class="btn btn-outline-primary" href="{{ url_for('ojs_seo.home') }}" data-platform-loading-overlay-link data-loading-overlay-target="ojs-seo-overlay-processamento">Voltar aos meus periódicos</a></div>
+{% endif %}
+</section>
+{% include 'platform/ojs_seo/_loading_overlay.html' %}
+<script defer src="{{ url_for('static', filename='js/platform_auto_submit.js') }}"></script>
+{% endblock %}

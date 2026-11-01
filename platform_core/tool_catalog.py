@@ -45,6 +45,10 @@ class ToolDefinition:
     endpoint: str | None = None
     authorization_points: tuple[str, ...] = ()
     icon: str | None = None
+    # Algumas ferramentas podem ter código e rotas prontos, mas exigem uma
+    # publicação administrativa explícita. Isso evita que um bootstrap ou
+    # seed genérico disponibilize uma integração nova por acidente.
+    requires_explicit_provisioning: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,7 +90,12 @@ TOOL_DEFINITIONS: tuple[ToolDefinition, ...] = (
         tool_code=ANALYTICS_INSTAGRAM_TOOL, route="/analytics/instagram", endpoint="instagram.home", icon="analytics",
         authorization_points=("app._enforce_platform_access", "instagram._require_tool"),
     ),
-    ToolDefinition("analytics", "ojs_seo", "OJS SEO", 1, "future", icon="seo"),
+    ToolDefinition(
+        "analytics", "ojs_seo", "OJS SEO", 1, "available",
+        tool_code="ojs_seo", route="/analytics/ojs-seo", endpoint="ojs_seo.home",
+        authorization_points=("app._enforce_platform_access", "ojs_seo._require_tool"),
+        icon="seo", requires_explicit_provisioning=True,
+    ),
     ToolDefinition("analytics", "ojs_analytics", "OJS Analytics", 2, "future", icon="analytics"),
     ToolDefinition(None, "bibliographic_search", "Busca Bibliográfica", 0, "future", icon="ficha"),
 )
@@ -116,6 +125,8 @@ def _validate_catalog() -> None:
             raise RuntimeError(f"Ferramenta disponível sem Tool ou rota: {tool.tool_id}")
         if tool.implementation_status != "available" and (tool.tool_code or tool.route or tool.endpoint):
             raise RuntimeError(f"Ferramenta não implementada não pode declarar Tool ou rota: {tool.tool_id}")
+        if tool.requires_explicit_provisioning and tool.implementation_status != "available":
+            raise RuntimeError(f"Provisionamento explícito requer ferramenta disponível: {tool.tool_id}")
         group_tool_order = (tool.group_id, tool.tool_order)
         if group_tool_order in group_tool_orders:
             raise RuntimeError(f"Ferramentas com a mesma posição: {tool.group_id}")
@@ -169,6 +180,7 @@ def persistent_tool_seed_rows() -> tuple[tuple[str, str, str], ...]:
         (tool.tool_code, tool.name, tool.route)
         for tool in tools_in_display_order()
         if tool.implementation_status == "available"
+        and not tool.requires_explicit_provisioning
         and tool.tool_code is not None and tool.route is not None
     )
 

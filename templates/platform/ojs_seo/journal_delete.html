@@ -1,0 +1,13 @@
+{% extends 'platform/base.html' %}
+{% block title %}Confirmar exclusão permanente — OJS SEO{% endblock %}
+{% block page_intro %}<div class="platform-page-heading"><h1>Confirmar exclusão permanente</h1></div>{% endblock %}
+{% block body %}
+{% set permanent_delete_action = url_for('ojs_seo.delete_journal', journal_id=journal.id) %}
+{% set permanent_delete_cancel_url = url_for('ojs_seo.archived_journals', _anchor='ojs-seo-archived-journal-list') %}
+{% set permanent_delete_warning %}Serão removidos definitivamente o periódico, o histórico de auditorias, os registros bibliográficos e as observações associadas. A reserva comercial será liberada.{% endset %}
+{% set permanent_delete_items = [project.name] %}
+{% set permanent_delete_batch_projects = () %}
+{% set permanent_delete_loading_target = 'ojs-seo-overlay-processamento' %}
+{% include 'platform/_permanent_delete_confirmation.html' %}
+{% include 'platform/ojs_seo/_loading_overlay.html' %}
+{% endblock %}

@@ -1,5 +1,4 @@
 (() => {
-  let observer;
   let frame;
 
   function reportChartData() {
@@ -62,13 +61,9 @@
     if (!charts || !theme) return;
     const palette = theme.palette();
     Object.entries(charts).forEach(([key, chart]) => drawReportChart(key, chart, palette, theme));
-    if (observer) observer.disconnect();
-    if ('ResizeObserver' in window) {
-      observer = new ResizeObserver(resize);
-      document.querySelectorAll('[data-report-chart-card]').forEach((card) => observer.observe(card));
-    }
   }
 
   renderCharts();
   document.addEventListener('tema-alterado', renderCharts);
+  window.addEventListener('resize', resize, { passive: true });
 })();

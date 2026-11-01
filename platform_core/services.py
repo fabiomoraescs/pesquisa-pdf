@@ -83,6 +83,8 @@ def seed_platform() -> None:
         (plan.plan_id, tool_id)
         for plan in COMMERCIAL_PLANS
         for tool_id in plan.available_tool_ids
+        if (definition := tool_definition(tool_id)) is not None
+        and not definition.requires_explicit_provisioning
     )
     for plan_id, tool_id in (() if not initial_bootstrap else initial_plan_tools):
         if db.session.get(PlanTool, (plan_id, tool_id)) is None:

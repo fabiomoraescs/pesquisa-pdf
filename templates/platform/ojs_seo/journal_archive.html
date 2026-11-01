@@ -1,0 +1,15 @@
+{% extends 'platform/base.html' %}
+{% block title %}Arquivar periódico — OJS SEO{% endblock %}
+{% block page_intro %}<div class="platform-page-heading"><h1>Arquivar periódico</h1></div>{% endblock %}
+{% block body %}
+<section class="platform-panel" aria-labelledby="ojs-seo-archive-title">
+  <h2 id="ojs-seo-archive-title" class="h5">{{ project.name }}</h2>
+  <p class="platform-muted">O periódico será removido da lista de ativos. Seu histórico será preservado e continuará ocupando uma vaga da assinatura.</p>
+  <form method="post" action="{{ url_for('ojs_seo.archive_journal', journal_id=journal.id) }}" data-platform-loading-overlay-form data-loading-overlay-target="ojs-seo-overlay-processamento">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="confirm" value="yes">
+    <div class="d-flex flex-wrap gap-2"><button class="btn btn-primary" type="submit" data-loading-overlay-submit>Arquivar periódico</button><a class="btn btn-outline-primary" href="{{ url_for('ojs_seo.home') }}" data-platform-loading-overlay-link data-loading-overlay-target="ojs-seo-overlay-processamento">Cancelar</a></div>
+  </form>
+</section>
+{% include 'platform/ojs_seo/_loading_overlay.html' %}
+{% endblock %}

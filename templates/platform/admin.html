@@ -1,11 +1,12 @@
 {% extends 'platform/base.html' %}
+{% from 'platform/_metric_card.html' import metric_card %}
 {% block title %}Painel de controle — Análysis{% endblock %}
 {% block heading %}Painel de controle{% endblock %}
 {% block body %}
 {% from 'platform/_view_controls.html' import toggle, ficha, action_link %}
 {% from 'platform/_icons.html' import icon %}
 {% if section == 'home' %}
-<div class="platform-admin-grid mb-4">{% for label, value in [('Usuários', counts.users), ('Ativos', counts.active), ('Bloqueados', counts.blocked), ('Projetos', counts.projects)] %}<div class="metric-card"><span>{{ label }}</span><strong>{{ value }}</strong></div>{% endfor %}</div>
+<div class="platform-admin-grid platform-kpi-grid mb-4">{% for label, value in [('Usuários', counts.users), ('Ativos', counts.active), ('Bloqueados', counts.blocked), ('Projetos', counts.projects)] %}<div class="metric-card platform-metric-card platform-kpi-card">{{ metric_card(label, value, 'Contagem atual no painel.', variant=loop.index0) }}</div>{% endfor %}</div>
 <section class="platform-panel"><h2 class="h5">Distribuição por plano</h2><ul class="mb-0">{% for plan_id, total in distribution %}<li><span class="platform-commercial-plan-name">{{ plan_id | rotulo }}</span>: {{ total }}</li>{% else %}<li>Nenhuma concessão ativa.</li>{% endfor %}</ul></section>
 {% elif section == 'users' %}
 <form class="d-flex flex-wrap gap-2 mb-3" method="get"><input class="form-control" name="q" value="{{ q }}" aria-label="Buscar usuário por nome ou e-mail" placeholder="Nome ou e-mail" style="max-width: 360px"><button class="btn btn-primary">Buscar</button></form>

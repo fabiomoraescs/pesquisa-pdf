@@ -1,5 +1,6 @@
 <!doctype html>
 <html lang="pt-BR">
+{% from 'platform/_metric_card.html' import metric_card %}
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -8,7 +9,7 @@
   <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
   <link href="{{ url_for('static', filename='css/platform.css') }}" rel="stylesheet">
   <link href="{{ url_for('static', filename='css/historico_racial.css') }}" rel="stylesheet">
-  <script>try { document.documentElement.dataset.theme = localStorage.getItem('varredura-pdf-theme') || 'dark'; } catch (_) { document.documentElement.dataset.theme = 'dark'; }</script>
+  <script>try { const t = localStorage.getItem('varredura-pdf-theme'); document.documentElement.dataset.theme = ['light', 'dark', 'black'].includes(t) ? t : 'dark'; } catch (_) { document.documentElement.dataset.theme = 'dark'; }</script>
 </head>
 <body class="platform-page">
   {% include 'platform/_header.html' %}
@@ -25,10 +26,9 @@
       <p class="hr-vocab-reference">Vocabulário utilizado: <strong>{{ resultado.vocabulario_version }}</strong> <span class="text-secondary">· SHA-256: <code>{{ resultado.vocabulario_hash }}</code></span></p>
       {% endif %}
 
-      <div class="row g-3 mb-4" aria-label="Resumo do processamento">
-        <div class="col-12 col-md-4"><div class="metric-card p-3 h-100"><span>PDFs processados</span><strong class="d-block fs-3">{{ resultado.total_pdfs }}</strong></div></div>
-        <div class="col-12 col-md-4"><div class="metric-card p-3 h-100"><span>Resultados recuperados</span><strong class="d-block fs-3">{{ resultado.total_ocorrencias }}</strong></div></div>
-        <div class="col-12 col-md-4"><div class="metric-card p-3 h-100"><span>Entidades distintas</span><strong class="d-block fs-3">{{ resultado.entidades_distintas }}</strong></div></div>
+      {% set processing_metrics = [('PDFs processados', resultado.total_pdfs, 'Documentos processados nesta base.'), ('Resultados recuperados', resultado.total_ocorrencias, 'Ocorrências recuperadas na análise.'), ('Entidades distintas', resultado.entidades_distintas, 'Entidades identificadas no resultado.')] %}
+      <div class="row g-3 mb-4 platform-kpi-grid" aria-label="Resumo do processamento">
+        {% for label, value, description in processing_metrics %}<div class="col-12 col-md-4"><div class="metric-card platform-metric-card platform-kpi-card p-3">{{ metric_card(label, value, description, variant=loop.index0) }}</div></div>{% endfor %}
       </div>
 
       {% if resultado.erros %}

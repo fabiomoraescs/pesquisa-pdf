@@ -1,5 +1,6 @@
 <!doctype html>
 <html lang="pt-BR">
+{% from 'platform/_metric_card.html' import metric_card %}
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -7,7 +8,7 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
   <link href="{{ url_for('static', filename='css/platform.css') }}" rel="stylesheet">
-  <script>try { document.documentElement.dataset.theme = localStorage.getItem('varredura-pdf-theme') || 'dark'; } catch (_) { document.documentElement.dataset.theme = 'dark'; }</script>
+  <script>try { const t = localStorage.getItem('varredura-pdf-theme'); document.documentElement.dataset.theme = ['light', 'dark', 'black'].includes(t) ? t : 'dark'; } catch (_) { document.documentElement.dataset.theme = 'dark'; }</script>
 </head>
 <body class="page-results platform-page platform-legacy-page">
   {% include 'platform/_header.html' %}
@@ -36,29 +37,24 @@
     {% endif %}
 
     {% if resultado.versao == 'v3' %}
-    <section class="row g-3 mb-4" aria-label="Indicadores da busca híbrida">
-      <div class="col-6 col-lg"><div class="metric-card"><span>Ocorrências lexicais</span><strong id="indicador-v3-lexicais">0</strong></div></div>
-      <div class="col-6 col-lg"><div class="metric-card"><span>Correspondências semânticas</span><strong id="indicador-v3-semanticos">0</strong></div></div>
-      <div class="col-6 col-lg"><div class="metric-card"><span>Resultados recuperados</span><strong id="indicador-v3-resultados">0</strong></div></div>
-      <div class="col-6 col-lg"><div class="metric-card"><span>Livros analisados</span><strong id="indicador-v3-livros">0</strong></div></div>
-      <div class="col-6 col-lg"><div class="metric-card"><span>Consultas</span><strong id="indicador-v3-consultas">0</strong></div></div>
+    {% set hybrid_metrics = [('Ocorrências lexicais', 'indicador-v3-lexicais', 'Ocorrências literais identificadas.'), ('Correspondências semânticas', 'indicador-v3-semanticos', 'Correspondências semânticas identificadas.'), ('Resultados recuperados', 'indicador-v3-resultados', 'Resultados encontrados na base.'), ('Livros analisados', 'indicador-v3-livros', 'Documentos analisados nesta base.'), ('Consultas', 'indicador-v3-consultas', 'Termos consultados nesta base.')] %}
+    <section class="row g-3 mb-4 platform-kpi-grid" aria-label="Indicadores da busca híbrida">
+      {% for label, value_id, description in hybrid_metrics %}<div class="col-6 col-lg"><div class="metric-card platform-metric-card platform-kpi-card">{{ metric_card(label, 0, description, value_id, variant=loop.index0) }}</div></div>{% endfor %}
     </section>
 
     <section class="row g-4 mb-4 dashboard-grid" aria-label="Visualizações analíticas da Raspagem por termos">
-      <div class="col-12"><div class="chart-card"><div class="chart-header"><h2>Termos × documentos</h2><span class="chart-subtitle">Ocorrências lexicais por documento</span></div><div class="analysis-chart-scroll"><div id="grafico-termos-documentos" class="chart"></div></div></div></div>
-      <div class="col-12"><div class="chart-card"><div class="chart-header"><h2>Frequência relativa por documento</h2><span class="chart-subtitle">Ocorrências lexicais por 1.000 palavras</span></div><div class="analysis-chart-scroll"><div id="grafico-frequencia-relativa" class="chart"></div></div></div></div>
+      <div class="col-12 col-xl-6"><div class="chart-card h-100"><div class="chart-header"><h2>Termos × documentos</h2><span class="chart-subtitle">Ocorrências lexicais por documento</span></div><div class="analysis-chart-scroll"><div id="grafico-termos-documentos" class="chart"></div></div></div></div>
+      <div class="col-12 col-xl-6"><div class="chart-card h-100"><div class="chart-header"><h2>Frequência relativa por documento</h2><span class="chart-subtitle">Ocorrências lexicais por 1.000 palavras</span></div><div class="analysis-chart-scroll"><div id="grafico-frequencia-relativa" class="chart"></div></div></div></div>
     </section>
     {% else %}
-    <section class="row g-3 mb-4" aria-label="Indicadores">
-      <div class="col-6 col-lg-3"><div class="metric-card"><span>PDFs analisados</span><strong id="indicador-pdfs">0</strong></div></div>
-      <div class="col-6 col-lg-3"><div class="metric-card"><span>Termos pesquisados</span><strong id="indicador-termos">0</strong></div></div>
-      <div class="col-6 col-lg-3"><div class="metric-card"><span>Ocorrências encontradas</span><strong id="indicador-ocorrencias">0</strong></div></div>
-      <div class="col-6 col-lg-3"><div class="metric-card"><span>Páginas com OCR</span><strong id="indicador-ocr">0</strong></div></div>
+    {% set term_metrics = [('PDFs analisados', 'indicador-pdfs', 'Documentos analisados nesta base.'), ('Termos pesquisados', 'indicador-termos', 'Termos consultados nesta base.'), ('Ocorrências encontradas', 'indicador-ocorrencias', 'Ocorrências encontradas na base.'), ('Páginas com OCR', 'indicador-ocr', 'Páginas que exigiram reconhecimento óptico.')] %}
+    <section class="row g-3 mb-4 platform-kpi-grid" aria-label="Indicadores">
+      {% for label, value_id, description in term_metrics %}<div class="col-6 col-lg-3"><div class="metric-card platform-metric-card platform-kpi-card">{{ metric_card(label, 0, description, value_id, variant=loop.index0) }}</div></div>{% endfor %}
     </section>
 
     <section class="row g-4 mb-4 dashboard-grid" aria-label="Visualizações analíticas da Raspagem por termos">
-      <div class="col-12"><div class="chart-card"><div class="chart-header"><h2>Termos × documentos</h2><span class="chart-subtitle">Ocorrências por documento</span></div><div class="analysis-chart-scroll"><div id="grafico-termos-documentos" class="chart"></div></div></div></div>
-      <div class="col-12"><div class="chart-card"><div class="chart-header"><h2>Frequência relativa por documento</h2><span class="chart-subtitle">Ocorrências por 1.000 palavras</span></div><div class="analysis-chart-scroll"><div id="grafico-frequencia-relativa" class="chart"></div></div></div></div>
+      <div class="col-12 col-xl-6"><div class="chart-card h-100"><div class="chart-header"><h2>Termos × documentos</h2><span class="chart-subtitle">Ocorrências por documento</span></div><div class="analysis-chart-scroll"><div id="grafico-termos-documentos" class="chart"></div></div></div></div>
+      <div class="col-12 col-xl-6"><div class="chart-card h-100"><div class="chart-header"><h2>Frequência relativa por documento</h2><span class="chart-subtitle">Ocorrências por 1.000 palavras</span></div><div class="analysis-chart-scroll"><div id="grafico-frequencia-relativa" class="chart"></div></div></div></div>
     </section>
     {% endif %}
 

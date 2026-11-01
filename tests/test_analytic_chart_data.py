@@ -37,6 +37,21 @@ class TermAnalysisChartDataTests(unittest.TestCase):
         self.assertIn("type: 'heatmap'", script)
         self.assertIn("por 1.000 palavras", script)
         self.assertNotIn(".slice(", script)
+        self.assertEqual(template.count('class="col-12 col-xl-6"'), 4)
+        self.assertEqual(template.count('chart-card h-100'), 4)
+
+    def test_term_matrix_uses_content_width_and_keeps_full_labels_in_tooltips(self):
+        root = Path(__file__).resolve().parents[1]
+        theme = (root / "static/js/plot_theme.js").read_text(encoding="utf-8")
+        script = (root / "static/js/dashboard.js").read_text(encoding="utf-8")
+
+        self.assertIn("const matrixDimensions", theme)
+        self.assertIn("columns <= 2", theme)
+        self.assertIn("target.style.marginInline = columns <= 2 ? 'auto' : '0';", theme)
+        self.assertIn("const abbreviateLabel", theme)
+        self.assertNotIn("Math.max(target.parentElement?.clientWidth || 0, 640", script)
+        self.assertIn("theme.abbreviateLabel(documento, 22)", script)
+        self.assertIn("Documento: %{customdata[0]}", script)
 
     def test_term_chart_frontend_renders_all_matrix_rows_and_relative_frequencies(self):
         node = shutil.which("node")
@@ -53,11 +68,11 @@ const heatmap=new Element('grafico-termos-documentos'), relative=new Element('gr
 const data={indicadores:{},termos_documentos:{termos:['raça','classe'],documentos:['Documento A','Documento B','Documento C'],matriz:[[2,1,0],[3,4,5]]},frequencia_relativa:{documentos:['Documento A','Documento B','Documento C'],ocorrencias:[5,5,5],palavras:[1000,2500,0],por_mil:[5,2,null]}};
 const document={documentElement:{dataset:{theme:'dark'}},getElementById:id=>id==='dados-dashboard'?{textContent:JSON.stringify(data)}:id===heatmap.id?heatmap:id===relative.id?relative:null,createElement:()=>new Element('notice'),querySelectorAll:()=>[],addEventListener(){}};
 const calls=[]; const Plotly={react:(...args)=>calls.push(args),purge(){},Plots:{resize(){}}};
-const window={Plotly,PesquisaPdfPlotTheme:{palette:()=>['one','two'],color:()=> '#fff',layout:margin=>({margin}),axis:options=>options}};
+const window={addEventListener(){},Plotly,PesquisaPdfPlotTheme:{palette:()=>['one','two'],color:()=> '#fff',layout:margin=>({margin}),axis:options=>options,abbreviateLabel:(value)=>value,matrixDimensions:(target,columns,rows)=>({largura:300,altura:Math.max(290,rows*38+145)})}};
 """ + source + r"""
 assert.equal(calls.length,2);
 assert.equal(calls[0][1][0].type,'heatmap'); assert.deepEqual(calls[0][1][0].z,[[2,1,0],[3,4,5]]);
-assert.deepEqual(calls[1][1][0].x,[5,2,0]); assert.equal(calls[1][1][0].customdata[2][2],'não disponível');
+assert.deepEqual(calls[1][1][0].x,[5,2,0]); assert.equal(calls[1][1][0].customdata[2][3],'não disponível');
 """
         result = subprocess.run([node, "-e", script], capture_output=True, text=True, encoding="utf-8")
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -99,6 +114,13 @@ class StructuredAnalysisChartDataTests(unittest.TestCase):
         self.assertIn("barmode: 'stack'", script)
         self.assertNotIn(".slice(", script)
 
+    def test_structured_matrix_has_no_fixed_wide_minimum_for_a_single_document(self):
+        script = (Path(__file__).resolve().parents[1] / "static/js/structured_analysis_dashboard.js").read_text(encoding="utf-8")
+        self.assertNotIn("Math.max(target.parentElement?.clientWidth || 0, 680", script)
+        self.assertIn("{ compacta: true }", script)
+        self.assertIn("theme.abbreviateLabel(documento, 22)", script)
+        self.assertIn("Documento: %{customdata[0]}", script)
+
     def test_structured_chart_frontend_keeps_every_group_document_and_entity(self):
         node = shutil.which("node")
         if not node:
@@ -114,7 +136,7 @@ const heatmap=new Element('grafico-grupos-documentos'), composition=new Element(
 const data={grupos_documentos:{grupos:['Política','Educação'],documentos:['A.pdf','B.pdf'],matriz:[[1,1],[1,1]]},composicao_grupos:{grupos:['Política','Educação'],entidades:['Lei','Escola'],contagens:[[2,1],[0,1]],percentuais:[[100,50],[0,50]]}};
 const document={documentElement:{dataset:{theme:'light'}},getElementById:id=>id==='structured-analysis-chart-data'?{textContent:JSON.stringify(data)}:id===heatmap.id?heatmap:id===composition.id?composition:null,createElement:()=>new Element('notice'),querySelectorAll:()=>[],addEventListener(){}};
 const calls=[]; const Plotly={react:(...args)=>calls.push(args),purge(){},Plots:{resize(){}}};
-const window={Plotly,PesquisaPdfPlotTheme:{palette:()=>['one','two'],color:()=> '#111',layout:margin=>({margin}),axis:options=>options,legend:options=>options}};
+const window={addEventListener(){},Plotly,PesquisaPdfPlotTheme:{palette:()=>['one','two'],color:()=> '#111',layout:margin=>({margin}),axis:options=>options,legend:options=>options,abbreviateLabel:(value)=>value,matrixDimensions:(target,columns,rows)=>({largura:300,altura:Math.max(300,rows*42+155)})}};
 """ + source + r"""
 assert.equal(calls.length,2);
 assert.equal(calls[0][1][0].type,'heatmap'); assert.deepEqual(calls[0][1][0].z,[[1,1],[1,1]]);

@@ -55,8 +55,11 @@ class ToolCatalogDefinitionTests(unittest.TestCase):
         self.assertTrue(all(tool.tool_code is None and tool.route is None for tool in unavailable))
         self.assertEqual(
             {tool.tool_id for tool in unavailable},
-            {"quantitative_analysis", "ojs_seo", "ojs_analytics", "bibliographic_search"},
+            {"quantitative_analysis", "ojs_analytics", "bibliographic_search"},
         )
+        explicit = next(tool for tool in available if tool.tool_id == "ojs_seo")
+        self.assertTrue(explicit.requires_explicit_provisioning)
+        self.assertNotIn("ojs_seo", {code for code, _name, _route in persistent_tool_seed_rows()})
         self.assertEqual([tool.tool_id for tool in standalone_tools_in_display_order()], ["bibliographic_search"])
 
     def test_catalog_definition_is_immutable(self):
@@ -162,6 +165,7 @@ class CatalogCompatibilityTests(unittest.TestCase):
             SimpleNamespace(id="document_analysis", name="Nome não canônico", active=True),
             SimpleNamespace(id="qualitative_analysis", name="Nome não canônico", active=False),
             SimpleNamespace(id=ANALYTICS_INSTAGRAM_TOOL, name="Nome não canônico", active=True),
+            SimpleNamespace(id="ojs_seo", name="Nome não canônico", active=False),
         )
         rows = administrative_catalog_entries(persisted)
         self.assertEqual(
@@ -172,8 +176,9 @@ class CatalogCompatibilityTests(unittest.TestCase):
             ],
         )
         self.assertTrue(all(row["implemented"] is False for row in rows if row["id"] in {
-            "quantitative_analysis", "ojs_seo", "ojs_analytics", "bibliographic_search",
+            "quantitative_analysis", "ojs_analytics", "bibliographic_search",
         }))
+        self.assertTrue(next(row for row in rows if row["id"] == "ojs_seo")["implemented"])
 
 
 if __name__ == "__main__":  # pragma: no cover

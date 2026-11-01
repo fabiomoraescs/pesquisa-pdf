@@ -68,6 +68,10 @@
 
     const scrollY = window.scrollY;
     const focusedId = document.activeElement && document.activeElement.id;
+    const loadingOverlay = form.matches('[data-platform-loading-overlay-form]')
+      ? window.PlatformFormLoadingOverlay
+      : null;
+    if (loadingOverlay) loadingOverlay.show(form);
     target.classList.add('platform-partial-target');
     target.setAttribute('aria-busy', 'true');
     form.setAttribute('aria-busy', 'true');
@@ -114,6 +118,7 @@
       const currentTarget = document.querySelector(selector);
       if (currentTarget) currentTarget.removeAttribute('aria-busy');
       form.removeAttribute('aria-busy');
+      if (loadingOverlay) loadingOverlay.reset(form);
     }
   }
 

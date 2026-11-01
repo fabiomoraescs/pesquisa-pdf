@@ -1,0 +1,89 @@
+{% extends "platform/base.html" %}
+{% from 'platform/_icons.html' import icon %}
+{% from 'platform/_tutorial_info.html' import tutorial_button, tutorial_dialog with context %}
+{% from 'platform/_metric_card.html' import metric_card %}
+{% block title %}Histórico e análises — {{ project.name }} — OJS SEO{% endblock %}
+{% block body %}
+{% set ojs_tutorial = platform_help_for('ojs_seo') %}
+{% set active_area = 'history' %}
+{% include 'platform/ojs_seo/_journal_navigation.html' %}
+
+<section class="platform-panel mb-3" aria-labelledby="ojs-history-title" data-ojs-history-progress data-progress-url="{{ url_for('ojs_seo.journal_history_progress', journal_id=journal.id) }}" data-progress-active="{{ 'true' if history_progress.active else 'false' }}" data-progress-stage="{{ history_progress.stage or '' }}">
+  <div class="d-flex flex-wrap justify-content-between gap-2 ojs-seo-heading-actions">
+    <div><h1 id="ojs-history-title" class="h4 mb-1">Histórico e análises</h1><p class="platform-muted mb-0">Solicite verificações e acompanhe o resultado de cada execução.</p></div>
+    <div class="ojs-seo-action-group">
+      <a class="btn btn-outline-primary btn-sm" href="{{ url_for('ojs_seo.export_results', journal_id=journal.id, dataset='history', format='xlsx') }}" title="Exportar histórico de análises em XLSX">Exportar XLSX</a>
+      <a class="btn btn-outline-primary btn-sm" href="{{ url_for('ojs_seo.export_results', journal_id=journal.id, dataset='history', format='csv') }}" title="Exportar histórico de análises em CSV">CSV</a>
+      {% if integrated_action_available %}
+        {% set smart_label = 'Analisar periódico' if not metrics_audit else 'Atualizar dados' %}
+        <div class="ojs-history-split-action">
+          <form method="post" action="{{ url_for('ojs_seo.create_integrated_analysis', journal_id=journal.id) }}" data-platform-loading-overlay-form data-loading-overlay-target="ojs-seo-overlay-processamento"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-primary" type="submit" title="{{ smart_label }}" data-loading-overlay-submit>{{ smart_label }}</button></form>
+          <button class="btn btn-primary ojs-history-split-action__toggle" type="button" popovertarget="ojs-history-advanced-actions" aria-controls="ojs-history-advanced-actions" aria-expanded="false" aria-label="Abrir opções avançadas de análise" title="Opções avançadas"><span aria-hidden="true">▾</span></button>
+          <div class="ojs-history-action-menu" id="ojs-history-advanced-actions" popover="auto" data-temporary-popover data-popover-anchor data-popover-align-end role="menu" aria-label="Opções avançadas de análise">
+            {% if audit_request_available %}<form method="post" action="{{ url_for('ojs_seo.create_audit', journal_id=journal.id) }}" data-platform-loading-overlay-form data-loading-overlay-target="ojs-seo-overlay-processamento"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="ojs-history-action-menu__item" type="submit" role="menuitem" data-loading-overlay-submit>Dados bibliográficos</button></form>{% else %}<span class="ojs-history-action-menu__unavailable" aria-disabled="true">Dados bibliográficos indisponíveis agora</span>{% endif %}
+            {% if html_campaign_request_available %}<form method="post" action="{{ url_for('ojs_seo.create_html_audit_campaign', journal_id=journal.id) }}" data-platform-loading-overlay-form data-loading-overlay-target="ojs-seo-overlay-processamento"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="ojs-history-action-menu__item" type="submit" role="menuitem" data-loading-overlay-submit>Analisar todas as páginas</button></form>{% else %}<span class="ojs-history-action-menu__unavailable" aria-disabled="true">Análise das páginas indisponível agora</span>{% endif %}
+            {% if html_revalidate_available %}<form method="post" action="{{ url_for('ojs_seo.create_html_audit', journal_id=journal.id) }}" data-platform-loading-overlay-form data-loading-overlay-target="ojs-seo-overlay-processamento"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="selection_mode" value="revalidate"><button class="ojs-history-action-menu__item" type="submit" role="menuitem" data-loading-overlay-submit>Revalidar páginas</button></form>{% endif %}
+          </div>
+        </div>
+      {% endif %}
+      {{ tutorial_button(ojs_tutorial, section_id='auditoria-bibliografica', label='Abrir guia do OJS SEO') }}
+    </div>
+  </div>
+</section>
+
+{% if archived or integrated_operation or history_progress.active or not integrated_operations_available or (last_integrated_operation and last_integrated_operation.operation.completion_reason == 'no_bibliographic_changes') or (html_campaign and html_campaign.campaign.status == 'interrupted') or (audit and audit.run.status in ('pending', 'running')) %}
+<section class="platform-panel mb-3" id="ojs-integrated-operation" aria-label="Situação das análises">
+  {% if archived %}<p class="platform-muted mb-0">Este periódico está arquivado e permanece disponível somente para consulta.</p>
+  {% elif integrated_operation %}<p class="mb-1" data-ojs-progress-status aria-live="polite"><strong>{{ integrated_operation.status_label }}.</strong> {{ history_progress.message or 'Esta solicitação coordena os dados bibliográficos e, quando aplicável, a análise das páginas.' }}</p><p class="platform-muted mb-0">Os workers executam cada etapa separadamente; fechar esta página não cancela a operação.</p>
+  {% elif history_progress.active %}<p class="mb-0" data-ojs-progress-status aria-live="polite"><strong>{{ history_progress.label }}.</strong> {{ history_progress.message }}</p>
+  {% elif not integrated_operations_available %}<p class="platform-muted mb-0">A operação integrada será disponibilizada após a migration correspondente.</p>
+  {% elif last_integrated_operation and last_integrated_operation.operation.completion_reason == 'no_bibliographic_changes' %}<p class="alert alert-info py-2 mb-0 small">A última atualização não identificou alterações nos dados bibliográficos. A cobertura mostrada abaixo continua vinculada à análise anterior; nenhuma página foi reanalisada.</p>{% endif %}
+  <p class="platform-muted small mt-2 mb-0" data-ojs-progress-campaign-status{% if not html_campaign %} hidden{% endif %}>{% if html_campaign %}Campanha das páginas: {{ html_campaign.status_label }}. {{ html_campaign.campaign.batch_count }} lote(s) registrado(s).{% endif %}</p>
+  {% if html_campaign and html_campaign.campaign.status == 'interrupted' %}<form class="mt-3" method="post" action="{{ url_for('ojs_seo.resume_html_audit_campaign', journal_id=journal.id, campaign_id=html_campaign.campaign.id) }}" data-platform-loading-overlay-form data-loading-overlay-target="ojs-seo-overlay-processamento"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-outline-primary btn-sm" type="submit" data-loading-overlay-submit>Retomar análise das páginas</button></form>{% endif %}
+  {% if audit and audit.run.status == 'pending' and not archived %}<div class="d-flex flex-wrap align-items-center gap-2 mt-3"><p class="platform-muted mb-0">Uma análise dos dados bibliográficos está pendente.</p><a class="btn btn-outline-danger btn-sm" href="{{ url_for('ojs_seo.cancel_audit', journal_id=journal.id, audit_id=audit.run.id) }}" data-platform-loading-overlay-link data-loading-overlay-target="ojs-seo-overlay-processamento">Cancelar auditoria</a></div>
+  {% elif audit and audit.run.status == 'running' %}<p class="platform-muted mt-3 mb-0">Uma análise dos dados bibliográficos está em execução.</p>{% endif %}
+</section>
+{% endif %}
+
+<section class="mb-3" aria-labelledby="ojs-previous-analyses-title">
+  <div class="mb-3"><h2 id="ojs-previous-analyses-title" class="h5 mb-1">Análises e resultados</h2><p class="platform-muted mb-0">Consulte as verificações registradas, acompanhe o progresso e acesse os resultados de cada análise.</p></div>
+  <section class="platform-panel mb-3" aria-labelledby="ojs-html-coverage-title">
+    <div class="d-flex flex-wrap justify-content-between gap-2 align-items-baseline"><h3 id="ojs-html-coverage-title" class="h6 mb-0">Cobertura da análise das páginas</h3>{% if html_coverage %}<div class="text-end"><strong class="d-block" data-ojs-coverage-percentage>{{ html_coverage.verified_percentage }}% verificado nesta referência</strong><small class="platform-muted" data-ojs-coverage-available>{{ html_coverage.available_coverage_percentage }}% com evidência disponível{% if html_coverage.reused_evidence_article_count %}, incluindo evidências históricas compatíveis{% endif %}</small></div>{% endif %}</div>
+    {% if html_coverage and html_coverage.eligible_article_count %}
+      {% set verified_width = html_coverage.verified_article_count / html_coverage.eligible_article_count * 100 %}
+      {% set reused_width = html_coverage.reused_evidence_article_count / html_coverage.eligible_article_count * 100 %}
+      {% set unverified_width = html_coverage.unverified_article_count / html_coverage.eligible_article_count * 100 %}
+      {% set unprocessed_width = html_coverage.unprocessed_article_count / html_coverage.eligible_article_count * 100 %}
+      <div class="progress mt-3" data-ojs-coverage-progress role="img" aria-label="Progresso da análise das páginas: {{ html_coverage.verified_percentage }}% efetivamente verificado nesta referência; {{ html_coverage.verified_article_count }} páginas verificadas; {{ html_coverage.unverified_article_count }} não verificadas; {{ html_coverage.unprocessed_article_count }} artigos não processados; {{ html_coverage.eligible_article_count }} elegíveis; {{ html_coverage.reused_evidence_article_count }} evidências históricas reaproveitadas.">
+        <div class="progress-bar bg-success" data-ojs-coverage-segment="verified" style="width: {{ '%.4f' | format(verified_width) }}%" aria-hidden="true"></div><div class="progress-bar bg-info" data-ojs-coverage-segment="reused" style="width: {{ '%.4f' | format(reused_width) }}%" aria-hidden="true"></div><div class="progress-bar bg-warning" data-ojs-coverage-segment="unverified" style="width: {{ '%.4f' | format(unverified_width) }}%" aria-hidden="true"></div><div class="progress-bar bg-secondary" data-ojs-coverage-segment="unprocessed" style="width: {{ '%.4f' | format(unprocessed_width) }}%" aria-hidden="true"></div>
+      </div>
+      <div class="row g-2 mt-3 platform-kpi-grid" aria-label="Indicadores do progresso da análise das páginas">
+        {% for key, label, value in [('verified', 'Páginas verificadas', html_coverage.verified_article_count), ('reused', 'Evidências reaproveitadas', html_coverage.reused_evidence_article_count), ('unverified', 'Páginas não verificadas', html_coverage.unverified_article_count), ('unprocessed', 'Artigos não processados', html_coverage.unprocessed_article_count), ('eligible', 'Artigos elegíveis', html_coverage.eligible_article_count)] %}<div class="col-6 col-lg"><div class="metric-card platform-metric-card platform-kpi-card p-3">{{ metric_card(label, value, value_attributes={'data-ojs-coverage-value': key}, variant=loop.index0) }}</div></div>{% endfor %}
+      </div>
+      <ul class="list-unstyled d-flex flex-wrap mt-3 mb-0 ojs-html-coverage-legend" aria-label="Legenda do progresso"><li><span class="ojs-html-coverage-legend__dot ojs-html-coverage-legend__dot--verified" aria-hidden="true"></span><span>Verificadas</span></li><li><span class="ojs-html-coverage-legend__dot ojs-html-coverage-legend__dot--reused" aria-hidden="true"></span><span>Evidências reaproveitadas</span></li><li><span class="ojs-html-coverage-legend__dot ojs-html-coverage-legend__dot--unverified" aria-hidden="true"></span><span>Não verificadas</span></li><li><span class="ojs-html-coverage-legend__dot ojs-html-coverage-legend__dot--unprocessed" aria-hidden="true"></span><span>Não processadas</span></li></ul>
+    {% elif html_coverage %}<p class="platform-muted mt-3 mb-0">Não há artigos elegíveis para análise das páginas nesta referência bibliográfica.</p>
+    {% elif metrics_audit %}<p class="platform-muted mt-3 mb-0">A análise das páginas estará disponível para a referência bibliográfica atual.</p>
+    {% else %}<p class="platform-muted mt-3 mb-0">Solicite primeiro uma análise dos dados bibliográficos para definir o universo de páginas elegíveis.</p>{% endif %}
+  </section>
+
+  <section class="platform-panel mb-3" aria-labelledby="ojs-html-campaign-history-title">
+    <h3 id="ojs-html-campaign-history-title" class="h6 mb-1">Campanhas de análise das páginas</h3><p class="platform-muted mb-3">Cada campanha organiza lotes sucessivos da mesma referência bibliográfica. A cobertura acima mostra o resultado acumulado, não o tempo restante.</p>
+    {% if html_campaign_history %}<div class="table-responsive"><table class="table platform-themed-table table-sm align-middle mb-0"><thead><tr><th scope="col">Solicitada em</th><th scope="col">Situação</th><th scope="col">Lotes</th><th scope="col">Último progresso</th><th scope="col">Referência</th></tr></thead><tbody>{% for item in html_campaign_history %}<tr><td>{{ item.campaign.created_at | data_hora_local }}</td><td>{{ item.status_label }}</td><td>{{ item.campaign.batch_count }}</td><td>{% if item.campaign.last_progress_at %}{{ item.campaign.last_progress_at | data_hora_local }}{% else %}Ainda sem lote concluído{% endif %}</td><td>Dados bibliográficos vinculados</td></tr>{% endfor %}</tbody></table></div>{% else %}<p class="platform-muted mb-0">Nenhuma campanha de análise das páginas foi iniciada.</p>{% endif %}
+  </section>
+
+  <section class="platform-panel mb-3" aria-labelledby="ojs-bibliographic-history-title">
+    <h3 id="ojs-bibliographic-history-title" class="h6 mb-1">Análises dos dados bibliográficos</h3><p class="platform-muted mb-3">Resultados das verificações dos registros disponibilizados pelo periódico.</p>
+    {% if audits %}<div class="table-responsive"><table class="table platform-themed-table table-sm align-middle mb-0"><thead><tr><th scope="col">Solicitada em</th><th scope="col">Situação</th><th scope="col">Resultados principais</th><th scope="col">Ação</th></tr></thead><tbody>{% for run in audits %}<tr><td>{{ run.created_at | data_hora_local }}</td><td>{{ audit_status_labels.get(run.status, 'Não informada') }}</td><td>{{ run.record_count }} registros recuperados</td><td><a class="btn btn-outline-primary btn-sm platform-action-button" href="{{ url_for('ojs_seo.audit_detail', journal_id=journal.id, audit_id=run.id) }}" title="Ver análise dos dados bibliográficos" aria-label="Ver análise dos dados bibliográficos" data-platform-loading-overlay-link data-loading-overlay-target="ojs-seo-overlay-processamento">{{ icon('ficha') }}</a></td></tr>{% endfor %}</tbody></table></div>{% else %}<p class="platform-muted mb-0">Ainda não há análises dos dados bibliográficos registradas.</p>{% endif %}
+  </section>
+
+  <section class="platform-panel" aria-labelledby="ojs-page-history-title">
+    <h3 id="ojs-page-history-title" class="h6 mb-1">Análises das páginas dos artigos</h3><p class="platform-muted mb-3">Resultados de cada execução da análise das páginas, sem confundir seus números com o progresso acumulado.</p>
+    {% if html_audit_history %}<div class="table-responsive"><table class="table platform-themed-table table-sm align-middle mb-0"><thead><tr><th scope="col">Solicitada em</th><th scope="col">Situação</th><th scope="col">Artigos examinados</th><th scope="col">Verificadas</th><th scope="col">Não verificadas</th><th scope="col">Ação</th></tr></thead><tbody>{% for item in html_audit_history %}<tr><td>{{ item.run.created_at | data_hora_local }}</td><td>{{ item.status_label }}</td><td>{{ item.processed_page_count }}</td><td>{{ item.verified_page_count }}</td><td>{{ item.run.unverified_page_count }}</td><td><a class="btn btn-outline-primary btn-sm platform-action-button" href="{{ url_for('ojs_seo.html_audit_detail', journal_id=journal.id, audit_id=item.run.id) }}" title="Ver análise das páginas" aria-label="Ver análise das páginas" data-platform-loading-overlay-link data-loading-overlay-target="ojs-seo-overlay-processamento">{{ icon('ficha') }}</a></td></tr>{% endfor %}</tbody></table></div>{% else %}<p class="platform-muted mb-0">Nenhuma análise das páginas foi solicitada.</p>{% endif %}
+  </section>
+</section>
+
+{% include 'platform/ojs_seo/_loading_overlay.html' %}
+{{ tutorial_dialog(ojs_tutorial) }}
+<script defer src="{{ url_for('static', filename='js/platform_tutorial.js') }}"></script>
+<script defer src="{{ url_for('static', filename='js/ojs_history_progress.js') }}"></script>
+{% endblock %}

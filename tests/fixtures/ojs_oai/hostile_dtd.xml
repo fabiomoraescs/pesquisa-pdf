@@ -1,0 +1,3 @@
+<?xml version="1.0"?>
+<!DOCTYPE OAI-PMH [<!ENTITY payload SYSTEM "file:///etc/passwd">]>
+<OAI-PMH xmlns="http://www.openarchives.org/OAI/2.0/"><Identify><repositoryName>&payload;</repositoryName></Identify></OAI-PMH>

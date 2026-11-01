@@ -1,0 +1,20 @@
+{% extends "platform/base.html" %}
+{% from 'platform/_tutorial_info.html' import tutorial_button, tutorial_dialog with context %}
+{% from 'platform/_metric_card.html' import metric_card %}
+{% block title %}SEO técnico — {{ project.name }}{% endblock %}
+{% block body %}
+{% set ojs_tutorial = platform_help_for('ojs_seo') %}
+<section class="platform-panel mb-3" aria-labelledby="ojs-html-audit-title">
+  <div class="d-flex flex-wrap justify-content-between gap-2 ojs-seo-heading-actions"><div><p class="platform-muted mb-1">SEO TÉCNICO DAS PÁGINAS HTML</p><h1 id="ojs-html-audit-title" class="h4 mb-1">{{ project.name }}</h1><p class="platform-muted mb-0">{{ audit.status_label }} · solicitada em {{ audit.run.created_at | data_hora_local }}{% if audit.duration_seconds is not none %} · duração {{ audit.duration_seconds }} s{% endif %}</p></div><div class="ojs-seo-action-group"><a class="btn btn-outline-primary btn-sm" href="{{ url_for('ojs_seo.journal_detail', journal_id=journal.id) }}" data-platform-loading-overlay-link data-loading-overlay-target="ojs-seo-overlay-processamento">Voltar ao periódico</a>{% if audit.run.status in ['completed', 'partial'] %}<a class="btn btn-primary btn-sm" href="{{ url_for('ojs_seo.html_audit_records', journal_id=journal.id, audit_id=audit.run.id) }}" data-platform-loading-overlay-link data-loading-overlay-target="ojs-seo-overlay-processamento">Ver registros analisados</a>{% endif %}{{ tutorial_button(ojs_tutorial, section_id='auditoria-html', label='Abrir guia do OJS SEO') }}</div></div>
+  {% if audit.run.status == 'pending' %}<p class="platform-muted mt-3 mb-0">A análise está pendente e será executada somente pelo worker HTML OJS em processo separado.</p>{% elif audit.run.status == 'running' %}<p class="platform-muted mt-3 mb-0">A análise está em execução. Os resultados serão preservados apenas depois da confirmação transacional.</p>{% endif %}
+</section>
+<section class="row g-3 mb-3 platform-kpi-grid" aria-label="Resumo da análise técnica">
+{% for label, value in [('Artigos elegíveis', audit.run.eligible_article_count), ('Registros processados', audit.processed_page_count), ('Páginas verificadas', audit.verified_page_count), ('Páginas com problemas confirmados', audit.run.confirmed_problem_count), ('Páginas com problemas potenciais', audit.run.potential_problem_count), ('Páginas não verificadas', audit.run.unverified_page_count)] %}<div class="col-6 col-lg"><div class="metric-card platform-metric-card platform-kpi-card p-3">{{ metric_card(label, value, 'Na análise técnica selecionada.', variant=loop.index0) }}</div></div>{% endfor %}
+</section>
+{% if audit.metrics.sampled %}<section class="alert alert-info"><p class="mb-0">{{ audit.selection_label }} utilizou uma seleção determinística de até {{ audit.metrics.sample_limit }} página(s). Nesta execução, {{ audit.processed_page_count }} registro(s) receberam tentativa e {{ audit.verified_page_count }} página(s) foram efetivamente verificadas entre {{ audit.run.eligible_article_count }} artigo(s) elegíveis. Os resultados não representam uma verificação integral do periódico.</p></section>{% endif %}
+{% if audit.warnings %}<section class="alert alert-warning"><h2 class="h6">Avisos técnicos</h2><ul class="mb-0">{% for item in audit.warnings %}<li>{{ item.message }}</li>{% endfor %}</ul></section>{% endif %}
+{% if audit.errors %}<section class="alert alert-danger"><h2 class="h6">Ocorrências da análise</h2><ul class="mb-0">{% for item in audit.errors %}<li>{{ item.message }}</li>{% endfor %}</ul></section>{% endif %}
+{% include 'platform/ojs_seo/_loading_overlay.html' %}
+{{ tutorial_dialog(ojs_tutorial) }}
+<script defer src="{{ url_for('static', filename='js/platform_tutorial.js') }}"></script>
+{% endblock %}

@@ -4,6 +4,7 @@
 {% from 'platform/instagram/_project_tabs.html' import project_tabs %}
 {% from 'platform/instagram/_temporal_period.html' import temporal_period_controls %}
 {% from 'platform/_pagination.html' import pagination_controls %}
+{% from 'platform/_metric_card.html' import metric_card %}
 {% block title %}Dashboard — {{ project.name }} — Instagram{% endblock %}
 {% macro number(value) %}{% if value is none %}—{% elif value == value|int %}{{ '{:,}'.format(value|int).replace(',', '.') }}{% else %}{{ '{:,.2f}'.format(value).replace(',', '@').replace('.', ',').replace('@', '.') }}{% endif %}{% endmacro %}
 {% macro percentage(value) %}{{ '{:,.2f}'.format(value).replace(',', '@').replace('.', ',').replace('@', '.') if value is not none else '—' }}{% if value is not none %}%{% endif %}{% endmacro %}
@@ -34,10 +35,10 @@
 {% else %}
   {% if dashboard.rows %}
   <section class="mb-3" aria-label="Métricas das publicações">
-    <div class="row g-3">
-      <div class="col-12 col-sm-6 col-xl-3"><div class="metric-card"><span>Publicações</span><strong>{{ number(dashboard.publication_count) }}</strong><small class="platform-muted">Uma contagem por publicação</small></div></div>
+    <div class="row g-3 platform-kpi-grid">
+      <div class="col-12 col-sm-6 col-xl-3"><div class="metric-card platform-metric-card platform-kpi-card">{{ metric_card('Publicações', number(dashboard.publication_count), 'Uma contagem por publicação', variant=0) }}</div></div>
       {% for metric in dashboard.metrics %}
-      <div class="col-12 col-sm-6 col-xl-3"><div class="metric-card"><span>{{ metric.label }}</span><strong>{{ metric.display }}</strong><small class="platform-muted">{% if metric.unavailable %}Não disponível nos dados selecionados{% else %}{{ metric.known }} de {{ metric.publications }} publicações{% if metric.partial %} · Dados parciais{% endif %}{% endif %}</small></div></div>
+      <div class="col-12 col-sm-6 col-xl-3"><div class="metric-card platform-metric-card platform-kpi-card">{{ metric_card(metric.label, metric.display, 'Não disponível nos dados selecionados' if metric.unavailable else (metric.known ~ ' de ' ~ metric.publications ~ ' publicações' ~ (' · Dados parciais' if metric.partial else '')), variant=loop.index) }}</div></div>
       {% endfor %}
     </div>
   </section>
@@ -57,10 +58,10 @@
       <div><h2 id="instagram-performance-title" class="h5 mb-1">Indicadores de desempenho</h2><p class="platform-muted mb-0">Taxas calculadas por publicação a partir da última observação disponível.</p></div>
       <span class="platform-muted small" title="Interações ÷ alcance × 100">Interações ÷ alcance × 100</span>
     </div>
-    <div class="row g-3">
-      <div class="col-12 col-md-4"><div class="metric-card"><span>Taxa mediana de interação por alcance</span><strong>{{ percentage(median_rate.median_value) }}</strong><small class="platform-muted">{{ median_rate.known }} de {{ median_rate.publications }} publicações</small></div></div>
-      <div class="col-12 col-md-4"><div class="metric-card"><span>Taxa média de interação por alcance</span><strong>{{ percentage(mean_rate.mean_value) }}</strong><small class="platform-muted">{{ mean_rate.known }} de {{ mean_rate.publications }} publicações</small></div></div>
-      <div class="col-12 col-md-4"><div class="metric-card"><span>Variação de seguidores desde a coleta anterior</span><strong>{{ signed_number(dashboard.followers_variation.absolute) }}</strong><small class="platform-muted">{% if dashboard.followers_variation.absolute is none %}São necessários dois snapshots válidos.{% elif dashboard.followers_variation.percentage is none %}Percentual indisponível: snapshot anterior igual a zero.{% else %}{{ signed_percentage(dashboard.followers_variation.percentage) }}{% endif %}</small></div></div>
+    <div class="row g-3 platform-kpi-grid">
+      <div class="col-12 col-md-4"><div class="metric-card platform-metric-card platform-kpi-card">{{ metric_card('Taxa mediana de interação por alcance', percentage(median_rate.median_value), median_rate.known ~ ' de ' ~ median_rate.publications ~ ' publicações', variant=0) }}</div></div>
+      <div class="col-12 col-md-4"><div class="metric-card platform-metric-card platform-kpi-card">{{ metric_card('Taxa média de interação por alcance', percentage(mean_rate.mean_value), mean_rate.known ~ ' de ' ~ mean_rate.publications ~ ' publicações', variant=1) }}</div></div>
+      <div class="col-12 col-md-4"><div class="metric-card platform-metric-card platform-kpi-card">{{ metric_card('Variação de seguidores desde a coleta anterior', signed_number(dashboard.followers_variation.absolute), 'São necessários dois snapshots válidos.' if dashboard.followers_variation.absolute is none else ('Percentual indisponível: snapshot anterior igual a zero.' if dashboard.followers_variation.percentage is none else signed_percentage(dashboard.followers_variation.percentage)), variant=2) }}</div></div>
     </div>
     {% set statistic_rows = (('reach', 'Alcance', false), ('impressions', 'Impressões', false), ('interactions', 'Interações', false), ('interaction_rate_by_reach', 'Taxa de interação por alcance', true)) %}
     <div class="table-responsive mt-3"><table class="table platform-themed-table table-sm align-middle text-nowrap mb-0"><thead><tr><th scope="col">Métrica</th><th scope="col">Valores conhecidos</th><th scope="col">Média por publicação</th><th scope="col">Mediana por publicação</th></tr></thead><tbody>{% for identifier, label, is_percentage in statistic_rows %}{% set statistic = dashboard.performance_statistics[identifier] %}<tr><td>{{ label }}</td><td>{{ statistic.known }} de {{ statistic.publications }}</td><td>{{ percentage(statistic.mean_value) if is_percentage else number(statistic.mean_value) }}</td><td>{{ percentage(statistic.median_value) if is_percentage else number(statistic.median_value) }}</td></tr>{% endfor %}</tbody></table></div>

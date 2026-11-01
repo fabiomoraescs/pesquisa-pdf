@@ -1,0 +1,25 @@
+{% extends "platform/base.html" %}
+{% from 'platform/_tutorial_info.html' import tutorial_button, tutorial_dialog with context %}
+{% block title %}Adicionar periódico — OJS SEO{% endblock %}
+{% block page_intro %}<h1 class="visually-hidden">Adicionar periódico ao OJS SEO</h1>{% endblock %}
+{% block body %}
+{% set ojs_tutorial = platform_help_for('ojs_seo') %}
+<section class="platform-panel" aria-labelledby="ojs-seo-new-title">
+  <div class="d-flex flex-wrap justify-content-between align-items-start gap-2"><h1 id="ojs-seo-new-title" class="h4 mb-0">Adicionar periódico</h1>{{ tutorial_button(ojs_tutorial, section_id='primeiro-acesso', label='Abrir guia do OJS SEO') }}</div>
+  {% if subscriptions %}
+  <form method="post" action="{{ url_for('ojs_seo.create_journal') }}" data-platform-loading-overlay-form data-loading-overlay-target="ojs-seo-overlay-processamento">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="platform-form-group"><label class="form-label" for="ojs-project-name">Nome do periódico</label><input class="form-control" id="ojs-project-name" name="project_name" maxlength="200" required value="{{ request.form.get('project_name', '') }}" placeholder="Ex.: Revista de Estudos"></div>
+    <div class="platform-form-group"><label class="form-label" for="ojs-public-url">URL pública do periódico</label><input class="form-control" id="ojs-public-url" name="public_url" type="url" maxlength="2048" required value="{{ request.form.get('public_url', '') }}" placeholder="https://periodico.exemplo.edu.br/index.php/revista"></div>
+    <div class="platform-form-group"><label class="form-label" for="ojs-workspace-subscription">Assinatura responsável</label><select class="form-select" id="ojs-workspace-subscription" name="workspace_subscription_id" required>{% for subscription in subscriptions %}<option value="{{ subscription.id }}">{{ subscription.workspace.name }} · {{ commercial_plan_name(subscription.plan_id, subscription.plan.name) }}</option>{% endfor %}</select></div>
+    <p class="form-text">A plataforma confirmará o endpoint OAI-PMH convencional do periódico antes de registrá-lo. Nenhuma coleta completa será iniciada neste passo.</p>
+    <div class="ojs-seo-action-group"><button class="btn btn-primary" type="submit" data-loading-overlay-submit>Validar e adicionar</button><a class="btn btn-outline-primary" href="{{ url_for('ojs_seo.home') }}" data-platform-loading-overlay-link data-loading-overlay-target="ojs-seo-overlay-processamento">Cancelar</a></div>
+  </form>
+  {% else %}
+  <div class="platform-empty-state"><h2 class="h5">Nenhuma assinatura elegível foi encontrada.</h2>{% if quota_exhausted %}<p>O limite de periódicos da sua assinatura foi atingido. Periódicos arquivados também ocupam vagas.</p>{% else %}<p>Verifique a assinatura ativa, a disponibilidade comercial de OJS SEO e a capacidade de periódicos antes de adicionar um novo periódico.</p>{% endif %}<a class="btn btn-outline-primary" href="{{ url_for('ojs_seo.home') }}" data-platform-loading-overlay-link data-loading-overlay-target="ojs-seo-overlay-processamento">Voltar aos meus periódicos</a></div>
+  {% endif %}
+</section>
+{% include 'platform/ojs_seo/_loading_overlay.html' %}
+{{ tutorial_dialog(ojs_tutorial) }}
+<script defer src="{{ url_for('static', filename='js/platform_tutorial.js') }}"></script>
+{% endblock %}

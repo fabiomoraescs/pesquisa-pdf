@@ -1,0 +1,17 @@
+{% extends "platform/base.html" %}
+{% block title %}Cancelar auditoria — {{ project.name }}{% endblock %}
+{% block body %}
+<section class="platform-panel" aria-labelledby="ojs-seo-cancel-audit-title">
+  <h1 id="ojs-seo-cancel-audit-title" class="h4 mb-3">Cancelar auditoria?</h1>
+  <p>A auditoria de <strong>{{ project.name }}</strong> ainda está pendente.</p>
+  <p class="platform-muted">O cancelamento não altera registros bibliográficos, coletas anteriores, o periódico nem sua reserva comercial.</p>
+  <form method="post" action="{{ url_for('ojs_seo.cancel_audit', journal_id=journal.id, audit_id=audit.run.id) }}" data-platform-loading-overlay-form data-loading-overlay-target="ojs-seo-overlay-processamento">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="d-flex flex-wrap gap-2">
+      <a class="btn btn-outline-primary" href="{{ url_for('ojs_seo.journal_detail', journal_id=journal.id) }}" data-platform-loading-overlay-link data-loading-overlay-target="ojs-seo-overlay-processamento">Voltar</a>
+      <button class="btn btn-outline-danger" type="submit" data-loading-overlay-submit>Cancelar auditoria</button>
+    </div>
+  </form>
+</section>
+{% include 'platform/ojs_seo/_loading_overlay.html' %}
+{% endblock %}

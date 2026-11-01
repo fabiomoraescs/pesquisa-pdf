@@ -7,7 +7,7 @@ import unicodedata
 from uuid import uuid4
 
 from flask_login import UserMixin
-from sqlalchemy import CheckConstraint, ForeignKeyConstraint, Index, UniqueConstraint, event, inspect, text
+from sqlalchemy import CheckConstraint, ForeignKeyConstraint, Index, UniqueConstraint, event, inspect, select, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -187,7 +187,8 @@ class WorkspaceSubscription(db.Model):
     ended_at: Mapped[datetime | None] = mapped_column(db.DateTime(timezone=True))
     assigned_by_id: Mapped[str | None] = mapped_column(db.ForeignKey("users.id", ondelete="SET NULL"), index=True)
     assigned_by_name_snapshot: Mapped[str | None] = mapped_column(db.String(160))
-    # Snapshot é apenas documental nesta fase; nenhuma cota é aplicada.
+    # Snapshot contratual imutável. A reserva OJS consulta-o pelo resolvedor
+    # central de limites; outras cotas continuam sem aplicação operacional.
     terms_json: Mapped[dict] = mapped_column(db.JSON, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
@@ -202,6 +203,9 @@ class WorkspaceSubscription(db.Model):
     )
     commercial_trials: Mapped[list[CommercialTrial]] = relationship(
         back_populates="workspace_subscription", foreign_keys="CommercialTrial.workspace_subscription_id"
+    )
+    ojs_journal_allocations: Mapped[list[WorkspaceSubscriptionOjsJournal]] = relationship(
+        back_populates="subscription"
     )
 
     __table_args__ = (
@@ -591,11 +595,640 @@ class AnalyticsProject(db.Model):
     )
     learnings: Mapped[list[InstagramLearning]] = relationship(back_populates="analytics_project")
     reports: Mapped[list[InstagramReport]] = relationship(back_populates="analytics_project")
+    ojs_journal: Mapped[OjsJournal | None] = relationship(
+        back_populates="analytics_project", uselist=False
+    )
 
     __table_args__ = (
         CheckConstraint("length(trim(name)) > 0", name="ck_analytics_project_name"),
         Index("ix_analytics_projects_owner_module_status", "owner_user_id", "module_key", "status"),
         Index("ix_analytics_projects_owner_updated", "owner_user_id", "updated_at"),
+    )
+
+
+class OjsJournal(db.Model):
+    """Periódico OJS próprio de um projeto Analytics com módulo ``ojs_seo``.
+
+    ``public_url`` registra a URL informada. O endpoint, nome e versão só são
+    preenchidos quando uma descoberta futura os confirmar; não há inferência de
+    versão apenas pela URL ou por um anúncio externo.
+    """
+
+    __tablename__ = "ojs_journals"
+    id: Mapped[str] = mapped_column(db.String(36), primary_key=True, default=lambda: str(uuid4()))
+    analytics_project_id: Mapped[str] = mapped_column(
+        db.ForeignKey("analytics_projects.id"), nullable=False, unique=True
+    )
+    public_url: Mapped[str] = mapped_column(db.String(2048), nullable=False)
+    oai_endpoint_url: Mapped[str | None] = mapped_column(db.String(2048))
+    oai_endpoint_validated_at: Mapped[datetime | None] = mapped_column(db.DateTime(timezone=True))
+    repository_name: Mapped[str | None] = mapped_column(db.String(500))
+    observed_ojs_version: Mapped[str | None] = mapped_column(db.String(64))
+    version_evidence: Mapped[str | None] = mapped_column(db.String(1_000))
+    last_identified_at: Mapped[datetime | None] = mapped_column(db.DateTime(timezone=True))
+    discovery_status: Mapped[str] = mapped_column(db.String(24), nullable=False, default="pending")
+    last_discovery_error: Mapped[str | None] = mapped_column(db.String(300))
+    created_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        db.DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
+
+    analytics_project: Mapped[AnalyticsProject] = relationship(back_populates="ojs_journal")
+    audit_runs: Mapped[list[OjsSeoAuditRun]] = relationship(back_populates="journal")
+    articles: Mapped[list[OjsArticle]] = relationship(back_populates="journal")
+    subscription_allocations: Mapped[list[WorkspaceSubscriptionOjsJournal]] = relationship(
+        back_populates="journal"
+    )
+    html_audit_runs: Mapped[list[OjsHtmlAuditRun]] = relationship(back_populates="journal")
+    html_audit_campaigns: Mapped[list[OjsHtmlAuditCampaign]] = relationship(back_populates="journal")
+    analysis_operations: Mapped[list[OjsSeoAnalysisOperation]] = relationship(back_populates="journal")
+
+    __table_args__ = (
+        CheckConstraint("length(trim(public_url)) > 0", name="ck_ojs_journal_public_url"),
+        CheckConstraint(
+            "discovery_status IN ('pending', 'identified', 'failed', 'unavailable')",
+            name="ck_ojs_journal_discovery_status",
+        ),
+        Index("ix_ojs_journals_discovery_status", "discovery_status"),
+    )
+
+
+class WorkspaceSubscriptionOjsJournal(db.Model):
+    """Reserva histórica de uma revista OJS na assinatura que a custeia.
+
+    A identidade é o hash do endpoint OAI-PMH canônico efetivamente validado,
+    e não o domínio, o título da revista ou uma URL informada pelo usuário.
+    Assim, duas revistas na mesma instalação continuam distintas quando seus
+    endpoints OAI são distintos. A reserva não é global: clientes diferentes
+    podem cadastrar a mesma revista em assinaturas diferentes.
+    """
+
+    __tablename__ = "workspace_subscription_ojs_journals"
+
+    id: Mapped[str] = mapped_column(db.String(36), primary_key=True, default=lambda: str(uuid4()))
+    workspace_subscription_id: Mapped[str] = mapped_column(
+        db.ForeignKey("workspace_subscriptions.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    ojs_journal_id: Mapped[str] = mapped_column(
+        db.ForeignKey("ojs_journals.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    # Snapshot da identidade verificada no momento da reserva. Não é possível
+    # substituí-la por edição posterior do endpoint do periódico ativo.
+    canonical_identity_hash: Mapped[str] = mapped_column(db.String(64), nullable=False)
+    canonical_endpoint_url: Mapped[str] = mapped_column(db.String(2048), nullable=False)
+    status: Mapped[str] = mapped_column(db.String(16), nullable=False, default="active")
+    created_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+    activated_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+    released_at: Mapped[datetime | None] = mapped_column(db.DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(
+        db.DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
+
+    subscription: Mapped[WorkspaceSubscription] = relationship(back_populates="ojs_journal_allocations")
+    journal: Mapped[OjsJournal] = relationship(back_populates="subscription_allocations")
+
+    __table_args__ = (
+        CheckConstraint("status IN ('active', 'released')", name="ck_workspace_subscription_ojs_journal_status"),
+        CheckConstraint(
+            "(status = 'active' AND released_at IS NULL) OR "
+            "(status = 'released' AND released_at IS NOT NULL)",
+            name="ck_workspace_subscription_ojs_journal_release_state",
+        ),
+        CheckConstraint(
+            "length(trim(canonical_identity_hash)) = 64",
+            name="ck_workspace_subscription_ojs_journal_identity_hash",
+        ),
+        CheckConstraint(
+            "length(trim(canonical_endpoint_url)) > 0",
+            name="ck_workspace_subscription_ojs_journal_endpoint",
+        ),
+        Index(
+            "uq_workspace_subscription_ojs_journal_active_journal",
+            "ojs_journal_id",
+            unique=True,
+            sqlite_where=text("status = 'active'"),
+            postgresql_where=text("status = 'active'"),
+        ),
+        Index(
+            "uq_workspace_subscription_ojs_journal_active_identity",
+            "workspace_subscription_id", "canonical_identity_hash",
+            unique=True,
+            sqlite_where=text("status = 'active'"),
+            postgresql_where=text("status = 'active'"),
+        ),
+        Index(
+            "ix_workspace_subscription_ojs_journal_subscription_status",
+            "workspace_subscription_id", "status",
+        ),
+    )
+
+
+@event.listens_for(OjsJournal, "before_update")
+def _prevent_active_ojs_allocation_endpoint_mutation(_mapper, connection, target: OjsJournal) -> None:
+    """Impede que uma edição contorne a identidade usada pela reserva ativa."""
+    if not inspect(target).attrs.oai_endpoint_url.history.has_changes():
+        return
+    allocation_id = connection.execute(
+        select(WorkspaceSubscriptionOjsJournal.id)
+        .where(
+            WorkspaceSubscriptionOjsJournal.ojs_journal_id == target.id,
+            WorkspaceSubscriptionOjsJournal.status == "active",
+        )
+        .limit(1)
+    ).scalar_one_or_none()
+    if allocation_id is not None:
+        raise ValueError(
+            "Não é permitido alterar o endpoint OAI-PMH de um periódico com alocação comercial ativa."
+        )
+
+
+class OjsSeoAuditRun(db.Model):
+    """Histórico de uma auditoria OAI-PMH, independente de ``AnalyticsRun``.
+
+    O lease persistido é a posse durável de um worker. Ele não é um lock em
+    memória: o token, a expiração e o índice parcial por periódico impedem que
+    processos distintos executem simultaneamente auditorias do mesmo periódico.
+    """
+
+    __tablename__ = "ojs_seo_audit_runs"
+    id: Mapped[str] = mapped_column(db.String(36), primary_key=True, default=lambda: str(uuid4()))
+    journal_id: Mapped[str] = mapped_column(db.ForeignKey("ojs_journals.id"), nullable=False)
+    status: Mapped[str] = mapped_column(db.String(16), nullable=False, default="pending")
+    created_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+    started_at: Mapped[datetime | None] = mapped_column(db.DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(db.DateTime(timezone=True))
+    processor_version: Mapped[str] = mapped_column(db.String(64), nullable=False, default="ojs-oai-v1")
+    parameters_json: Mapped[dict] = mapped_column(db.JSON, default=dict, nullable=False)
+    metrics_json: Mapped[dict] = mapped_column(db.JSON, default=dict, nullable=False)
+    warnings_json: Mapped[list] = mapped_column(db.JSON, default=list, nullable=False)
+    errors_json: Mapped[list] = mapped_column(db.JSON, default=list, nullable=False)
+    completion_reason: Mapped[str | None] = mapped_column(db.String(80))
+    trace_hash: Mapped[str | None] = mapped_column(db.String(64))
+    page_count: Mapped[int] = mapped_column(db.Integer, nullable=False, default=0)
+    record_count: Mapped[int] = mapped_column(db.BigInteger, nullable=False, default=0)
+    deleted_record_count: Mapped[int] = mapped_column(db.BigInteger, nullable=False, default=0)
+    duplicate_identifier_count: Mapped[int] = mapped_column(db.BigInteger, nullable=False, default=0)
+    doi_count: Mapped[int] = mapped_column(db.BigInteger, nullable=False, default=0)
+    response_bytes: Mapped[int] = mapped_column(db.BigInteger, nullable=False, default=0)
+    claim_token: Mapped[str | None] = mapped_column(db.String(36))
+    claimed_at: Mapped[datetime | None] = mapped_column(db.DateTime(timezone=True))
+    lease_expires_at: Mapped[datetime | None] = mapped_column(db.DateTime(timezone=True))
+    attempt_count: Mapped[int] = mapped_column(db.Integer, nullable=False, default=0)
+
+    journal: Mapped[OjsJournal] = relationship(back_populates="audit_runs")
+    article_observations: Mapped[list[OjsArticleObservation]] = relationship(
+        back_populates="audit_run", viewonly=True
+    )
+
+    __table_args__ = (
+        UniqueConstraint("id", "journal_id", name="uq_ojs_audit_run_id_journal"),
+        CheckConstraint(
+            "status IN ('pending', 'running', 'completed', 'partial', 'failed', 'canceled')",
+            name="ck_ojs_audit_run_status",
+        ),
+        CheckConstraint(
+            "page_count >= 0 AND record_count >= 0 AND deleted_record_count >= 0 AND "
+            "duplicate_identifier_count >= 0 AND doi_count >= 0 AND response_bytes >= 0",
+            name="ck_ojs_audit_run_nonnegative_counts",
+        ),
+        CheckConstraint(
+            "started_at IS NULL OR completed_at IS NULL OR started_at <= completed_at",
+            name="ck_ojs_audit_run_time_order",
+        ),
+        CheckConstraint("attempt_count >= 0", name="ck_ojs_audit_run_attempt_count"),
+        CheckConstraint(
+            "(status = 'running' AND claim_token IS NOT NULL AND claimed_at IS NOT NULL AND "
+            "lease_expires_at IS NOT NULL) OR "
+            "(status != 'running' AND claim_token IS NULL AND lease_expires_at IS NULL)",
+            name="ck_ojs_audit_run_claim_state",
+        ),
+        Index("ix_ojs_audit_runs_journal_created", "journal_id", "created_at"),
+        Index("ix_ojs_audit_runs_journal_status", "journal_id", "status"),
+        Index("ix_ojs_audit_runs_lease", "status", "lease_expires_at"),
+        Index(
+            "uq_ojs_audit_runs_one_running_journal",
+            "journal_id",
+            unique=True,
+            sqlite_where=text("status = 'running'"),
+            postgresql_where=text("status = 'running'"),
+        ),
+    )
+
+
+class OjsArticle(db.Model):
+    """Estado bibliográfico atual de uma identidade OAI de um periódico."""
+
+    __tablename__ = "ojs_articles"
+    id: Mapped[str] = mapped_column(db.String(36), primary_key=True, default=lambda: str(uuid4()))
+    journal_id: Mapped[str] = mapped_column(db.ForeignKey("ojs_journals.id"), nullable=False)
+    oai_identifier: Mapped[str] = mapped_column(db.String(1024), nullable=False)
+    record_status: Mapped[str] = mapped_column(db.String(16), nullable=False, default="active")
+    title: Mapped[str | None] = mapped_column(db.Text)
+    titles_json: Mapped[list] = mapped_column(db.JSON, default=list, nullable=False)
+    creators_json: Mapped[list] = mapped_column(db.JSON, default=list, nullable=False)
+    subjects_json: Mapped[list] = mapped_column(db.JSON, default=list, nullable=False)
+    descriptions_json: Mapped[list] = mapped_column(db.JSON, default=list, nullable=False)
+    identifiers_json: Mapped[list] = mapped_column(db.JSON, default=list, nullable=False)
+    dates_json: Mapped[list] = mapped_column(db.JSON, default=list, nullable=False)
+    languages_json: Mapped[list] = mapped_column(db.JSON, default=list, nullable=False)
+    types_json: Mapped[list] = mapped_column(db.JSON, default=list, nullable=False)
+    doi: Mapped[str | None] = mapped_column(db.String(500))
+    dois_json: Mapped[list] = mapped_column(db.JSON, default=list, nullable=False)
+    oai_datestamp: Mapped[str | None] = mapped_column(db.String(64))
+    first_observed_at: Mapped[datetime | None] = mapped_column(db.DateTime(timezone=True))
+    last_observed_at: Mapped[datetime | None] = mapped_column(db.DateTime(timezone=True))
+    metadata_hash: Mapped[str | None] = mapped_column(db.String(64))
+    created_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        db.DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
+
+    journal: Mapped[OjsJournal] = relationship(back_populates="articles")
+    observations: Mapped[list[OjsArticleObservation]] = relationship(back_populates="article", viewonly=True)
+    html_analyses: Mapped[list[OjsArticleHtmlAnalysis]] = relationship(back_populates="article", viewonly=True)
+
+    __table_args__ = (
+        UniqueConstraint("journal_id", "oai_identifier", name="uq_ojs_article_journal_oai_identifier"),
+        UniqueConstraint("id", "journal_id", name="uq_ojs_article_id_journal"),
+        CheckConstraint("length(trim(oai_identifier)) > 0", name="ck_ojs_article_oai_identifier"),
+        CheckConstraint("record_status IN ('active', 'deleted')", name="ck_ojs_article_status"),
+        Index("ix_ojs_articles_journal_status", "journal_id", "record_status"),
+        Index("ix_ojs_articles_journal_doi", "journal_id", "doi"),
+    )
+
+
+class OjsArticleObservation(db.Model):
+    """Evidência OAI de um artigo em uma auditoria, sem XML bruto."""
+
+    __tablename__ = "ojs_article_observations"
+    id: Mapped[str] = mapped_column(db.String(36), primary_key=True, default=lambda: str(uuid4()))
+    journal_id: Mapped[str] = mapped_column(db.ForeignKey("ojs_journals.id"), nullable=False)
+    article_id: Mapped[str] = mapped_column(db.String(36), nullable=False)
+    audit_run_id: Mapped[str] = mapped_column(db.String(36), nullable=False)
+    record_status: Mapped[str] = mapped_column(db.String(16), nullable=False)
+    dublin_core_json: Mapped[dict] = mapped_column(db.JSON, default=dict, nullable=False)
+    doi_observed: Mapped[str | None] = mapped_column(db.String(500))
+    dois_observed_json: Mapped[list] = mapped_column(db.JSON, default=list, nullable=False)
+    oai_datestamp: Mapped[str | None] = mapped_column(db.String(64))
+    metadata_hash: Mapped[str | None] = mapped_column(db.String(64))
+    observed_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+
+    article: Mapped[OjsArticle] = relationship(back_populates="observations", viewonly=True)
+    audit_run: Mapped[OjsSeoAuditRun] = relationship(back_populates="article_observations", viewonly=True)
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["article_id", "journal_id"],
+            ["ojs_articles.id", "ojs_articles.journal_id"],
+            name="fk_ojs_observation_article_journal",
+        ),
+        ForeignKeyConstraint(
+            ["audit_run_id", "journal_id"],
+            ["ojs_seo_audit_runs.id", "ojs_seo_audit_runs.journal_id"],
+            name="fk_ojs_observation_audit_run_journal",
+        ),
+        UniqueConstraint("article_id", "audit_run_id", name="uq_ojs_observation_article_run"),
+        CheckConstraint("record_status IN ('active', 'deleted')", name="ck_ojs_observation_status"),
+        Index("ix_ojs_article_observations_run", "audit_run_id"),
+        Index("ix_ojs_article_observations_article_observed", "article_id", "observed_at"),
+    )
+
+
+class OjsSeoAnalysisOperation(db.Model):
+    """Coordena, sem rede, uma atualização OAI-PMH e sua campanha HTML.
+
+    A operação mantém os workers independentes: ela apenas registra a ordem e
+    os vínculos imutáveis das execuções que cada worker deve processar.
+    """
+
+    __tablename__ = "ojs_seo_analysis_operations"
+
+    id: Mapped[str] = mapped_column(db.String(36), primary_key=True, default=lambda: str(uuid4()))
+    journal_id: Mapped[str] = mapped_column(db.ForeignKey("ojs_journals.id"), nullable=False)
+    mode: Mapped[str] = mapped_column(db.String(16), nullable=False)
+    status: Mapped[str] = mapped_column(db.String(32), nullable=False, default="oai_pending")
+    oai_audit_run_id: Mapped[str | None] = mapped_column(db.String(36))
+    html_campaign_id: Mapped[str | None] = mapped_column(db.String(36))
+    created_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
+    started_at: Mapped[datetime | None] = mapped_column(db.DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(db.DateTime(timezone=True))
+    parameters_json: Mapped[dict] = mapped_column(db.JSON, default=dict, nullable=False)
+    warnings_json: Mapped[list] = mapped_column(db.JSON, default=list, nullable=False)
+    errors_json: Mapped[list] = mapped_column(db.JSON, default=list, nullable=False)
+    completion_reason: Mapped[str | None] = mapped_column(db.String(80))
+
+    journal: Mapped[OjsJournal] = relationship(back_populates="analysis_operations")
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["oai_audit_run_id", "journal_id"],
+            ["ojs_seo_audit_runs.id", "ojs_seo_audit_runs.journal_id"],
+            name="fk_ojs_operation_oai_journal",
+        ),
+        ForeignKeyConstraint(
+            ["html_campaign_id", "journal_id"],
+            ["ojs_html_audit_campaigns.id", "ojs_html_audit_campaigns.journal_id"],
+            name="fk_ojs_operation_html_campaign_journal",
+        ),
+        UniqueConstraint("id", "journal_id", name="uq_ojs_operation_id_journal"),
+        UniqueConstraint("oai_audit_run_id", name="uq_ojs_operation_oai_run"),
+        UniqueConstraint("html_campaign_id", name="uq_ojs_operation_html_campaign"),
+        CheckConstraint("mode IN ('initial', 'update')", name="ck_ojs_operation_mode"),
+        CheckConstraint(
+            "status IN ('oai_pending', 'oai_running', 'html_pending', 'html_running', "
+            "'completed', 'completed_with_pending', 'interrupted', 'failed', 'canceled')",
+            name="ck_ojs_operation_status",
+        ),
+        CheckConstraint(
+            "started_at IS NULL OR completed_at IS NULL OR started_at <= completed_at",
+            name="ck_ojs_operation_time_order",
+        ),
+        Index("ix_ojs_operation_journal_created", "journal_id", "created_at"),
+        Index("ix_ojs_operation_journal_status", "journal_id", "status"),
+        Index(
+            "uq_ojs_operation_one_open_journal", "journal_id", unique=True,
+            sqlite_where=text("status IN ('oai_pending', 'oai_running', 'html_pending', 'html_running', 'interrupted')"),
+            postgresql_where=text("status IN ('oai_pending', 'oai_running', 'html_pending', 'html_running', 'interrupted')"),
+        ),
+    )
+
+
+class OjsHtmlAuditCampaign(db.Model):
+    """Campanha durável que encadeia lotes HTML de uma única referência OAI.
+
+    A campanha registra a intenção editorial de cobrir a referência inteira;
+    cada ``OjsHtmlAuditRun`` continua sendo um lote limitado e histórico. Isso
+    evita que uma solicitação Flask mantenha conexões externas abertas ou que
+    uma reinicialização perca o ponto de retomada.
+    """
+
+    __tablename__ = "ojs_html_audit_campaigns"
+
+    id: Mapped[str] = mapped_column(db.String(36), primary_key=True, default=lambda: str(uuid4()))
+    journal_id: Mapped[str] = mapped_column(db.ForeignKey("ojs_journals.id"), nullable=False)
+    source_oai_audit_run_id: Mapped[str] = mapped_column(db.String(36), nullable=False)
+    status: Mapped[str] = mapped_column(db.String(32), nullable=False, default="pending")
+    created_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        db.DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
+    started_at: Mapped[datetime | None] = mapped_column(db.DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(db.DateTime(timezone=True))
+    last_progress_at: Mapped[datetime | None] = mapped_column(db.DateTime(timezone=True))
+    batch_count: Mapped[int] = mapped_column(db.Integer, nullable=False, default=0)
+    no_progress_batch_count: Mapped[int] = mapped_column(db.Integer, nullable=False, default=0)
+    parameters_json: Mapped[dict] = mapped_column(db.JSON, default=dict, nullable=False)
+    warnings_json: Mapped[list] = mapped_column(db.JSON, default=list, nullable=False)
+    errors_json: Mapped[list] = mapped_column(db.JSON, default=list, nullable=False)
+    completion_reason: Mapped[str | None] = mapped_column(db.String(80))
+
+    journal: Mapped[OjsJournal] = relationship(back_populates="html_audit_campaigns")
+    audit_runs: Mapped[list[OjsHtmlAuditRun]] = relationship(back_populates="campaign", viewonly=True)
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["source_oai_audit_run_id", "journal_id"],
+            ["ojs_seo_audit_runs.id", "ojs_seo_audit_runs.journal_id"],
+            name="fk_ojs_html_campaign_source_oai_journal",
+        ),
+        UniqueConstraint("id", "journal_id", name="uq_ojs_html_campaign_id_journal"),
+        CheckConstraint(
+            "status IN ('pending', 'running', 'completed', 'completed_with_pending', 'interrupted', 'failed', 'canceled')",
+            name="ck_ojs_html_campaign_status",
+        ),
+        CheckConstraint(
+            "batch_count >= 0 AND no_progress_batch_count >= 0",
+            name="ck_ojs_html_campaign_nonnegative_counts",
+        ),
+        CheckConstraint(
+            "started_at IS NULL OR completed_at IS NULL OR started_at <= completed_at",
+            name="ck_ojs_html_campaign_time_order",
+        ),
+        Index("ix_ojs_html_campaign_journal_created", "journal_id", "created_at"),
+        Index("ix_ojs_html_campaign_journal_status", "journal_id", "status"),
+        Index(
+            "uq_ojs_html_campaign_active_reference", "journal_id", "source_oai_audit_run_id", unique=True,
+            sqlite_where=text("status IN ('pending', 'running', 'interrupted')"),
+            postgresql_where=text("status IN ('pending', 'running', 'interrupted')"),
+        ),
+    )
+
+
+class OjsHtmlAuditRun(db.Model):
+    """Execução histórica e durável da análise técnica HTML de um periódico.
+
+    A fonte bibliográfica é fixada em ``source_oai_audit_run_id``. Assim, uma
+    análise técnica posterior não altera observações Dublin Core nem mistura
+    páginas de coletas OAI diferentes. Claims são persistidos pelo mesmo
+    motivo do worker OAI: a fase de rede não mantém uma transação aberta.
+    """
+
+    __tablename__ = "ojs_html_audit_runs"
+
+    id: Mapped[str] = mapped_column(db.String(36), primary_key=True, default=lambda: str(uuid4()))
+    journal_id: Mapped[str] = mapped_column(db.ForeignKey("ojs_journals.id"), nullable=False)
+    source_oai_audit_run_id: Mapped[str] = mapped_column(db.String(36), nullable=False)
+    campaign_id: Mapped[str | None] = mapped_column(db.String(36))
+    status: Mapped[str] = mapped_column(db.String(16), nullable=False, default="pending")
+    created_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+    started_at: Mapped[datetime | None] = mapped_column(db.DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(db.DateTime(timezone=True))
+    processor_version: Mapped[str] = mapped_column(db.String(64), nullable=False, default="ojs-html-v1")
+    parameters_json: Mapped[dict] = mapped_column(db.JSON, default=dict, nullable=False)
+    metrics_json: Mapped[dict] = mapped_column(db.JSON, default=dict, nullable=False)
+    warnings_json: Mapped[list] = mapped_column(db.JSON, default=list, nullable=False)
+    errors_json: Mapped[list] = mapped_column(db.JSON, default=list, nullable=False)
+    completion_reason: Mapped[str | None] = mapped_column(db.String(80))
+    eligible_article_count: Mapped[int] = mapped_column(db.Integer, nullable=False, default=0)
+    analyzed_page_count: Mapped[int] = mapped_column(db.Integer, nullable=False, default=0)
+    confirmed_problem_count: Mapped[int] = mapped_column(db.Integer, nullable=False, default=0)
+    potential_problem_count: Mapped[int] = mapped_column(db.Integer, nullable=False, default=0)
+    unverified_page_count: Mapped[int] = mapped_column(db.Integer, nullable=False, default=0)
+    claim_token: Mapped[str | None] = mapped_column(db.String(36))
+    claimed_at: Mapped[datetime | None] = mapped_column(db.DateTime(timezone=True))
+    lease_expires_at: Mapped[datetime | None] = mapped_column(db.DateTime(timezone=True))
+    attempt_count: Mapped[int] = mapped_column(db.Integer, nullable=False, default=0)
+
+    journal: Mapped[OjsJournal] = relationship(back_populates="html_audit_runs")
+    # ``campaign_id`` é atribuído explicitamente pelo serviço de campanhas.
+    # Como a FK composta também contém ``journal_id`` (já mantido pela relação
+    # principal do periódico), esta relação é apenas de leitura para não
+    # disputar a coluna com ``journal`` no ORM.
+    campaign: Mapped[OjsHtmlAuditCampaign | None] = relationship(
+        back_populates="audit_runs", viewonly=True
+    )
+    analyses: Mapped[list[OjsArticleHtmlAnalysis]] = relationship(back_populates="html_audit_run", viewonly=True)
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["source_oai_audit_run_id", "journal_id"],
+            ["ojs_seo_audit_runs.id", "ojs_seo_audit_runs.journal_id"],
+            name="fk_ojs_html_audit_source_oai_journal",
+        ),
+        ForeignKeyConstraint(
+            ["campaign_id", "journal_id"],
+            ["ojs_html_audit_campaigns.id", "ojs_html_audit_campaigns.journal_id"],
+            name="fk_ojs_html_audit_campaign_journal",
+        ),
+        UniqueConstraint("id", "journal_id", name="uq_ojs_html_audit_id_journal"),
+        CheckConstraint(
+            "status IN ('pending', 'running', 'completed', 'partial', 'failed', 'canceled')",
+            name="ck_ojs_html_audit_status",
+        ),
+        CheckConstraint(
+            "eligible_article_count >= 0 AND analyzed_page_count >= 0 AND "
+            "confirmed_problem_count >= 0 AND potential_problem_count >= 0 AND unverified_page_count >= 0",
+            name="ck_ojs_html_audit_nonnegative_counts",
+        ),
+        CheckConstraint("attempt_count >= 0", name="ck_ojs_html_audit_attempt_count"),
+        CheckConstraint(
+            "started_at IS NULL OR completed_at IS NULL OR started_at <= completed_at",
+            name="ck_ojs_html_audit_time_order",
+        ),
+        CheckConstraint(
+            "(status = 'running' AND claim_token IS NOT NULL AND claimed_at IS NOT NULL AND "
+            "lease_expires_at IS NOT NULL) OR "
+            "(status != 'running' AND claim_token IS NULL AND lease_expires_at IS NULL)",
+            name="ck_ojs_html_audit_claim_state",
+        ),
+        Index("ix_ojs_html_audit_journal_created", "journal_id", "created_at"),
+        Index("ix_ojs_html_audit_journal_status", "journal_id", "status"),
+        Index("ix_ojs_html_audit_campaign_status", "campaign_id", "status"),
+        Index("ix_ojs_html_audit_lease", "status", "lease_expires_at"),
+        Index(
+            "uq_ojs_html_audit_one_running_journal", "journal_id", unique=True,
+            sqlite_where=text("status = 'running'"), postgresql_where=text("status = 'running'"),
+        ),
+        # A fila HTML admite no máximo uma execução aberta por periódico. A
+        # restrição cobre a janela entre a solicitação e o claim do worker,
+        # evitando que duas requisições concorrentes iniciem campanhas iguais.
+        Index(
+            "uq_ojs_html_audit_one_open_journal", "journal_id", unique=True,
+            sqlite_where=text("status IN ('pending', 'running')"),
+            postgresql_where=text("status IN ('pending', 'running')"),
+        ),
+    )
+
+
+class OjsArticleHtmlAnalysis(db.Model):
+    """Evidência técnica de uma página, sem armazenar o HTML bruto."""
+
+    __tablename__ = "ojs_article_html_analyses"
+
+    id: Mapped[str] = mapped_column(db.String(36), primary_key=True, default=lambda: str(uuid4()))
+    journal_id: Mapped[str] = mapped_column(db.ForeignKey("ojs_journals.id"), nullable=False)
+    article_id: Mapped[str] = mapped_column(db.String(36), nullable=False)
+    source_observation_id: Mapped[str] = mapped_column(
+        db.ForeignKey("ojs_article_observations.id"), nullable=False
+    )
+    html_audit_run_id: Mapped[str] = mapped_column(db.String(36), nullable=False)
+    status: Mapped[str] = mapped_column(db.String(16), nullable=False)
+    source_url: Mapped[str] = mapped_column(db.String(2048), nullable=False)
+    final_url: Mapped[str | None] = mapped_column(db.String(2048))
+    http_status: Mapped[int | None] = mapped_column(db.Integer)
+    content_type: Mapped[str | None] = mapped_column(db.String(200))
+    response_time_ms: Mapped[int | None] = mapped_column(db.Integer)
+    redirect_count: Mapped[int] = mapped_column(db.Integer, nullable=False, default=0)
+    facts_json: Mapped[dict] = mapped_column(db.JSON, default=dict, nullable=False)
+    findings_json: Mapped[list] = mapped_column(db.JSON, default=list, nullable=False)
+    evidence_hash: Mapped[str | None] = mapped_column(db.String(64))
+    confirmed_problem_count: Mapped[int] = mapped_column(db.Integer, nullable=False, default=0)
+    potential_problem_count: Mapped[int] = mapped_column(db.Integer, nullable=False, default=0)
+    unverified_count: Mapped[int] = mapped_column(db.Integer, nullable=False, default=0)
+    checked_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+
+    article: Mapped[OjsArticle] = relationship(back_populates="html_analyses", viewonly=True)
+    html_audit_run: Mapped[OjsHtmlAuditRun] = relationship(back_populates="analyses", viewonly=True)
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["article_id", "journal_id"],
+            ["ojs_articles.id", "ojs_articles.journal_id"],
+            name="fk_ojs_html_analysis_article_journal",
+        ),
+        ForeignKeyConstraint(
+            ["html_audit_run_id", "journal_id"],
+            ["ojs_html_audit_runs.id", "ojs_html_audit_runs.journal_id"],
+            name="fk_ojs_html_analysis_audit_journal",
+        ),
+        UniqueConstraint("html_audit_run_id", "article_id", name="uq_ojs_html_analysis_run_article"),
+        CheckConstraint("status IN ('analyzed', 'not_verified', 'skipped')", name="ck_ojs_html_analysis_status"),
+        CheckConstraint(
+            "redirect_count >= 0 AND confirmed_problem_count >= 0 AND potential_problem_count >= 0 AND "
+            "unverified_count >= 0",
+            name="ck_ojs_html_analysis_nonnegative_counts",
+        ),
+        Index("ix_ojs_html_analysis_run_status", "html_audit_run_id", "status"),
+        Index("ix_ojs_html_analysis_journal_article", "journal_id", "article_id"),
+    )
+
+
+class OjsHtmlEvidenceReuse(db.Model):
+    """Vínculo explícito entre uma nova referência OAI e evidência HTML antiga.
+
+    A linha não duplica a resposta nem finge uma nova requisição HTTP. Ela
+    registra que a evidência de ``source_html_analysis_id`` foi considerada
+    compatível com uma observação de outra referência bibliográfica, pelos
+    critérios e na data informados. A análise-fonte continua imutável.
+    """
+
+    __tablename__ = "ojs_html_evidence_reuses"
+
+    id: Mapped[str] = mapped_column(db.String(36), primary_key=True, default=lambda: str(uuid4()))
+    journal_id: Mapped[str] = mapped_column(db.ForeignKey("ojs_journals.id"), nullable=False)
+    target_oai_audit_run_id: Mapped[str] = mapped_column(db.String(36), nullable=False)
+    source_oai_audit_run_id: Mapped[str] = mapped_column(db.String(36), nullable=False)
+    article_id: Mapped[str] = mapped_column(db.String(36), nullable=False)
+    target_observation_id: Mapped[str] = mapped_column(
+        db.ForeignKey("ojs_article_observations.id"), nullable=False
+    )
+    source_observation_id: Mapped[str] = mapped_column(
+        db.ForeignKey("ojs_article_observations.id"), nullable=False
+    )
+    source_html_audit_run_id: Mapped[str] = mapped_column(db.String(36), nullable=False)
+    source_html_analysis_id: Mapped[str] = mapped_column(
+        db.ForeignKey("ojs_article_html_analyses.id"), nullable=False
+    )
+    criteria_version: Mapped[str] = mapped_column(db.String(64), nullable=False)
+    reuse_reason: Mapped[str] = mapped_column(db.String(80), nullable=False)
+    reused_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["target_oai_audit_run_id", "journal_id"],
+            ["ojs_seo_audit_runs.id", "ojs_seo_audit_runs.journal_id"],
+            name="fk_ojs_html_reuse_target_oai_journal",
+        ),
+        ForeignKeyConstraint(
+            ["source_oai_audit_run_id", "journal_id"],
+            ["ojs_seo_audit_runs.id", "ojs_seo_audit_runs.journal_id"],
+            name="fk_ojs_html_reuse_source_oai_journal",
+        ),
+        ForeignKeyConstraint(
+            ["article_id", "journal_id"],
+            ["ojs_articles.id", "ojs_articles.journal_id"],
+            name="fk_ojs_html_reuse_article_journal",
+        ),
+        ForeignKeyConstraint(
+            ["source_html_audit_run_id", "journal_id"],
+            ["ojs_html_audit_runs.id", "ojs_html_audit_runs.journal_id"],
+            name="fk_ojs_html_reuse_source_html_run_journal",
+        ),
+        UniqueConstraint(
+            "target_oai_audit_run_id", "article_id", name="uq_ojs_html_reuse_target_article",
+        ),
+        CheckConstraint(
+            "length(trim(criteria_version)) > 0", name="ck_ojs_html_reuse_criteria_version",
+        ),
+        CheckConstraint(
+            "length(trim(reuse_reason)) > 0", name="ck_ojs_html_reuse_reason",
+        ),
+        Index("ix_ojs_html_reuse_journal_target", "journal_id", "target_oai_audit_run_id"),
+        Index("ix_ojs_html_reuse_source_analysis", "source_html_analysis_id"),
     )
 
 

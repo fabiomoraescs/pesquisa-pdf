@@ -130,6 +130,7 @@ class CommercialTrialMaskTests(unittest.TestCase):
 
 class CommercialTrialMaskMigrationTests(unittest.TestCase):
     revision = "1b2c3d4e5f60"
+    latest_head = "91a2b3c4d5e6"
     previous_revision = "0a1b2c3d4e5f"
     migrations = str(Path(__file__).resolve().parents[1] / "migrations")
 
@@ -199,5 +200,5 @@ class CommercialTrialMaskMigrationTests(unittest.TestCase):
 
                 config = Config()
                 config.set_main_option("script_location", self.migrations)
-                self.assertEqual(ScriptDirectory.from_config(config).get_heads(), [self.revision])
+                self.assertEqual(ScriptDirectory.from_config(config).get_heads(), [self.latest_head])
                 db.engine.dispose()

@@ -9,7 +9,7 @@
   <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
   <link href="{{ url_for('static', filename='css/platform.css') }}" rel="stylesheet">
   <link href="{{ url_for('static', filename='css/historico_racial.css') }}" rel="stylesheet">
-  <script>try { document.documentElement.dataset.theme = localStorage.getItem('varredura-pdf-theme') || 'dark'; } catch (_) { document.documentElement.dataset.theme = 'dark'; }</script>
+  <script>try { const t = localStorage.getItem('varredura-pdf-theme'); document.documentElement.dataset.theme = ['light', 'dark', 'black'].includes(t) ? t : 'dark'; } catch (_) { document.documentElement.dataset.theme = 'dark'; }</script>
 </head>
 <body class="platform-page">
   {% include 'platform/_header.html' %}

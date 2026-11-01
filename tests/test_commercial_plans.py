@@ -21,6 +21,7 @@ from platform_core.commercial_catalog import (
 from platform_core.extensions import db
 from platform_core.models import AccessGrant, AuditLog, Plan, PlanTool, Tool, User, UserToolOverride
 from platform_core.services import can_use_tool, current_grant, seed_platform
+from platform_core.tool_catalog import tool_definition
 
 
 QUALI_TOOLS = {"pdf_scraper", "document_analysis", "qualitative_analysis"}
@@ -106,6 +107,7 @@ class CommercialPlanIntegrationTests(unittest.TestCase):
             (definition.plan_id, tool_id)
             for definition in COMMERCIAL_PLANS
             for tool_id in definition.available_tool_ids
+            if not tool_definition(tool_id).requires_explicit_provisioning
         }
         self.assertTrue(expected.issubset(links))
         self.assertFalse(any(tool_id in {"quantitative_analysis", "ojs_seo", "ojs_analytics"}

@@ -42,6 +42,6 @@
 .hr-vocab-dialog { width: min(92vw, 38rem); max-height: 85vh; overflow: auto; background: var(--surface); color: var(--ink); border: 1px solid var(--border); border-radius: .8rem; padding: 1.4rem; box-shadow: 0 .8rem 2rem rgba(0,0,0,.25); }
 .hr-vocab-dialog::backdrop { background: rgba(0,0,0,.55); }
 .hr-vocab-dialog-error { color: #a51c30; margin-top: .7rem; }
-html[data-theme="dark"] .hr-vocab-dialog-error { color: #ff9aa7; }
+html:is([data-theme="dark"], [data-theme="black"]) .hr-vocab-dialog-error { color: var(--state-danger); }
 @media (max-width: 900px) { .hr-vocab-grid { grid-template-columns: 1fr; } }
 @media (max-width: 575px) { .hr-vocab-fields { grid-template-columns: 1fr; } .hr-vocab-variant { flex-wrap: wrap; } }

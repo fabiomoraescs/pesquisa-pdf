@@ -37,7 +37,7 @@ from .commercial_trial_services import (
 )
 from .library_access import library_editor, library_url, private_library_flow, user_libraries_bp
 from .models import (
-    AccessGrant, Analysis, AssistantAISettings, AuditLog, PasswordRecoveryToken, Plan, PlanTool, Project, ProjectLibrary, ProjectVocabularyVersion,
+    AccessGrant, Analysis, AssistantAISettings, AuditLog, CommercialTrial, PasswordRecoveryToken, Plan, PlanTool, Project, ProjectLibrary, ProjectVocabularyVersion,
     QualitativeCode, QualitativeCoding, QualitativeExcerpt, QualitativeMemo, QualitativeRejection, Tool, User,
     UserProfile, UserToolOverride, VocabularyLibrary, utcnow,
 )
@@ -506,6 +506,7 @@ def permanently_delete_user(user_id: UUID):
                 granted_by_name_snapshot=func.coalesce(AccessGrant.granted_by_name_snapshot, user.name),
             ))
             db.session.execute(delete(UserToolOverride).where(UserToolOverride.user_id == user.id))
+            db.session.execute(delete(CommercialTrial).where(CommercialTrial.user_id == user.id))
             db.session.execute(delete(AccessGrant).where(AccessGrant.user_id == user.id))
             db.session.execute(delete(PasswordRecoveryToken).where(PasswordRecoveryToken.user_id == user.id))
             db.session.execute(delete(UserProfile).where(UserProfile.user_id == user.id))

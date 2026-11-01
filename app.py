@@ -55,6 +55,7 @@ from platform_core.assistant_context import assistant_context_for_endpoint, assi
 from platform_core.assistant_routes import assistant_bp
 from platform_core.platform_help import load_help_registry, tutorial_for
 from platform_core.instagram_routes import instagram_bp
+from platform_core.ojs_seo_routes import ojs_seo_bp
 
 from analyzer.common import (
     ANALISADORES,
@@ -98,6 +99,9 @@ app.config.update(
     # não persistir uma referência que deixaria de ser verificável após reinício.
     PESQUISAPDF_CPF_HMAC_SECRET=os.environ.get("PESQUISAPDF_CPF_HMAC_SECRET", ""),
     PESQUISAPDF_CPF_HMAC_KEY_VERSION=os.environ.get("PESQUISAPDF_CPF_HMAC_KEY_VERSION", "v1"),
+    # Operações administrativas destrutivas ou de preparação de integrações
+    # locais exigem esta confirmação explícita além da verificação do SQLite.
+    PESQUISAPDF_LOCAL_DEVELOPMENT=os.environ.get("PESQUISAPDF_LOCAL_DEVELOPMENT") == "1",
     PESQUISAPDF_PUBLIC_URL=os.environ.get("PESQUISAPDF_PUBLIC_URL", ""),
     MAIL_SERVER=os.environ.get("MAIL_SERVER", ""),
     MAIL_PORT=os.environ.get("MAIL_PORT", "587"),
@@ -176,6 +180,7 @@ app.register_blueprint(historico_racial_bp)
 app.register_blueprint(analyses_bp)
 app.register_blueprint(qualitative_bp)
 app.register_blueprint(instagram_bp)
+app.register_blueprint(ojs_seo_bp)
 app.register_blueprint(assistant_bp)
 
 
@@ -901,10 +906,10 @@ def home():
     return render_template(
         "platform/dashboard.html",
         workspace_metrics=(
-            {"label": "Projetos", "value": projects_total, "icon": "projetos"},
-            {"label": "Bases", "value": bases_total, "icon": "ficha"},
-            {"label": "Documentos nas Bases", "value": documents_in_bases, "icon": "pdf"},
-            {"label": "Bases concluídas", "value": concluded_total, "icon": "ativar"},
+            {"label": "Projetos", "value": projects_total, "description": "Projetos aos quais você tem acesso."},
+            {"label": "Bases", "value": bases_total, "description": "Bases de análise acessíveis."},
+            {"label": "Documentos nas Bases", "value": documents_in_bases, "description": "Registros vinculados às suas Bases."},
+            {"label": "Bases concluídas", "value": concluded_total, "description": "Bases concluídas com acesso disponível."},
         ),
         recent_work=recent_work,
         admin_charts=admin_charts,
@@ -1178,6 +1183,7 @@ def create_app(test_config: dict | None = None) -> Flask:
     isolated.register_blueprint(analyses_bp)
     isolated.register_blueprint(qualitative_bp)
     isolated.register_blueprint(instagram_bp)
+    isolated.register_blueprint(ojs_seo_bp)
     isolated.register_blueprint(assistant_bp)
     isolated.before_request(_enforce_platform_access)
     isolated.register_error_handler(CSRFError, _csrf_error)

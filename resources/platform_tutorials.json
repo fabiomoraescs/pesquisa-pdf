@@ -1,5 +1,5 @@
 {
-  "version": "2026.10.07",
+  "version": "2026.10.27",
   "tutorials": [
     {
       "key": "home",
@@ -8,7 +8,7 @@
       "sections": [
         {"id": "visao-geral", "title": "O que aparece aqui", "body": ["O Dashboard reúne a visão dos seus projetos ativos, das Bases de análise recentes e, quando houver dados, os resumos visuais das últimas Bases. Ele não altera documentos nem resultados.", "Os atalhos levam ao projeto ou à Base correspondente. A disponibilidade de cada ferramenta depende do acesso efetivo da sua conta."], "items": []},
         {"id": "passos", "title": "Primeiros passos", "body": ["1. Escolha um projeto ou uma Base recente. 2. Abra o ambiente da ferramenta. 3. Envie documentos ou continue uma Base existente. 4. Revise os resultados antes de utilizá-los na pesquisa."], "items": []},
-        {"id": "leitura", "title": "Como interpretar os indicadores", "body": ["Os totais resumem registros da plataforma; não substituem a leitura dos documentos. Gráficos e contagens apoiam a navegação e a conferência, não são uma validação metodológica automática."], "items": []},
+        {"id": "leitura", "title": "Como interpretar os indicadores", "body": ["Os totais resumem registros da plataforma; não substituem a leitura dos documentos. Gráficos e contagens apoiam a navegação e a conferência, não são uma validação metodológica automática.", "As linhas ciano pequenas nos cards de indicadores são ilustrações visuais de composição: não representam série histórica, crescimento, queda ou tendência dos dados."], "items": []},
         {"id": "ajuda", "title": "Se algo não aparecer", "body": ["Confirme se há um projeto ativo e se a ferramenta está liberada no plano ou por uma permissão individual. Projetos arquivados e Bases ainda em processamento podem não aparecer como prontos para uso."], "items": []}
       ]
     },
@@ -1344,6 +1344,164 @@
               "Fluxo recomendado: importe e confira os dados, leia o Dashboard, organize Taxonomias, classifique conteúdos, importe e revise Comentários, gere Insights e abra as evidências antes de interpretar. Você pode voltar a qualquer etapa para corrigir o recorte, ampliar a cobertura ou revisar uma classificação; o fluxo não precisa ser rigidamente linear."
             ],
             "items": []
+          }
+        ]
+      },
+      {
+        "key": "ojs_seo",
+        "title": "Guia do OJS SEO",
+        "summary": "Cadastre periódicos autorizados, acompanhe auditorias OAI-PMH e HTML, interprete evidências e priorize recomendações editoriais sem confundir diagnóstico técnico com indexação comprovada.",
+        "sections": [
+          {
+            "id": "visao-geral",
+            "title": "O que é o OJS SEO",
+            "keywords": ["OJS SEO", "periódico", "OAI-PMH", "Dublin Core", "HTML", "OJS Analytics", "limites"],
+            "body": [
+              "OJS SEO é o ambiente do Análisys para cadastrar periódicos científicos autorizados, reunir verificações bibliográficas e das páginas e consultar evidências por publicação. Ele ajuda equipes editoriais a identificar como os dados bibliográficos e as páginas públicas foram expostos no momento de cada análise. Não altera o OJS, não publica mudanças e não substitui a revisão humana.",
+              "Depois de abrir um periódico, use quatro áreas: Visão geral para saber a situação atual, O que corrigir para priorizar orientações, Artigos para consultar cada publicação e Histórico e análises para solicitar ou acompanhar verificações. A Visão geral reúne indicadores bibliográficos, problemas e histórico; a cobertura detalhada das páginas e as operações ficam em Histórico e análises, e as recomendações em O que corrigir.",
+              "A auditoria bibliográfica consulta o protocolo público OAI-PMH e seus metadados Dublin Core. A auditoria técnica consulta uma amostra controlada das páginas HTML públicas dos artigos. As duas fontes podem complementar uma à outra: um campo ausente no OAI-PMH não prova que ele esteja ausente no HTML, e a presença de metatags não comprova indexação no Google ou no Google Scholar.",
+              "OJS SEO é diferente de OJS Analytics. Este módulo trata de evidências bibliográficas e técnicas de SEO; ele não oferece métricas de acesso, audiência, citações, Google Search Console ou uma integração autenticada com o OJS. A disponibilidade depende do acesso efetivo, da assinatura responsável e da capacidade de periódicos contratada."
+            ],
+            "items": []
+          },
+          {
+            "id": "dashboard-geral",
+            "title": "Indicadores e Dashboard Geral",
+            "keywords": ["Visão geral", "dashboard", "cobertura", "evidência reaproveitada", "problemas", "prioridades", "histórico"],
+            "body": [
+              "A Visão geral é o dashboard do periódico. Os indicadores bibliográficos vêm da auditoria concluída mais recente, ou de uma coleta parcial quando não houver uma concluída. Registros recuperados, publicações ativas, excluídos da fonte, DOIs e campos Dublin Core identificados mantêm o universo daquela referência. Registros excluídos da fonte não são automaticamente lacunas editoriais; a ausência de DOI identificado não prova que o DOI não exista na publicação.",
+              "O acompanhamento detalhado da cobertura das páginas fica em Histórico e análises. Lá, verificações HTML feitas diretamente na referência atual, evidências históricas compatíveis reaproveitadas, páginas não verificadas e artigos não processados permanecem separados. Cobertura de 100% significa evidência disponível para todos os elegíveis, não ausência de problemas nem indexação comprovada.",
+              "Os gráficos da Visão geral mostram ocorrências por gravidade, origem e certeza da evidência. Uma ocorrência não é necessariamente uma publicação distinta: o mesmo artigo pode ter vários achados. Problemas confirmados e potenciais são apresentados separadamente. As linhas pequenas dos cartões numéricos são ilustrações visuais, não séries históricas nem indicações de crescimento ou queda. As prioridades, evidências, impacto potencial, responsável sugerido, intervenção e verificação posterior permanecem em O que corrigir. O histórico compara somente auditorias registradas; mudanças de universo, cobertura, critérios ou evidência disponível não comprovam sozinhas melhoria ou piora."
+            ],
+            "items": [
+              {"name": "Panorama dos periódicos", "description": "Na página inicial do OJS SEO, consolida apenas periódicos ativos autorizados. Periódicos arquivados permanecem históricos e não entram no resumo operacional."},
+              {"name": "Abrir um indicador", "description": "Links de gráficos e barras abrem a lista de artigos ou a recomendação correspondente, preservando o periódico e a referência bibliográfica."}
+            ]
+          },
+          {
+            "id": "primeiro-acesso",
+            "title": "Primeiro acesso e cadastro de periódico",
+            "keywords": ["Adicionar periódico", "URL pública", "endpoint OAI-PMH", "assinatura", "Meus periódicos", "capacidade"],
+            "body": [
+              "1. Abra OJS SEO e confira Meus periódicos e a capacidade da assinatura. 2. Escolha Adicionar periódico. 3. Informe o nome do periódico, a URL pública HTTPS e a assinatura responsável. 4. Envie o formulário para validação. 5. Depois da confirmação, o periódico aparece em Meus periódicos; abra-o para acessar a Visão geral.",
+              "A URL pública deve identificar a revista, usar HTTPS e não conter credenciais. O Análisys deriva e valida com segurança o endpoint OAI-PMH convencional antes de gravar o cadastro. Uma URL pode ser recusada quando não é HTTPS, contém parâmetros ou credenciais indevidos, não permite confirmar o endpoint público ou não anuncia OAI-PMH 2.0 com Dublin Core oai_dc.",
+              "Cada periódico reservado ocupa uma vaga da assinatura, inclusive quando está arquivado. Arquivar preserva o histórico e não libera capacidade; restaurar reaproveita a mesma reserva. Somente a exclusão definitiva, disponível para periódico já arquivado e confirmada por digitação, libera a vaga."
+            ],
+            "items": [
+              {"name": "Adicionar periódico", "description": "Inicia a descoberta segura do endpoint OAI-PMH; não executa uma coleta bibliográfica completa."},
+              {"name": "Meus periódicos", "description": "Mostra periódicos ativos, a última coleta concluída quando houver e as ações de gerenciamento."},
+              {"name": "Periódicos arquivados", "description": "Mantém histórico somente para leitura, com restauração ou exclusão definitiva quando as regras de ciclo de vida permitirem."}
+            ]
+          },
+          {
+            "id": "auditoria-bibliografica",
+            "title": "Auditoria bibliográfica OAI-PMH e Dublin Core",
+            "keywords": ["Solicitar auditoria", "OAI-PMH", "Dublin Core", "Registros", "excluídos", "DOI", "Pendente", "Parcial"],
+            "body": [
+              "OAI-PMH é um protocolo público de troca de metadados. Dublin Core é o conjunto bibliográfico que a coleta inicial acompanha: título, autoria, descrição, assunto, idioma, data, tipo e identificadores. No cabeçalho de Histórico e análises, Analisar periódico inicia a primeira verificação; depois, Atualizar dados solicita uma nova reconciliação. A área principal do botão registra a operação integrada. A seta acoplada abre opções avançadas: Dados bibliográficos solicita apenas essa coleta e, quando houver referência elegível, Analisar todas as páginas registra a campanha técnica. A solicitação apenas cria uma execução pendente. Um worker separado realiza a coleta, portanto a página não fica bloqueada durante a comunicação externa.",
+              "Pendente significa que a execução foi registrada e aguarda worker. Em execução significa que um worker assumiu a auditoria. Concluída indica uma coleta finalizada; Parcial indica que dados válidos foram preservados, mas a coleta foi interrompida por uma condição registrada; Falhou indica que não houve conclusão utilizável; Cancelada indica que uma pendência foi encerrada antes do claim. Os estados e seus avisos devem ser lidos no histórico individual.",
+              "Em Artigos, use a busca, os filtros e a distinção entre ativos e excluídos da fonte. Registros explicitamente excluídos pelo OAI-PMH são históricos e não são classificados como lacunas editoriais. Ao abrir um artigo, consulte primeiro as informações úteis e use Ver detalhes técnicos para os valores recuperados e a auditoria de referência."
+            ],
+            "items": [
+              {"name": "Sem descrição ou assunto", "description": "Indica ausência naquele registro Dublin Core; confira o cadastro e a exposição OAI-PMH antes de concluir algo sobre o HTML público."},
+              {"name": "Sem DOI identificado", "description": "Indica que o DOI não foi identificado no material coletado; não prova que o artigo não possua DOI."},
+              {"name": "Coleta parcial", "description": "Use seus indicadores como cobertura parcial e não como diagnóstico integral do periódico."}
+            ]
+          },
+          {
+            "id": "auditoria-html",
+            "title": "Auditoria técnica das páginas HTML",
+            "keywords": ["SEO técnico", "HTML", "HTTP", "title", "canonical", "robots", "citation", "JSON-LD", "Open Graph"],
+            "body": [
+              "A análise SEO técnico consulta somente URLs HTTPS públicas já elegíveis na auditoria bibliográfica de referência. Analisar periódico e Atualizar dados podem liberar automaticamente uma campanha de páginas depois que os dados bibliográficos terminarem. Pela seta acoplada ao botão principal, Analisar todas as páginas registra somente a campanha técnica disponível para a referência atual. A rota registra a campanha e seu primeiro lote pendente; um worker HTML separado executa os lotes seguintes. Abrir páginas, filtros ou o guia nunca inicia uma coleta externa.",
+              "A análise registra código HTTP, redirecionamentos, URL final, tipo de conteúdo e tempo observado. Ela também verifica title, meta description, H1, canonical, meta robots e X-Robots-Tag. HTTP 200 informa uma resposta bem-sucedida, mas não é uma avaliação completa de desempenho; códigos 403, 404 e 500 são evidências da resposta observada, não uma explicação automática da causa.",
+              "Nos metadados acadêmicos, o módulo observa citation_title, citation_author, citation_journal_title, citation_publication_date, citation_issn, volume, número, paginação, citation_doi e citation_pdf_url quando estiverem presentes. JSON-LD, tipos Schema.org, Open Graph e Twitter Cards são evidências adicionais. A ausência de JSON-LD ou Twitter Cards não é, por si só, prova de um problema crítico, e metatags presentes não comprovam indexação em mecanismos de busca."
+            ],
+            "items": [
+              {"name": "Canonical", "description": "URL declarada como representação preferencial da página. Uma ausência ou divergência precisa ser interpretada no contexto das versões públicas do artigo."},
+              {"name": "Robots e X-Robots-Tag", "description": "Diretivas HTML ou HTTP relacionadas à indexabilidade; noindex é observável, mas pode ser intencional em certos conteúdos."},
+              {"name": "citation_*", "description": "Metatags acadêmicas usadas como evidência de exposição bibliográfica; não são uma prova de indexação no Google Scholar."}
+            ]
+          },
+          {
+            "id": "cobertura-progressiva",
+            "title": "Cobertura progressiva e retentativas controladas",
+            "keywords": ["Cobertura acumulada", "Continuar análise", "Retentar páginas não verificadas", "100 páginas", "240 segundos", "timeout"],
+            "body": [
+              "A análise HTML opera em cobertura progressiva para manter limites de segurança. Analisar todas as páginas registra uma campanha que organiza lotes sucessivos; cada lote seleciona, em ordem determinística, até 100 páginas elegíveis e respeita um orçamento global de 240 segundos. Uma coleta pode terminar antes de 100 páginas quando não há orçamento seguro para iniciar a próxima página; timeouts e falhas transitórias também consomem parte desse orçamento.",
+              "Registros processados são artigos para os quais uma tentativa de análise foi realmente iniciada. Páginas verificadas são as que tiveram HTML recuperado e analisado na referência bibliográfica atual. Evidências reaproveitadas são resultados históricos preservados que correspondem de modo inequívoco ao mesmo identificador, metadados e URL pública; elas mostram evidência disponível, mas não uma nova consulta HTML. Páginas não verificadas são tentativas que não produziram HTML analisável; artigos não processados ainda não receberam tentativa nem evidência compatível. Em Análises e resultados, a barra usa verde para verificadas, azul para evidências reaproveitadas, âmbar para não verificadas e cinza para não processadas; a legenda mostra um círculo colorido ao lado de cada estado. Enquanto houver uma análise pendente ou em andamento, a página atualiza a barra e a situação aproximadamente a cada cinco segundos com dados já persistidos pelos workers. Você pode fechar a página: a campanha continua registrada e, ao voltar, o histórico mostra o resultado salvo. O único ícone Info do cabeçalho abre este guia e também funciona em dispositivos móveis. O percentual principal mostra somente páginas efetivamente verificadas na referência atual; a disponibilidade de evidência pode incluir resultados históricos compatíveis. Nenhuma das duas medidas comprova ausência de problemas de SEO nem indexação.",
+              "A campanha prioriza artigos ainda não processados e, depois, retenta somente falhas transitórias elegíveis dentro do limite de tentativas por artigo. Quando um lote não progride, a campanha é interrompida para evitar ciclos e a interface apresenta a retomada somente quando a referência ainda for compatível. URLs inseguras, inválidas ou rejeitadas por proteção não viram retentativas infinitas."
+            ],
+            "items": [
+              {"name": "Exemplo ilustrativo", "description": "Em um universo de 345 artigos elegíveis, uma primeira execução pode processar 33, verificar 20 e não verificar 13. A próxima execução começa pelos 312 ainda não processados; os 20 já verificados continuam na cobertura acumulada."},
+              {"name": "Cobertura parcial", "description": "Uma amostra ainda incompleta não permite concluir que todos os artigos estejam adequados ou inadequados."}
+            ]
+          },
+          {
+            "id": "interpretacao-diagnosticos",
+            "title": "Como interpretar diagnósticos, evidências e gravidade",
+            "keywords": ["Problema confirmado", "Problema potencial", "Não verificado", "Não aplicável", "gravidade", "evidência", "versão"],
+            "body": [
+              "Problema confirmado significa que a resposta analisada fornece evidência direta para a condição descrita, como canonical ausente no HTML recuperado. Problema potencial significa que a interpretação depende de contexto ou conferência adicional, como uma possível divergência de representação bibliográfica. Não verificado significa que não houve informação suficiente para concluir; uma falha de rede não equivale à ausência de uma metatag. Não aplicável indica que o critério não se aplica à evidência disponível.",
+              "Gravidade descreve importância técnica ou editorial, não o grau de certeza. Crítica, alta, média, baixa e informativa não formam uma pontuação geral do periódico. Aplicabilidade informa se o critério faz sentido para o tipo documental efetivamente declarado. Por exemplo, a ausência de dc:subject continua sendo um fato no OAI-PMH, mas só recebe prioridade editorial direta quando dc:type declara inequivocamente um tipo de artigo; tipo editorial, genérico, múltiplo, ausente ou desconhecido exige conferência humana. Prioridade, exibida nas Recomendações, combina certeza, gravidade, recorrência e possível abrangência sem transformar uma hipótese em problema comprovado.",
+              "Abra o diagnóstico individual para consultar evidência, consequência possível, recomendação e destinatário. Valores externos são preservados como conteúdo de auditoria e exibidos sem afirmar que a página ou o artigo foi corrigido. A versão do critério de comparação permanece associada às evidências históricas."
+            ],
+            "items": []
+          },
+          {
+            "id": "comparacao-oai-html",
+            "title": "Comparação entre OAI-PMH e HTML",
+            "keywords": ["comparação", "título", "autoria", "data", "DOI", "normalização", "ojs-html-comparison-v3"],
+            "body": [
+              "OJS pode expor representações diferentes de um mesmo dado no Dublin Core e nas metatags HTML. Por isso, a comparação preserva os valores originais dos dois lados e também mostra valores normalizados quando a regra permite. Títulos consideram caixa, espaços, entidades HTML, pontuação e diferenças tipográficas; mudanças substantivas de conteúdo não são tratadas como equivalentes por semelhança aproximada.",
+              "Autoria considera múltiplos nomes, acentuação, pontuação, ordem da lista e o formato bibliográfico explícito. Por exemplo, Cucinotta, Caterina pode ser compatível com Caterina Cucinotta quando a inversão Sobrenome, Prenome está demonstrada. Essa normalização não é prova absoluta de identidade: abreviações ambíguas e diferenças substantivas continuam como possíveis divergências que exigem conferência.",
+              "Datas com precisão diferente podem ser compatíveis em nível de ano sem provar igualdade de uma data completa. DOIs são normalizados entre formas textuais e URLs. Evidências produzidas antes de ojs-html-comparison-v3 continuam preservadas; se uma regra anterior pudesse gerar falso positivo, a recomendação correspondente é contextualizada como exigindo confirmação, sem reescrever o histórico."
+            ],
+            "items": []
+          },
+          {
+            "id": "recomendacoes",
+            "title": "Recomendações editoriais consolidadas",
+            "keywords": ["Recomendações", "prioridade", "responsável", "intervenção global", "artigos afetados", "evidências"],
+            "body": [
+              "Abra O que corrigir no periódico para ver orientações agrupadas. Cada linha mostra o que foi identificado, as publicações afetadas, a prioridade e quem pode verificar. A página usa a última auditoria OAI-PMH concluída, ou parcial quando não houver concluída, e combina análise HTML direta dessa referência ou evidência histórica explicitamente marcada como compatível. A evidência descreve o que foi observado; o impacto potencial explica uma consequência possível; a intervenção e a verificação posterior indicam o que conferir, sem prometer indexação.",
+              "Use filtros por prioridade, gravidade, certeza, natureza e responsável para decidir por onde começar. Prioridade alta exige evidência confirmada e impacto técnico ou editorial relevante; Exige verificação é usada para contexto dependente, indício potencial ou evidência histórica que requer conferência. Para assuntos ausentes, confira o dc:type registrado: conteúdos editoriais ou tipos não determináveis não recebem automaticamente a mesma prioridade de artigos com tipo explicitamente informado. Frequência não transforma, sozinha, um problema de baixa gravidade em algo crítico.",
+              "Abra uma recomendação para consultar a regra aplicada, a abrangência, o impacto potencial, a intervenção prática e a forma de verificação posterior. A lista de artigos relacionados permite abrir os diagnósticos bibliográfico e técnico individuais. Uma ocorrência recorrente pode sugerir verificar configuração de tema ou de exposição OJS, mas não prova automaticamente uma causa global; a intervenção pode continuar sendo específica de cada artigo."
+            ],
+            "items": [
+              {"name": "Equipe editorial", "description": "Em geral revisa títulos, autores, resumos, assuntos, idioma, data, tipos, identificadores e DOI no cadastro do artigo."},
+              {"name": "Administração técnica do OJS", "description": "Em geral verifica tema, templates e a exposição de metatags, canonical, OAI-PMH e configurações técnicas compatíveis com a versão instalada."},
+              {"name": "Infraestrutura", "description": "Atua quando a evidência aponta para disponibilidade, TLS, rede, proxy ou resposta HTTP; o diagnóstico não altera essa infraestrutura."}
+            ]
+          },
+          {
+            "id": "historico-e-limitacoes",
+            "title": "Histórico, referências e limites de interpretação",
+            "keywords": ["Histórico", "referência OAI", "auditoria anterior", "falha de conexão", "arquivado", "limitações"],
+            "body": [
+              "Histórico e análises preserva auditorias, observações e análises em vez de substituir resultados passados. O botão principal e sua seta no cabeçalho reúnem as solicitações disponíveis; Análises e resultados mostra a cobertura acumulada, as campanhas de análise das páginas e os históricos separados dos dados bibliográficos e das páginas. Uma campanha pode estar aguardando processamento, em andamento, concluída, concluída com pendências ou interrompida. Ela precisa de um worker HTML ativo: se o worker parar, a campanha preserva seus resultados e pode ser retomada quando a referência bibliográfica ainda for a mesma.",
+              "Periódicos arquivados preservam consulta histórica, mas não recebem novas auditorias. Páginas não verificadas, timeouts, recusas de segurança e respostas sem HTML são limitações de coleta registradas; não devem ser lidas como ausência comprovada de metadados. O Análisys não realiza verificação de Google Search Console, PageSpeed, Crossref, JATS, APIs REST autenticadas ou indexação externa nesta etapa."
+            ],
+            "items": []
+          },
+          {
+            "id": "perguntas-frequentes",
+            "title": "Perguntas frequentes",
+            "keywords": ["FAQ", "nova auditoria", "não verificado", "canonical", "Google Scholar", "histórico"],
+            "body": [
+              "Estas respostas descrevem somente os recursos disponíveis nesta versão do OJS SEO. Quando uma evidência for potencial, parcial ou não verificada, use o diagnóstico individual e a fonte editorial para decidir a próxima conferência."
+            ],
+            "items": [
+              {"name": "Preciso cadastrar o periódico novamente para outra auditoria?", "description": "Não. Abra o periódico já cadastrado e solicite outra auditoria; o histórico anterior permanece disponível."},
+              {"name": "Por que a análise HTML não verificou todos os artigos?", "description": "A análise completa trabalha em lotes de até 100 páginas e com orçamento global de tempo. Um worker HTML ativo cria o lote seguinte automaticamente até terminar os artigos elegíveis ou registrar pendências."},
+              {"name": "O que a análise completa faz com páginas não verificadas?", "description": "A campanha prioriza artigos ainda não processados e depois tenta novamente somente falhas transitórias elegíveis, dentro do limite de tentativas. Falhas de segurança, URLs inadequadas e tentativas esgotadas permanecem como pendências, sem repetição infinita."},
+              {"name": "Por que um problema é potencial?", "description": "A evidência observada depende de contexto, pode ter representação bibliográfica legítima ou requerer conferência humana adicional."},
+              {"name": "Por que um assunto ausente pode exigir conferência?", "description": "A ausência de dc:subject é verificável. Sua prioridade editorial depende do dc:type informado: tipos editoriais, genéricos, múltiplos ou ausentes precisam de política editorial antes de uma conclusão."},
+              {"name": "O que significa canonical?", "description": "É a URL declarada como representação preferencial de uma página; sua leitura depende do contexto das versões públicas do artigo."},
+              {"name": "A auditoria prova indexação no Google Scholar?", "description": "Não. Ela observa metadados públicos e não consulta nem comprova a indexação por mecanismos de busca."},
+              {"name": "Como encontro uma intervenção técnica?", "description": "Filtre Recomendações por Administração técnica do OJS ou Infraestrutura, abra a evidência e verifique a orientação antes de alterar o ambiente."},
+              {"name": "Como consulto uma auditoria anterior?", "description": "Use Histórico e análises no periódico e abra a execução correspondente; os indicadores e evidências permanecem vinculados àquela referência."}
+            ]
           }
         ]
       },

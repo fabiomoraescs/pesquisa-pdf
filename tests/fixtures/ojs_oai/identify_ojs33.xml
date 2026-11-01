@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<oai:OAI-PMH xmlns:oai="http://www.openarchives.org/OAI/2.0/">
+  <oai:Identify>
+    <oai:repositoryName>Fixture OJS 3.3</oai:repositoryName>
+    <oai:baseURL>https://ojs33.example.test/oai</oai:baseURL>
+    <oai:protocolVersion>2.0</oai:protocolVersion>
+    <oai:earliestDatestamp>2020-01-01</oai:earliestDatestamp>
+    <oai:deletedRecord>persistent</oai:deletedRecord>
+    <oai:granularity>YYYY-MM-DD</oai:granularity>
+  </oai:Identify>
+</oai:OAI-PMH>

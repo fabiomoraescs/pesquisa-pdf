@@ -53,3 +53,218 @@ def register_cli(app: Flask) -> None:
             poll_interval=poll_interval,
             stale_seconds=stale_seconds,
         )
+
+    @app.cli.command("ojs-seo-worker")
+    @click.option("--once", is_flag=True, help="Processa no máximo uma auditoria pendente e encerra.")
+    @click.option("--audit-run-id", default=None, help="Processa somente a auditoria pendente indicada.")
+    @click.option("--max-jobs", default=1, show_default=True, type=int,
+                  help="Máximo de auditorias por execução contínua.")
+    @click.option("--poll-interval", default=5.0, show_default=True, type=float,
+                  help="Segundos de espera quando não houver auditoria pendente.")
+    @click.option("--lease-seconds", default=300, show_default=True, type=int,
+                  help="Prazo de posse durável antes de uma execução ser considerada interrompida.")
+    def ojs_seo_worker(
+        once: bool,
+        audit_run_id: str | None,
+        max_jobs: int,
+        poll_interval: float,
+        lease_seconds: int,
+    ) -> None:
+        """Executa auditorias OJS SEO em processo separado e sem paralelismo interno."""
+        from .ojs_seo_executor import run_ojs_seo_worker
+
+        try:
+            run_ojs_seo_worker(
+                app,
+                once=once,
+                audit_run_id=audit_run_id,
+                max_jobs=max_jobs,
+                poll_interval=poll_interval,
+                lease_seconds=lease_seconds,
+            )
+        except ValueError as exc:
+            raise click.ClickException(str(exc)) from exc
+
+    @app.cli.command("ojs-seo-html-worker")
+    @click.option("--once", is_flag=True, help="Processa no máximo uma análise HTML pendente e encerra.")
+    @click.option("--audit-run-id", default=None, help="Processa somente a análise técnica indicada.")
+    @click.option("--max-jobs", default=1, show_default=True, type=int,
+                  help="Máximo de análises por execução contínua.")
+    @click.option("--until-idle", is_flag=True,
+                  help="Processa lotes e campanhas pendentes até a fila HTML ficar vazia e encerra.")
+    @click.option("--poll-interval", default=5.0, show_default=True, type=float,
+                  help="Segundos de espera quando não houver análise pendente.")
+    @click.option("--lease-seconds", default=300, show_default=True, type=int,
+                  help="Prazo de posse durável da análise técnica.")
+    def ojs_seo_html_worker(
+        once: bool,
+        audit_run_id: str | None,
+        max_jobs: int,
+        until_idle: bool,
+        poll_interval: float,
+        lease_seconds: int,
+    ) -> None:
+        """Executa análises HTML OJS em processo separado, sem HTTP na web."""
+        from .ojs_seo_html_executor import run_ojs_html_worker
+
+        if until_idle and (once or audit_run_id):
+            raise click.ClickException("--until-idle não pode ser combinado com --once ou --audit-run-id.")
+        try:
+            run_ojs_html_worker(
+                app,
+                once=once,
+                audit_run_id=audit_run_id,
+                max_jobs=max_jobs,
+                until_idle=until_idle,
+                poll_interval=poll_interval,
+                lease_seconds=lease_seconds,
+            )
+        except ValueError as exc:
+            raise click.ClickException(str(exc)) from exc
+
+    def _development_confirmation(confirmed: bool) -> None:
+        if not confirmed:
+            raise click.ClickException(
+                "Informe --confirm-local-development para executar uma operação OJS SEO local."
+            )
+
+    def _development_admin(admin_user_id: str):
+        admin = db.session.get(User, admin_user_id)
+        if admin is None:
+            raise click.ClickException("O administrador informado não foi encontrado.")
+        return admin
+
+    @app.cli.command("ojs-seo-provision")
+    @click.option("--admin-user-id", required=True, help="UUID do administrador responsável.")
+    @click.option("--confirm-local-development", is_flag=True, help="Confirma o ambiente local de desenvolvimento.")
+    def ojs_seo_provision(admin_user_id: str, confirm_local_development: bool) -> None:
+        """Cria a Tool OJS SEO inativa e seus vínculos comerciais idempotentes."""
+        from .ojs_seo_activation import OjsSeoActivationError, provision_ojs_seo_tool
+
+        _development_confirmation(confirm_local_development)
+        try:
+            result = provision_ojs_seo_tool(_development_admin(admin_user_id))
+            db.session.commit()
+        except OjsSeoActivationError as exc:
+            db.session.rollback()
+            raise click.ClickException(str(exc)) from exc
+        click.echo(
+            f"OJS SEO provisionado: tool_created={result.tool_created}; "
+            f"plan_links_created={len(result.plan_links_created)}; active={result.tool_active}."
+        )
+
+    @app.cli.command("ojs-seo-prepare-development")
+    @click.option("--admin-user-id", required=True, help="UUID do administrador responsável.")
+    @click.option("--test-user-id", required=True, help="UUID da conta de teste dedicada.")
+    @click.option("--workspace-name", required=True, help="Nome identificável da área de desenvolvimento.")
+    @click.option("--plan-id", required=True, type=click.Choice(["marketing_sites", "marketing_complete", "integral"]))
+    @click.option("--confirm-local-development", is_flag=True, help="Confirma o ambiente local de desenvolvimento.")
+    def ojs_seo_prepare_development(
+        admin_user_id: str,
+        test_user_id: str,
+        workspace_name: str,
+        plan_id: str,
+        confirm_local_development: bool,
+    ) -> None:
+        """Cria uma assinatura de desenvolvimento OJS para uma conta indicada."""
+        from .ojs_seo_activation import OjsSeoActivationError, prepare_ojs_seo_development_environment
+
+        _development_confirmation(confirm_local_development)
+        try:
+            result = prepare_ojs_seo_development_environment(
+                _development_admin(admin_user_id),
+                test_user_id=test_user_id,
+                workspace_label=workspace_name,
+                plan_id=plan_id,
+            )
+            db.session.commit()
+        except OjsSeoActivationError as exc:
+            db.session.rollback()
+            raise click.ClickException(str(exc)) from exc
+        click.echo(
+            f"Ambiente OJS SEO preparado: workspace={result.workspace_id}; "
+            f"subscription={result.subscription_id}; ojs_journal_limit={result.ojs_journal_limit}."
+        )
+
+    @app.cli.command("ojs-seo-activate")
+    @click.option("--admin-user-id", required=True, help="UUID do administrador responsável.")
+    @click.option("--confirm-local-development", is_flag=True, help="Confirma o ambiente local de desenvolvimento.")
+    def ojs_seo_activate(admin_user_id: str, confirm_local_development: bool) -> None:
+        """Ativa somente a Tool OJS SEO já provisionada e migrada."""
+        from .ojs_seo_activation import OjsSeoActivationError, activate_ojs_seo_tool
+
+        _development_confirmation(confirm_local_development)
+        try:
+            changed = activate_ojs_seo_tool(_development_admin(admin_user_id))
+            db.session.commit()
+        except OjsSeoActivationError as exc:
+            db.session.rollback()
+            raise click.ClickException(str(exc)) from exc
+        click.echo("OJS SEO ativado." if changed else "OJS SEO já estava ativo; nenhuma alteração foi feita.")
+
+    @app.cli.command("ojs-seo-deactivate")
+    @click.option("--admin-user-id", required=True, help="UUID do administrador responsável.")
+    @click.option("--confirm-local-development", is_flag=True, help="Confirma o ambiente local de desenvolvimento.")
+    def ojs_seo_deactivate(admin_user_id: str, confirm_local_development: bool) -> None:
+        """Desativa a Tool OJS SEO preservando todos os registros relacionados."""
+        from .ojs_seo_activation import OjsSeoActivationError, deactivate_ojs_seo_tool
+
+        _development_confirmation(confirm_local_development)
+        try:
+            changed = deactivate_ojs_seo_tool(_development_admin(admin_user_id))
+            db.session.commit()
+        except OjsSeoActivationError as exc:
+            db.session.rollback()
+            raise click.ClickException(str(exc)) from exc
+        click.echo("OJS SEO desativado." if changed else "OJS SEO já estava inativo; nenhuma alteração foi feita.")
+
+    @app.cli.command("ojs-seo-set-visibility")
+    @click.option("--admin-user-id", required=True, help="UUID do administrador responsável.")
+    @click.option("--scope", required=True, type=click.Choice(["group", "tool"]), help="Altera apenas Analytics ou apenas OJS SEO.")
+    @click.option("--visible/--hidden", default=None, help="Estado de visibilidade explícito.")
+    @click.option("--confirm-local-development", is_flag=True, help="Confirma o ambiente local de desenvolvimento.")
+    def ojs_seo_set_visibility(
+        admin_user_id: str,
+        scope: str,
+        visible: bool | None,
+        confirm_local_development: bool,
+    ) -> None:
+        """Altera uma camada de visibilidade sem ativar a ferramenta."""
+        from .ojs_seo_activation import OjsSeoActivationError, set_ojs_seo_navigation_visibility
+
+        _development_confirmation(confirm_local_development)
+        if visible is None:
+            raise click.ClickException("Informe --visible ou --hidden.")
+        try:
+            changed = set_ojs_seo_navigation_visibility(
+                _development_admin(admin_user_id), scope_type=scope, visible=visible
+            )
+            db.session.commit()
+        except OjsSeoActivationError as exc:
+            db.session.rollback()
+            raise click.ClickException(str(exc)) from exc
+        click.echo("Visibilidade atualizada." if changed else "A visibilidade já possuía esse estado.")
+
+    @app.cli.command("ojs-seo-verify-development-access")
+    @click.option("--admin-user-id", required=True, help="UUID do administrador responsável.")
+    @click.option("--test-user-id", required=True, help="UUID da conta de teste dedicada.")
+    @click.option("--confirm-local-development", is_flag=True, help="Confirma o ambiente local de desenvolvimento.")
+    def ojs_seo_verify_development_access(
+        admin_user_id: str, test_user_id: str, confirm_local_development: bool
+    ) -> None:
+        """Confere as camadas de acesso da conta de teste sem iniciar coletas."""
+        from .ojs_seo_activation import OjsSeoActivationError, verify_ojs_seo_development_access
+
+        _development_confirmation(confirm_local_development)
+        try:
+            result = verify_ojs_seo_development_access(
+                _development_admin(admin_user_id), test_user_id=test_user_id
+            )
+        except OjsSeoActivationError as exc:
+            db.session.rollback()
+            raise click.ClickException(str(exc)) from exc
+        click.echo(
+            f"OJS SEO access: tool_provisioned={result.tool_provisioned}; "
+            f"tool_active={result.tool_active}; operational_access={result.operational_access}; "
+            f"eligible_subscriptions={len(result.eligible_subscription_ids)}."
+        )
