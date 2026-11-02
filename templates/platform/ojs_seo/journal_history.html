@@ -8,7 +8,7 @@
 {% set active_area = 'history' %}
 {% include 'platform/ojs_seo/_journal_navigation.html' %}
 
-<section class="platform-panel mb-3" aria-labelledby="ojs-history-title" data-ojs-history-progress data-progress-url="{{ url_for('ojs_seo.journal_history_progress', journal_id=journal.id) }}" data-progress-active="{{ 'true' if history_progress.active else 'false' }}" data-progress-stage="{{ history_progress.stage or '' }}">
+<section class="platform-panel mb-3" aria-labelledby="ojs-history-title" data-ojs-history-progress data-progress-url="{{ url_for('ojs_seo.journal_history_progress', journal_id=journal.id) }}" data-progress-active="{{ 'true' if history_progress.active else 'false' }}" data-progress-stage="{{ history_progress.stage or '' }}" data-ojs-journal-name="{{ project.name }}">
   <div class="d-flex flex-wrap justify-content-between gap-2 ojs-seo-heading-actions">
     <div><h1 id="ojs-history-title" class="h4 mb-1">Histórico e análises</h1><p class="platform-muted mb-0">Solicite verificações e acompanhe o resultado de cada execução.</p></div>
     <div class="ojs-seo-action-group">
@@ -17,10 +17,10 @@
       {% if integrated_action_available %}
         {% set smart_label = 'Analisar periódico' if not metrics_audit else 'Atualizar dados' %}
         <div class="ojs-history-split-action">
-          <form method="post" action="{{ url_for('ojs_seo.create_integrated_analysis', journal_id=journal.id) }}" data-platform-loading-overlay-form data-loading-overlay-target="ojs-seo-overlay-processamento"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-primary" type="submit" title="{{ smart_label }}" data-loading-overlay-submit>{{ smart_label }}</button></form>
+          <form method="post" action="{{ url_for('ojs_seo.create_integrated_analysis', journal_id=journal.id) }}" data-platform-loading-overlay-form data-platform-async-form data-ojs-bibliographic-request data-loading-overlay-target="ojs-seo-overlay-processamento"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-primary" type="submit" title="{{ smart_label }}" data-loading-overlay-submit>{{ smart_label }}</button></form>
           <button class="btn btn-primary ojs-history-split-action__toggle" type="button" popovertarget="ojs-history-advanced-actions" aria-controls="ojs-history-advanced-actions" aria-expanded="false" aria-label="Abrir opções avançadas de análise" title="Opções avançadas"><span aria-hidden="true">▾</span></button>
           <div class="ojs-history-action-menu" id="ojs-history-advanced-actions" popover="auto" data-temporary-popover data-popover-anchor data-popover-align-end role="menu" aria-label="Opções avançadas de análise">
-            {% if audit_request_available %}<form method="post" action="{{ url_for('ojs_seo.create_audit', journal_id=journal.id) }}" data-platform-loading-overlay-form data-loading-overlay-target="ojs-seo-overlay-processamento"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="ojs-history-action-menu__item" type="submit" role="menuitem" data-loading-overlay-submit>Dados bibliográficos</button></form>{% else %}<span class="ojs-history-action-menu__unavailable" aria-disabled="true">Dados bibliográficos indisponíveis agora</span>{% endif %}
+            {% if audit_request_available %}<form method="post" action="{{ url_for('ojs_seo.create_audit', journal_id=journal.id) }}" data-platform-loading-overlay-form data-platform-async-form data-ojs-bibliographic-request data-loading-overlay-target="ojs-seo-overlay-processamento"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="ojs-history-action-menu__item" type="submit" role="menuitem" data-loading-overlay-submit>Dados bibliográficos</button></form>{% else %}<span class="ojs-history-action-menu__unavailable" aria-disabled="true">Dados bibliográficos indisponíveis agora</span>{% endif %}
             {% if html_campaign_request_available %}<form method="post" action="{{ url_for('ojs_seo.create_html_audit_campaign', journal_id=journal.id) }}" data-platform-loading-overlay-form data-loading-overlay-target="ojs-seo-overlay-processamento"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="ojs-history-action-menu__item" type="submit" role="menuitem" data-loading-overlay-submit>Analisar todas as páginas</button></form>{% else %}<span class="ojs-history-action-menu__unavailable" aria-disabled="true">Análise das páginas indisponível agora</span>{% endif %}
             {% if html_revalidate_available %}<form method="post" action="{{ url_for('ojs_seo.create_html_audit', journal_id=journal.id) }}" data-platform-loading-overlay-form data-loading-overlay-target="ojs-seo-overlay-processamento"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="selection_mode" value="revalidate"><button class="ojs-history-action-menu__item" type="submit" role="menuitem" data-loading-overlay-submit>Revalidar páginas</button></form>{% endif %}
           </div>
@@ -29,6 +29,11 @@
       {{ tutorial_button(ojs_tutorial, section_id='auditoria-bibliografica', label='Abrir guia do OJS SEO') }}
     </div>
   </div>
+</section>
+
+<section class="platform-panel mb-3" data-ojs-async-progress hidden aria-live="polite" aria-label="Situação da análise bibliográfica">
+  <p class="mb-0" data-ojs-async-progress-status></p>
+  <p class="platform-muted small mt-2 mb-0">Você pode continuar navegando; fechar o acompanhamento não cancela a análise.</p>
 </section>
 
 {% if archived or integrated_operation or history_progress.active or not integrated_operations_available or (last_integrated_operation and last_integrated_operation.operation.completion_reason == 'no_bibliographic_changes') or (html_campaign and html_campaign.campaign.status == 'interrupted') or (audit and audit.run.status in ('pending', 'running')) %}
@@ -86,4 +91,5 @@
 {{ tutorial_dialog(ojs_tutorial) }}
 <script defer src="{{ url_for('static', filename='js/platform_tutorial.js') }}"></script>
 <script defer src="{{ url_for('static', filename='js/ojs_history_progress.js') }}"></script>
+<script defer src="{{ url_for('static', filename='js/ojs_bibliographic_request.js') }}"></script>
 {% endblock %}

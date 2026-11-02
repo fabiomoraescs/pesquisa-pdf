@@ -23,6 +23,17 @@
     document.body.classList.add('is-processing');
   };
 
+  // Oculta somente o painel. Fluxos assíncronos de longa duração podem
+  // continuar acompanhando o estado durável sem desbloquear o mesmo envio.
+  const hide = (form) => {
+    const { overlay } = stateFor(form);
+    if (overlay) {
+      overlay.hidden = true;
+      overlay.setAttribute('aria-hidden', 'true');
+    }
+    document.body.classList.remove('is-processing');
+  };
+
   const reset = (form) => {
     const { overlay, submit } = stateFor(form);
     form.removeAttribute('aria-busy');
@@ -39,7 +50,7 @@
 
   // Fluxos assíncronos podem reutilizar o mesmo painel visual sem recriar
   // spinner, foco ou proteção contra duplo envio no próprio módulo de negócio.
-  window.PlatformFormLoadingOverlay = { show, reset };
+  window.PlatformFormLoadingOverlay = { show, hide, reset };
 
   const resetters = [];
 

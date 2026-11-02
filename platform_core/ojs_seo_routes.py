@@ -143,6 +143,41 @@ def _require_tool() -> None:
     require_tool_access(current_user, OJS_SEO_TOOL_ID)
 
 
+def _wants_json_response() -> bool:
+    """Reconhece o envio assíncrono sem alterar o fallback HTML.
+
+    A autorização, o CSRF e a criação da auditoria continuam idênticos nos
+    dois caminhos. A negociação de conteúdo só evita que o navegador precise
+    recarregar a página para começar a acompanhar uma solicitação já gravada.
+    """
+    return (
+        request.headers.get("X-Requested-With") == "XMLHttpRequest"
+        and request.accept_mimetypes.best == "application/json"
+    )
+
+
+def _accepted_bibliographic_analysis_response(
+    journal: OjsJournal,
+    *,
+    audit_run_id: str,
+    operation_id: str | None = None,
+):
+    """Retorna referências para acompanhar uma auditoria já persistida.
+
+    Nenhuma coleta é iniciada por esta resposta. O worker separado continua
+    sendo a única entidade que reivindica e processa a fila OAI-PMH.
+    """
+    return jsonify({
+        "audit_run_id": audit_run_id,
+        "operation_id": operation_id,
+        "status": "pending",
+        "stage": "oai_pending",
+        "message": "A solicitação foi registrada e aguarda o worker dos dados bibliográficos.",
+        "progress_url": url_for("ojs_seo.journal_history_progress", journal_id=journal.id),
+        "history_url": url_for("ojs_seo.journal_history", journal_id=journal.id),
+    }), 202
+
+
 def _not_found_from_service(error: OjsSeoServiceError) -> None:
     """Converte recursos fora do escopo em uma resposta neutra."""
     if isinstance(error, (OjsSeoNotFoundError, OjsSeoAuthorizationError)):
@@ -413,6 +448,13 @@ def _history_progress_payload(context: Mapping[str, Any]) -> dict[str, Any]:
             "oai_audit_run_id": coverage.source_oai_audit_run_id if coverage else None,
         },
         "monitoring": context["history_progress"],
+        "audit": None if audit is None else {
+            "id": audit.id,
+            "status": audit.status,
+            "status_label": OJS_AUDIT_STATUS_LABELS.get(audit.status, "Estado não informado"),
+            "record_count": audit.record_count,
+            "errors": _safe_list(audit.errors_json),
+        },
         "operation": None if operation is None else {
             "id": operation.id,
             "status": operation.status,
@@ -990,12 +1032,22 @@ def create_integrated_analysis(journal_id: UUID):
         db.session.rollback()
         if isinstance(exc, OjsSeoAuthorizationError):
             abort(404)
+        if _wants_json_response():
+            return jsonify({"message": exc.safe_message}), 409
         flash(exc.safe_message, "danger")
         return redirect(url_for("ojs_seo.journal_history", journal_id=journal.id))
     except OperationalError:
         db.session.rollback()
+        if _wants_json_response():
+            return jsonify({"message": "A operação integrada ainda requer a migration OJS correspondente neste ambiente."}), 503
         flash("A operação integrada ainda requer a migration OJS correspondente neste ambiente.", "danger")
         return redirect(url_for("ojs_seo.journal_history", journal_id=journal.id))
+    if _wants_json_response():
+        return _accepted_bibliographic_analysis_response(
+            journal,
+            audit_run_id=str(operation.oai_audit_run_id),
+            operation_id=str(operation.id),
+        )
     label = "Análise do periódico" if operation.mode == "initial" else "Atualização dos dados"
     flash(f"{label} registrada. O worker bibliográfico processará a primeira etapa; a análise das páginas será liberada automaticamente quando aplicável.", "success")
     return redirect(url_for("ojs_seo.journal_history", journal_id=journal.id, _anchor="ojs-integrated-operation"))
@@ -1013,8 +1065,12 @@ def create_audit(journal_id: UUID):
         db.session.rollback()
         if isinstance(exc, OjsSeoAuthorizationError):
             abort(404)
+        if _wants_json_response():
+            return jsonify({"message": exc.safe_message}), 409
         flash(exc.safe_message, "danger")
         return redirect(url_for("ojs_seo.journal_detail", journal_id=journal.id))
+    if _wants_json_response():
+        return _accepted_bibliographic_analysis_response(journal, audit_run_id=str(run.id))
     flash("Auditoria OAI-PMH/Dublin Core solicitada. Ela será processada pelo worker OJS quando estiver em execução.", "success")
     return redirect(url_for("ojs_seo.audit_detail", journal_id=journal.id, audit_id=run.id))
 

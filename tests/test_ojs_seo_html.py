@@ -6,6 +6,7 @@ import json
 from multiprocessing import get_context
 from pathlib import Path
 import tempfile
+from threading import Event
 import unittest
 from unittest.mock import patch
 from uuid import uuid4
@@ -1100,6 +1101,7 @@ class OjsHtmlPersistenceAndExecutorTests(unittest.TestCase):
             self.assertEqual(0, once.exit_code, once.output)
             self.assertTrue(worker.call_args.kwargs["once"])
             self.assertFalse(worker.call_args.kwargs["until_idle"])
+            self.assertIsNone(worker.call_args.kwargs["max_jobs"])
 
             worker.reset_mock()
             campaign = runner.invoke(args=["ojs-seo-html-worker", "--until-idle"])
@@ -1110,6 +1112,26 @@ class OjsHtmlPersistenceAndExecutorTests(unittest.TestCase):
             invalid = runner.invoke(args=["ojs-seo-html-worker", "--once", "--until-idle"])
             self.assertNotEqual(0, invalid.exit_code)
             self.assertIn("não pode ser combinado", invalid.output)
+
+    def test_html_worker_stops_before_claiming_when_shutdown_is_requested(self):
+        stopping = Event()
+        stopping.set()
+        calls = []
+
+        def factory(_endpoint):
+            calls.append(_endpoint)
+            raise AssertionError("A parada solicitada não pode abrir um cliente HTML")
+
+        run_ojs_html_worker(
+            self.app,
+            once=False,
+            poll_interval=0.01,
+            lease_seconds=300,
+            client_factory=factory,
+            stop_event=stopping,
+        )
+
+        self.assertEqual([], calls)
 
     def test_integrated_operation_enqueues_html_only_after_usable_oai_reference(self):
         operation = request_ojs_integrated_analysis(self.user, self.journal.id)

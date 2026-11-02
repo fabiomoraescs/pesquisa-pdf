@@ -9,6 +9,7 @@ from pathlib import Path
 from types import SimpleNamespace
 import socket
 import tempfile
+from threading import Event
 import unittest
 from unittest.mock import patch
 
@@ -543,6 +544,78 @@ class OjsSeoExecutorTests(unittest.TestCase):
         self.assertEqual([], calls)
         invoked = self.app.test_cli_runner().invoke(args=["ojs-seo-worker", "--once"])
         self.assertEqual(0, invoked.exit_code, invoked.output)
+
+    def test_worker_once_claims_a_persisted_pending_audit_and_records_the_result(self):
+        journal = self.journal()
+        run = self.run_for(journal)
+        factory, clients = self.client_factory(
+            _audit_result(_collection(records=(_active("oai:test:worker-once"),)))
+        )
+
+        run_ojs_seo_worker(
+            self.app,
+            once=True,
+            poll_interval=0.01,
+            lease_seconds=120,
+            client_factory=factory,
+        )
+
+        stored = self.stored(run.id)
+        self.assertEqual(("completed", 1, 1), (stored.status, stored.record_count, stored.attempt_count))
+        self.assertIsNotNone(stored.started_at)
+        self.assertIsNotNone(stored.completed_at)
+        self.assertTrue(clients[0].called)
+
+    def test_worker_continuous_mode_processes_the_configured_queue_limit_before_exiting(self):
+        first = self.run_for(self.journal(endpoint="https://first.example.test/oai"))
+        second = self.run_for(self.journal(endpoint="https://second.example.test/oai"))
+        factory, clients = self.client_factory(
+            _audit_result(_collection(records=(_active("oai:test:continuous-worker"),)))
+        )
+
+        run_ojs_seo_worker(
+            self.app,
+            once=False,
+            max_jobs=2,
+            poll_interval=0.01,
+            lease_seconds=120,
+            client_factory=factory,
+        )
+
+        self.assertEqual("completed", self.stored(first.id).status)
+        self.assertEqual("completed", self.stored(second.id).status)
+        self.assertEqual(2, len(clients))
+
+    def test_worker_stops_after_persisting_the_current_claim_without_starting_another(self):
+        first = self.run_for(self.journal(endpoint="https://first.example.test/oai"))
+        second = self.run_for(self.journal(endpoint="https://second.example.test/oai"))
+        stopping = Event()
+        result = _audit_result(_collection(records=(_active("oai:test:graceful-stop"),)))
+        clients: list[_FakeClient] = []
+
+        class _StopAfterInspectClient(_FakeClient):
+            def inspect(self) -> OaiPmhAuditResult:
+                inspected = super().inspect()
+                stopping.set()
+                return inspected
+
+        def factory(_endpoint: str) -> _FakeClient:
+            client = _StopAfterInspectClient(result)
+            clients.append(client)
+            return client
+
+        run_ojs_seo_worker(
+            self.app,
+            once=False,
+            poll_interval=0.01,
+            lease_seconds=120,
+            client_factory=factory,
+            stop_event=stopping,
+        )
+
+        self.assertEqual("completed", self.stored(first.id).status)
+        self.assertEqual("pending", self.stored(second.id).status)
+        self.assertEqual(1, len(clients))
 
     def test_lease_shorter_than_client_budget_fails_without_articles(self):
         run = self.run_for(self.journal())

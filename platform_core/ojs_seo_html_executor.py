@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import time
+from threading import Event
 from typing import Callable
 from uuid import uuid4
 
@@ -35,6 +36,7 @@ from .ojs_seo_technical import (
     list_html_audit_candidates,
     persist_html_audit_results,
 )
+from .worker_runtime import graceful_worker_shutdown
 
 
 OJS_HTML_WORKER_VERSION = "ojs-html-worker-v1"
@@ -400,27 +402,34 @@ def _as_utc(value: datetime) -> datetime:
 
 
 def run_ojs_html_worker(
-    app: Flask, *, once: bool, poll_interval: float, lease_seconds: int, max_jobs: int = 1,
+    app: Flask, *, once: bool, poll_interval: float, lease_seconds: int, max_jobs: int | None = None,
     audit_run_id: str | None = None, client_factory: HtmlClientFactory | None = None,
     until_idle: bool = False,
+    stop_event: Event | None = None,
 ) -> None:
-    if poll_interval <= 0 or max_jobs <= 0:
+    if poll_interval <= 0 or (max_jobs is not None and max_jobs <= 0):
         raise ValueError("Os limites do worker HTML precisam ser positivos.")
     processed = 0
-    with app.app_context():
-        while True:
+    with app.app_context(), graceful_worker_shutdown(stop_event) as stopping:
+        while not stopping.is_set():
             recover_expired_ojs_html_audits()
+            if stopping.is_set():
+                db.session.remove()
+                break
             run = process_ojs_html_audit(audit_run_id, client_factory=client_factory, lease_seconds=lease_seconds) if audit_run_id else process_next_ojs_html_audit(client_factory=client_factory, lease_seconds=lease_seconds)
             if run is not None:
                 processed += 1
                 current_app.logger.info("ojs_seo html_audit_run=%s status=%s", run.id, run.status)
             db.session.remove()
-            if once or audit_run_id or (not until_idle and processed >= max_jobs):
+            if stopping.is_set():
+                current_app.logger.info("ojs_seo html worker stopping_after_current_job=%s", run.id if run else None)
+                return
+            if once or audit_run_id or (not until_idle and max_jobs is not None and processed >= max_jobs):
                 return
             if run is None:
                 if until_idle:
                     return
-                time.sleep(poll_interval)
+                stopping.wait(poll_interval)
 
 
 __all__ = [

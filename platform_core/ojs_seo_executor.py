@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-import time
+from threading import Event
 from typing import Callable
 from uuid import uuid4
 
@@ -32,6 +32,7 @@ from .ojs_oai_client import (
 from .ojs_seo_persistence import OjsPersistenceError, persist_oai_collection
 from .ojs_seo_coordinator import advance_integrated_after_oai, interrupt_integrated_for_oai_run, mark_integrated_oai_running
 from .ojs_seo_services import journal_has_active_ojs_execution_authorization
+from .worker_runtime import graceful_worker_shutdown
 
 
 OJS_SEO_WORKER_VERSION = "ojs-seo-worker-v1"
@@ -656,25 +657,29 @@ def run_ojs_seo_worker(
     once: bool,
     poll_interval: float,
     lease_seconds: int,
-    max_jobs: int = 1,
+    max_jobs: int | None = None,
     audit_run_id: str | None = None,
     client_factory: ClientFactory | None = None,
+    stop_event: Event | None = None,
 ) -> None:
     """Loop de processo separado, conservador e sem paralelismo adicional."""
     if poll_interval <= 0:
         raise ValueError("O intervalo de polling precisa ser positivo.")
     _validate_lease_seconds(lease_seconds)
-    if not isinstance(max_jobs, int) or max_jobs <= 0:
+    if max_jobs is not None and (not isinstance(max_jobs, int) or max_jobs <= 0):
         raise ValueError("O limite de auditorias precisa ser positivo.")
     if audit_run_id and not isinstance(audit_run_id, str):
         raise ValueError("A auditoria indicada é inválida.")
 
     processed = 0
-    with app.app_context():
-        while True:
+    with app.app_context(), graceful_worker_shutdown(stop_event) as stopping:
+        while not stopping.is_set():
             recovered = recover_expired_ojs_seo_audits()
             if recovered:
                 current_app.logger.warning("ojs_seo worker recovered_expired_audits=%s", recovered)
+            if stopping.is_set():
+                db.session.remove()
+                break
             run = (
                 process_ojs_seo_audit(
                     audit_run_id, client_factory=client_factory, lease_seconds=lease_seconds
@@ -686,10 +691,13 @@ def run_ojs_seo_worker(
                 processed += 1
                 current_app.logger.info("ojs_seo worker audit_run=%s status=%s", run.id, run.status)
             db.session.remove()
-            if once or audit_run_id or processed >= max_jobs:
+            if stopping.is_set():
+                current_app.logger.info("ojs_seo worker stopping_after_current_job=%s", run.id if run else None)
+                return
+            if once or audit_run_id or (max_jobs is not None and processed >= max_jobs):
                 return
             if run is None:
-                time.sleep(poll_interval)
+                stopping.wait(poll_interval)
 
 
 __all__ = [

@@ -945,6 +945,32 @@ class OjsSeoRouteTests(unittest.TestCase):
         hidden = other_client.get(f"/analytics/ojs-seo/journals/{journal.id}/audits/{run.id}/status")
         self.assertEqual(404, hidden.status_code)
 
+    def test_direct_audit_async_request_returns_accepted_without_starting_http(self):
+        journal = _journal(self.owner, name="Auditoria direta assíncrona")
+        _allocate(self.subscription, journal)
+        self._login_owner()
+        detail_path = f"/analytics/ojs-seo/journals/{journal.id}"
+        response = self.client.post(
+            f"/analytics/ojs-seo/journals/{journal.id}/audits",
+            data={"csrf_token": self._csrf(detail_path)},
+            headers={"Accept": "application/json", "X-Requested-With": "XMLHttpRequest"},
+        )
+        self.assertEqual(202, response.status_code)
+        payload = response.get_json()
+        queued = db.session.get(OjsSeoAuditRun, payload["audit_run_id"])
+        self.assertEqual(("pending", "oai_pending", 0), (
+            queued.status, payload["stage"], queued.record_count,
+        ))
+        self.assertIn(f"/analytics/ojs-seo/journals/{journal.id}/history/progress", payload["progress_url"])
+        duplicate = self.client.post(
+            f"/analytics/ojs-seo/journals/{journal.id}/audits",
+            data={"csrf_token": self._csrf(detail_path)},
+            headers={"Accept": "application/json", "X-Requested-With": "XMLHttpRequest"},
+        )
+        self.assertEqual(409, duplicate.status_code)
+        self.assertIsInstance(duplicate.get_json()["message"], str)
+        self.assertEqual(1, db.session.scalar(select(func.count()).select_from(OjsSeoAuditRun)))
+
     def test_completed_metrics_remain_visible_while_latest_audit_is_pending_or_running(self):
         journal = _journal(self.owner, name="Indicadores persistidos")
         completed = OjsSeoAuditRun(
@@ -1909,6 +1935,29 @@ class OjsSeoRouteTests(unittest.TestCase):
         self.assertIsNotNone(operation.oai_audit_run_id)
         self.assertIsNone(operation.html_campaign_id)
 
+    def test_integrated_analysis_async_request_returns_only_persisted_progress_references(self):
+        journal = _journal(self.owner, name="Análise integrada assíncrona")
+        _allocate(self.subscription, journal)
+        self._login_owner()
+        history_path = f"/analytics/ojs-seo/journals/{journal.id}/history"
+        response = self.client.post(
+            f"/analytics/ojs-seo/journals/{journal.id}/integrated-analyses",
+            data={"csrf_token": self._csrf(history_path)},
+            headers={"Accept": "application/json", "X-Requested-With": "XMLHttpRequest"},
+        )
+        self.assertEqual(202, response.status_code)
+        payload = response.get_json()
+        self.assertEqual(("pending", "oai_pending"), (payload["status"], payload["stage"]))
+        self.assertIn(f"/analytics/ojs-seo/journals/{journal.id}/history/progress", payload["progress_url"])
+        self.assertIn(f"/analytics/ojs-seo/journals/{journal.id}/history", payload["history_url"])
+        operation = db.session.scalar(select(OjsSeoAnalysisOperation).where(
+            OjsSeoAnalysisOperation.journal_id == journal.id
+        ))
+        self.assertEqual(str(operation.id), payload["operation_id"])
+        self.assertEqual(str(operation.oai_audit_run_id), payload["audit_run_id"])
+        queued = db.session.get(OjsSeoAuditRun, operation.oai_audit_run_id)
+        self.assertEqual(("pending", 0, None), (queued.status, queued.attempt_count, queued.started_at))
+
     def test_history_progress_endpoint_reuses_coverage_and_stops_at_terminal_state(self):
         journal = _journal(self.owner, name="Progresso persistido")
         _allocate(self.subscription, journal)
@@ -1963,6 +2012,9 @@ class OjsSeoRouteTests(unittest.TestCase):
         self.assertEqual("no-store", response.headers["Cache-Control"])
         payload = response.get_json()
         self.assertEqual(source.id, payload["reference"]["oai_audit_run_id"])
+        self.assertEqual((source.id, "completed", 2), (
+            payload["audit"]["id"], payload["audit"]["status"], payload["audit"]["record_count"],
+        ))
         self.assertEqual("html_running", payload["monitoring"]["stage"])
         self.assertTrue(payload["monitoring"]["active"])
         self.assertEqual("running", payload["campaign"]["status"])

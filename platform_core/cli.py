@@ -57,8 +57,8 @@ def register_cli(app: Flask) -> None:
     @app.cli.command("ojs-seo-worker")
     @click.option("--once", is_flag=True, help="Processa no máximo uma auditoria pendente e encerra.")
     @click.option("--audit-run-id", default=None, help="Processa somente a auditoria pendente indicada.")
-    @click.option("--max-jobs", default=1, show_default=True, type=int,
-                  help="Máximo de auditorias por execução contínua.")
+    @click.option("--max-jobs", default=None, type=int,
+                  help="Máximo de auditorias antes de encerrar; omita para manter o worker em espera.")
     @click.option("--poll-interval", default=5.0, show_default=True, type=float,
                   help="Segundos de espera quando não houver auditoria pendente.")
     @click.option("--lease-seconds", default=300, show_default=True, type=int,
@@ -66,7 +66,7 @@ def register_cli(app: Flask) -> None:
     def ojs_seo_worker(
         once: bool,
         audit_run_id: str | None,
-        max_jobs: int,
+        max_jobs: int | None,
         poll_interval: float,
         lease_seconds: int,
     ) -> None:
@@ -88,8 +88,8 @@ def register_cli(app: Flask) -> None:
     @app.cli.command("ojs-seo-html-worker")
     @click.option("--once", is_flag=True, help="Processa no máximo uma análise HTML pendente e encerra.")
     @click.option("--audit-run-id", default=None, help="Processa somente a análise técnica indicada.")
-    @click.option("--max-jobs", default=1, show_default=True, type=int,
-                  help="Máximo de análises por execução contínua.")
+    @click.option("--max-jobs", default=None, type=int,
+                  help="Máximo de análises antes de encerrar; omita para manter o worker em espera.")
     @click.option("--until-idle", is_flag=True,
                   help="Processa lotes e campanhas pendentes até a fila HTML ficar vazia e encerra.")
     @click.option("--poll-interval", default=5.0, show_default=True, type=float,
@@ -99,7 +99,7 @@ def register_cli(app: Flask) -> None:
     def ojs_seo_html_worker(
         once: bool,
         audit_run_id: str | None,
-        max_jobs: int,
+        max_jobs: int | None,
         until_idle: bool,
         poll_interval: float,
         lease_seconds: int,
