@@ -62,9 +62,11 @@ from platform_core.ojs_seo_html_executor import (
     run_ojs_html_worker,
 )
 from platform_core.ojs_seo_services import (
+    OjsSeoAuditCancellationError,
     OjsSeoProjectLifecycleError,
     OjsSeoServiceError,
     archive_ojs_seo_project,
+    cancel_pending_ojs_html_audit,
 )
 from platform_core.ojs_seo_recommendations import (
     get_ojs_recommendation_detail,
@@ -112,6 +114,42 @@ def _claim_ojs_run_in_process(database_uri: str, data_dir: str, kind: str, audit
             db.engine.dispose()
     except BaseException as exc:  # Evidência do processo auxiliar, sem HTTP.
         output.put((kind, "error", type(exc).__name__))
+
+
+def _cancel_html_run_in_process(
+    database_uri: str,
+    data_dir: str,
+    actor_id: str,
+    journal_id: str,
+    audit_run_id: str,
+    start,
+    output,
+) -> None:
+    """Disputa o lock do periódico com o claim HTML em outro processo."""
+    app = create_app({
+        "TESTING": True,
+        "SECRET_KEY": "ojs-html-cancel-process-test-only",
+        "PESQUISAPDF_CPF_HMAC_SECRET": "ojs-html-test-secret-with-adequate-length-123456",
+        "SQLALCHEMY_DATABASE_URI": database_uri,
+        "SQLALCHEMY_ENGINE_OPTIONS": {"connect_args": {"timeout": 30}},
+        "PLATFORM_DATA_DIR": data_dir,
+    })
+    try:
+        with app.app_context():
+            start.wait(15)
+            actor = db.session.get(User, actor_id)
+            if actor is None:
+                raise AssertionError("Ator de teste ausente")
+            try:
+                run = cancel_pending_ojs_html_audit(actor, journal_id, audit_run_id)
+                output.put(("canceled", run.id))
+            except OjsSeoAuditCancellationError as exc:
+                output.put(("cancel_refused", exc.code))
+            finally:
+                db.session.remove()
+                db.engine.dispose()
+    except BaseException as exc:  # Resultado observável, sem rede HTML.
+        output.put(("error", type(exc).__name__))
 
 
 def _resolver(host, _port, **_kwargs):
@@ -738,6 +776,55 @@ class OjsHtmlPersistenceAndExecutorTests(unittest.TestCase):
 
         self.assertEqual(1, sum(result[1] is True for result in responses))
         self.assertNotIn("error", {result[1] for result in responses if len(result) > 1})
+
+    def test_html_cancel_and_worker_claim_are_mutually_exclusive_between_processes(self):
+        """O cancelamento nunca substitui uma análise HTML que o worker assumiu."""
+        run = OjsHtmlAuditRun(
+            journal_id=self.journal.id,
+            source_oai_audit_run_id=self.source.id,
+            status="pending",
+        )
+        db.session.add(run)
+        db.session.commit()
+        run_id, journal_id, user_id = run.id, self.journal.id, self.user.id
+        db.session.remove()
+
+        context = get_context("spawn")
+        start, output = context.Event(), context.Queue()
+        worker = context.Process(
+            target=_claim_ojs_run_in_process,
+            args=(self.database_uri, self.scope.name, "html", run_id, start, output),
+        )
+        canceler = context.Process(
+            target=_cancel_html_run_in_process,
+            args=(self.database_uri, self.scope.name, user_id, journal_id, run_id, start, output),
+        )
+        worker.start()
+        canceler.start()
+        start.set()
+        outcomes = [output.get(timeout=25), output.get(timeout=25)]
+        worker.join(25)
+        canceler.join(25)
+        self.assertEqual(0, worker.exitcode)
+        self.assertEqual(0, canceler.exitcode)
+        self.assertFalse(any(value[0] == "error" for value in outcomes), outcomes)
+
+        stored = db.session.get(OjsHtmlAuditRun, run_id)
+        if stored.status == "canceled":
+            self.assertIn(("canceled", run_id), outcomes)
+            self.assertIn(("html", False), outcomes)
+            self.assertIsNone(stored.claim_token)
+            self.assertEqual("canceled_by_user", stored.completion_reason)
+        else:
+            self.assertEqual("running", stored.status)
+            self.assertIn(("html", True), outcomes)
+            self.assertTrue(any(
+                isinstance(value, tuple)
+                and value[0] == "cancel_refused"
+                and value[1] in {"ojs_html_audit_not_pending", "ojs_html_audit_claimed_before_cancel"}
+                for value in outcomes
+            ))
+            self.assertIsNotNone(stored.claim_token)
 
     def test_open_html_audit_blocks_archiving_without_changing_bibliographic_data(self):
         run = OjsHtmlAuditRun(

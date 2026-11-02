@@ -57,6 +57,7 @@ from .ojs_seo_services import (
     OjsSeoProjectDeletionError,
     OjsSeoServiceError,
     archive_ojs_seo_project,
+    cancel_pending_ojs_html_audit,
     cancel_pending_ojs_seo_audit,
     can_request_ojs_seo_audit,
     delete_ojs_seo_project_permanently,
@@ -1048,7 +1049,7 @@ def create_integrated_analysis(journal_id: UUID):
             audit_run_id=str(operation.oai_audit_run_id),
             operation_id=str(operation.id),
         )
-    label = "Análise do periódico" if operation.mode == "initial" else "Atualização dos dados"
+    label = "Análise completa" if operation.mode == "initial" else "Atualização completa"
     flash(f"{label} registrada. O worker bibliográfico processará a primeira etapa; a análise das páginas será liberada automaticamente quando aplicável.", "success")
     return redirect(url_for("ojs_seo.journal_history", journal_id=journal.id, _anchor="ojs-integrated-operation"))
 
@@ -1071,7 +1072,10 @@ def create_audit(journal_id: UUID):
         return redirect(url_for("ojs_seo.journal_detail", journal_id=journal.id))
     if _wants_json_response():
         return _accepted_bibliographic_analysis_response(journal, audit_run_id=str(run.id))
-    flash("Auditoria OAI-PMH/Dublin Core solicitada. Ela será processada pelo worker OJS quando estiver em execução.", "success")
+    flash(
+        "Análise bibliográfica OAI-PMH/Dublin Core solicitada. Ela não cria uma análise das páginas e será processada pelo worker OJS quando estiver em execução.",
+        "success",
+    )
     return redirect(url_for("ojs_seo.audit_detail", journal_id=journal.id, audit_id=run.id))
 
 
@@ -1137,6 +1141,50 @@ def resume_html_audit_campaign(journal_id: UUID, campaign_id: UUID):
         return redirect(url_for("ojs_seo.journal_history", journal_id=journal.id))
     flash("A análise completa foi recolocada na fila. O worker HTML retomará o próximo lote elegível.", "success")
     return redirect(url_for("ojs_seo.journal_history", journal_id=journal.id, _anchor="ojs-html-campaign-status"))
+
+
+@ojs_seo_bp.route("/journals/<uuid:journal_id>/technical-audits/<uuid:audit_id>/cancel", methods=("GET", "POST"))
+@login_required
+def cancel_html_audit(journal_id: UUID, audit_id: UUID):
+    """Confirma o cancelamento seguro de uma etapa HTML ainda não reivindicada."""
+    _require_tool()
+    journal = _journal_for_current_user(journal_id, include_inactive=True)
+    if journal.analytics_project.status == "archived":
+        abort(404)
+    try:
+        run = get_ojs_html_audit(current_user, journal.id, str(audit_id), include_inactive=True)
+    except OjsSeoServiceError as exc:
+        _not_found_from_service(exc)
+        raise AssertionError("unreachable")
+    if run.journal_id != journal.id:
+        abort(404)
+    if request.method == "POST":
+        try:
+            cancel_pending_ojs_html_audit(current_user, journal.id, run.id)
+        except (OjsSeoAuthorizationError, OjsSeoNotFoundError):
+            db.session.rollback()
+            abort(404)
+        except OjsSeoAuditCancellationError as error:
+            db.session.rollback()
+            flash(error.safe_message, "danger")
+            return redirect(url_for("ojs_seo.journal_history", journal_id=journal.id, _anchor="ojs-integrated-operation"))
+        except OjsSeoServiceError as error:
+            db.session.rollback()
+            flash(error.safe_message, "danger")
+            return redirect(url_for("ojs_seo.journal_history", journal_id=journal.id, _anchor="ojs-integrated-operation"))
+        flash(
+            "Análise das páginas pendente cancelada. A coleta bibliográfica concluída foi preservada.",
+            "success",
+        )
+        return redirect(url_for("ojs_seo.journal_history", journal_id=journal.id, _anchor="ojs-integrated-operation"))
+    if run.status != "pending":
+        abort(404)
+    return render_template(
+        "platform/ojs_seo/html_audit_cancel.html",
+        project=journal.analytics_project,
+        journal=journal,
+        audit=_html_audit_view(run),
+    )
 
 
 @ojs_seo_bp.route("/journals/<uuid:journal_id>/audits/<uuid:audit_id>/cancel", methods=("GET", "POST"))

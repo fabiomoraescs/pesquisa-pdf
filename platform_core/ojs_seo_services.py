@@ -38,6 +38,7 @@ from .models import (
     OjsHtmlAuditCampaign,
     OjsHtmlAuditRun,
     OjsJournal,
+    OjsSeoAnalysisOperation,
     OjsSeoAuditRun,
     PlanTool,
     User,
@@ -679,6 +680,13 @@ def _delete_ojs_project_records(journal: OjsJournal, project: AnalyticsProject) 
     db.session.execute(delete(OjsArticleHtmlAnalysis).where(
         OjsArticleHtmlAnalysis.journal_id == journal.id
     ))
+    # A operação integrada referencia tanto a coleta OAI quanto a campanha
+    # HTML por FKs compostas. Ela precisa sair antes dos seus registros
+    # históricos; isso também permite excluir normalmente um periódico cuja
+    # etapa HTML tenha sido cancelada de forma segura.
+    db.session.execute(delete(OjsSeoAnalysisOperation).where(
+        OjsSeoAnalysisOperation.journal_id == journal.id
+    ))
     db.session.execute(delete(OjsHtmlAuditRun).where(OjsHtmlAuditRun.journal_id == journal.id))
     db.session.execute(delete(OjsHtmlAuditCampaign).where(
         OjsHtmlAuditCampaign.journal_id == journal.id
@@ -976,6 +984,164 @@ def cancel_pending_ojs_seo_audit(actor: User, audit_run_id: str) -> OjsSeoAuditR
         raise OjsSeoAuditCancellationError(
             "ojs_audit_cancel_busy",
             "Não foi possível cancelar a auditoria agora porque há outra operação em andamento. Tente novamente.",
+        ) from exc
+
+
+def cancel_pending_ojs_html_audit(
+    actor: User,
+    journal_id: str,
+    audit_run_id: str,
+) -> OjsHtmlAuditRun:
+    """Cancela somente a etapa HTML ainda pendente de um periódico autorizado.
+
+    A campanha pode já ter começado em lotes anteriores, mas o cancelamento só
+    é permitido quando o lote atualmente aberto ainda não tem claim. O lock do
+    periódico é o mesmo utilizado pelo worker HTML: a operação administrativa
+    e o claim concorrem de forma atômica, sem permitir que um resultado HTTP
+    seja descartado depois de iniciado.
+    """
+    require_ojs_seo_access(actor)
+    if not isinstance(journal_id, str) or not journal_id:
+        raise OjsSeoNotFoundError("ojs_journal_not_found", "O periódico OJS não foi encontrado.")
+    if not isinstance(audit_run_id, str) or not audit_run_id:
+        raise OjsSeoNotFoundError("ojs_html_audit_not_found", "A análise técnica HTML não foi encontrada.")
+    _require_clean_local_session()
+    try:
+        with _exclusive_reservation_transaction():
+            # O worker HTML também bloqueia este periódico antes de fazer seu
+            # compare-and-set. Em SQLite, BEGIN IMMEDIATE oferece a mesma
+            # serialização para todos os registros da transação curta.
+            journal = _locked_journal_for_actor_in_transaction(actor, journal_id)
+            run = db.session.scalar(_locked_statement(select(OjsHtmlAuditRun).where(
+                OjsHtmlAuditRun.id == audit_run_id,
+                OjsHtmlAuditRun.journal_id == journal.id,
+            )))
+            if run is None:
+                raise OjsSeoNotFoundError(
+                    "ojs_html_audit_not_found", "A análise técnica HTML não foi encontrada."
+                )
+            # Repetir uma confirmação já concluída não reabre a fila nem
+            # altera o histórico. A primeira gravação já deixou campanha e
+            # operação integradas em estado terminal.
+            if run.status == "canceled":
+                return run
+            if run.status != "pending":
+                raise OjsSeoAuditCancellationError(
+                    "ojs_html_audit_not_pending",
+                    "Somente análises das páginas pendentes podem ser canceladas.",
+                )
+
+            campaign = None
+            operation = None
+            if run.campaign_id:
+                campaign = db.session.scalar(_locked_statement(select(OjsHtmlAuditCampaign).where(
+                    OjsHtmlAuditCampaign.id == run.campaign_id,
+                    OjsHtmlAuditCampaign.journal_id == journal.id,
+                )))
+                if campaign is None:
+                    raise OjsSeoAuditCancellationError(
+                        "ojs_html_campaign_not_found",
+                        "A campanha da análise das páginas não está disponível para cancelamento.",
+                    )
+                if campaign.status not in {"pending", "running"}:
+                    raise OjsSeoAuditCancellationError(
+                        "ojs_html_campaign_not_open",
+                        "A campanha da análise das páginas não está em condição segura para cancelamento.",
+                    )
+                # A restrição de fila já impede dois lotes abertos, mas a
+                # checagem explícita preserva a regra caso um histórico legado
+                # não tenha sido criado sob a restrição atual.
+                running_id = db.session.scalar(_locked_statement(select(OjsHtmlAuditRun.id).where(
+                    OjsHtmlAuditRun.journal_id == journal.id,
+                    OjsHtmlAuditRun.status == "running",
+                ).limit(1)))
+                if running_id is not None:
+                    raise OjsSeoAuditCancellationError(
+                        "ojs_html_audit_claimed_before_cancel",
+                        "A análise das páginas já está em execução e não pode mais ser cancelada.",
+                    )
+                operation = db.session.scalar(_locked_statement(select(OjsSeoAnalysisOperation).where(
+                    OjsSeoAnalysisOperation.html_campaign_id == campaign.id,
+                    OjsSeoAnalysisOperation.journal_id == journal.id,
+                )))
+                if operation is not None and operation.status not in {"html_pending", "html_running"}:
+                    raise OjsSeoAuditCancellationError(
+                        "ojs_integrated_html_not_open",
+                        "A operação integrada não está em condição segura para cancelar a etapa HTML.",
+                    )
+
+            completed_at = utcnow()
+            result = db.session.execute(
+                update(OjsHtmlAuditRun)
+                .where(
+                    OjsHtmlAuditRun.id == run.id,
+                    OjsHtmlAuditRun.journal_id == journal.id,
+                    OjsHtmlAuditRun.status == "pending",
+                    OjsHtmlAuditRun.claim_token.is_(None),
+                    OjsHtmlAuditRun.claimed_at.is_(None),
+                    OjsHtmlAuditRun.lease_expires_at.is_(None),
+                )
+                .values(
+                    status="canceled",
+                    completed_at=completed_at,
+                    completion_reason="canceled_by_user",
+                    claim_token=None,
+                    claimed_at=None,
+                    lease_expires_at=None,
+                )
+            )
+            if result.rowcount != 1:
+                raise OjsSeoAuditCancellationError(
+                    "ojs_html_audit_claimed_before_cancel",
+                    "A análise das páginas foi assumida pelo processamento e não pode mais ser cancelada.",
+                )
+            db.session.refresh(run)
+
+            if campaign is not None:
+                previous_campaign_status = campaign.status
+                campaign.status = "canceled"
+                campaign.completion_reason = "canceled_by_user"
+                campaign.completed_at = completed_at
+                campaign.updated_at = completed_at
+                record_audit(actor, "ojs_seo_html_campaign_canceled", "ojs_html_audit_campaign", campaign.id, {
+                    "status": previous_campaign_status,
+                    "journal_id": journal.id,
+                }, {
+                    "status": "canceled",
+                    "completion_reason": "canceled_by_user",
+                    "completed_at": completed_at.isoformat(),
+                })
+
+            if operation is not None:
+                previous_operation_status = operation.status
+                operation.status = "canceled"
+                operation.completion_reason = "canceled_by_user"
+                operation.completed_at = completed_at
+                operation.updated_at = completed_at
+                record_audit(actor, "ojs_seo_integrated_html_canceled", "ojs_seo_analysis_operation", operation.id, {
+                    "status": previous_operation_status,
+                    "journal_id": journal.id,
+                    "html_campaign_id": campaign.id if campaign is not None else None,
+                }, {
+                    "status": "canceled",
+                    "completion_reason": "canceled_by_user",
+                    "completed_at": completed_at.isoformat(),
+                })
+
+            record_audit(actor, "ojs_seo_html_audit_canceled", "ojs_html_audit_run", run.id, {
+                "status": "pending",
+                "journal_id": journal.id,
+                "campaign_id": run.campaign_id,
+            }, {
+                "status": "canceled",
+                "completion_reason": "canceled_by_user",
+                "completed_at": completed_at.isoformat(),
+            })
+            return run
+    except OperationalError as exc:
+        raise OjsSeoAuditCancellationError(
+            "ojs_html_audit_cancel_busy",
+            "Não foi possível cancelar a análise das páginas agora porque há outra operação em andamento. Tente novamente.",
         ) from exc
 
 

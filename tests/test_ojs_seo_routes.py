@@ -979,6 +979,8 @@ class OjsSeoRouteTests(unittest.TestCase):
         self.assertEqual(409, duplicate.status_code)
         self.assertIsInstance(duplicate.get_json()["message"], str)
         self.assertEqual(1, db.session.scalar(select(func.count()).select_from(OjsSeoAuditRun)))
+        self.assertEqual(0, db.session.scalar(select(func.count()).select_from(OjsHtmlAuditCampaign)))
+        self.assertEqual(0, db.session.scalar(select(func.count()).select_from(OjsSeoAnalysisOperation)))
 
     def test_completed_metrics_remain_visible_while_latest_audit_is_pending_or_running(self):
         journal = _journal(self.owner, name="Indicadores persistidos")
@@ -1158,6 +1160,164 @@ class OjsSeoRouteTests(unittest.TestCase):
         )})
         self.assertEqual(404, denied.status_code)
         self.assertEqual("pending", db.session.get(OjsSeoAuditRun, foreign_pending.id).status)
+
+    def test_pending_html_cancel_preserves_oai_and_unblocks_archive_then_delete(self):
+        journal = _journal(self.owner, name="Cancelar somente páginas")
+        _allocate(self.subscription, journal)
+        source = OjsSeoAuditRun(
+            journal_id=journal.id,
+            status="completed",
+            started_at=utcnow() - timedelta(minutes=2),
+            completed_at=utcnow() - timedelta(minutes=1),
+            record_count=1,
+        )
+        article = OjsArticle(
+            journal_id=journal.id,
+            oai_identifier="oai:journal.example.test:html-cancel:1",
+            title="Coleta bibliográfica preservada",
+            record_status="active",
+            last_observed_at=utcnow(),
+        )
+        db.session.add_all((source, article))
+        db.session.flush()
+        observation = OjsArticleObservation(
+            journal_id=journal.id,
+            article_id=article.id,
+            audit_run_id=source.id,
+            record_status="active",
+            dublin_core_json={"title": [article.title]},
+            observed_at=utcnow(),
+        )
+        campaign = OjsHtmlAuditCampaign(
+            journal_id=journal.id,
+            source_oai_audit_run_id=source.id,
+            status="pending",
+            batch_count=1,
+        )
+        db.session.add_all((observation, campaign))
+        db.session.flush()
+        html_run = OjsHtmlAuditRun(
+            journal_id=journal.id,
+            source_oai_audit_run_id=source.id,
+            campaign_id=campaign.id,
+            status="pending",
+        )
+        db.session.add(html_run)
+        db.session.flush()
+        operation = OjsSeoAnalysisOperation(
+            journal_id=journal.id,
+            mode="initial",
+            status="html_pending",
+            oai_audit_run_id=source.id,
+            html_campaign_id=campaign.id,
+        )
+        db.session.add(operation)
+        db.session.commit()
+        journal_id, article_id = journal.id, article.id
+        source_id, campaign_id, html_run_id, operation_id = (
+            source.id, campaign.id, html_run.id, operation.id,
+        )
+
+        self._login_owner()
+        history_path = f"/analytics/ojs-seo/journals/{journal.id}/history"
+        cancel_path = f"/analytics/ojs-seo/journals/{journal.id}/technical-audits/{html_run.id}/cancel"
+        history = self.client.get(history_path)
+        self.assertEqual(200, history.status_code)
+        self.assertIn(f'href="{cancel_path}"', history.get_data(as_text=True))
+
+        confirmation = self.client.get(cancel_path)
+        self.assertEqual(200, confirmation.status_code)
+        confirmation_html = confirmation.get_data(as_text=True)
+        self.assertIn("Cancelar análise das páginas?", confirmation_html)
+        self.assertIn("coleta bibliográfica concluída será preservada", confirmation_html)
+        self.assertEqual(400, self.client.post(cancel_path).status_code)
+
+        canceled = self.client.post(cancel_path, data={"csrf_token": self._csrf(cancel_path)})
+        self.assertEqual(302, canceled.status_code)
+        db.session.expire_all()
+        self.assertEqual("completed", db.session.get(OjsSeoAuditRun, source_id).status)
+        self.assertIsNotNone(db.session.get(OjsArticle, article_id))
+        self.assertEqual(("canceled", "canceled_by_user"), (
+            db.session.get(OjsHtmlAuditRun, html_run_id).status,
+            db.session.get(OjsHtmlAuditRun, html_run_id).completion_reason,
+        ))
+        self.assertEqual(("canceled", "canceled_by_user"), (
+            db.session.get(OjsHtmlAuditCampaign, campaign_id).status,
+            db.session.get(OjsHtmlAuditCampaign, campaign_id).completion_reason,
+        ))
+        self.assertEqual(("canceled", "canceled_by_user"), (
+            db.session.get(OjsSeoAnalysisOperation, operation_id).status,
+            db.session.get(OjsSeoAnalysisOperation, operation_id).completion_reason,
+        ))
+        self.assertEqual(1, db.session.scalar(select(func.count()).select_from(AuditLog).where(
+            AuditLog.action == "ojs_seo_html_audit_canceled"
+        )))
+        self.assertNotIn(f'href="{cancel_path}"', self.client.get(history_path).get_data(as_text=True))
+
+        # Reenviar o POST após a confirmação não reabre a fila nem duplica a
+        # evidência administrativa já registrada.
+        repeated = self.client.post(cancel_path, data={"csrf_token": self._csrf(history_path)})
+        self.assertEqual(302, repeated.status_code)
+        self.assertEqual(1, db.session.scalar(select(func.count()).select_from(AuditLog).where(
+            AuditLog.action == "ojs_seo_html_audit_canceled"
+        )))
+
+        self.assertEqual(302, self._archive(db.session.get(OjsJournal, journal_id)).status_code)
+        delete_path = f"/analytics/ojs-seo/journals/{journal_id}/delete"
+        deleted = self.client.post(delete_path, data={
+            "csrf_token": self._csrf(delete_path), "confirmation": "deletar",
+        })
+        self.assertEqual(302, deleted.status_code)
+        self.assertIsNone(db.session.get(OjsJournal, journal_id))
+        self.assertIsNone(db.session.get(OjsSeoAnalysisOperation, operation_id))
+
+    def test_html_cancel_refuses_claimed_run_and_hides_a_foreign_journal(self):
+        journal = _journal(self.owner, name="HTML em execução")
+        source = OjsSeoAuditRun(journal_id=journal.id, status="completed", completed_at=utcnow())
+        db.session.add(source)
+        db.session.flush()
+        campaign = OjsHtmlAuditCampaign(
+            journal_id=journal.id, source_oai_audit_run_id=source.id, status="running",
+            started_at=utcnow(), batch_count=1,
+        )
+        db.session.add(campaign)
+        db.session.flush()
+        now = utcnow()
+        running = OjsHtmlAuditRun(
+            journal_id=journal.id, source_oai_audit_run_id=source.id, campaign_id=campaign.id,
+            status="running", started_at=now, claimed_at=now,
+            lease_expires_at=now + timedelta(minutes=5), claim_token=str(uuid4()),
+        )
+        foreign_journal = _journal(self.other, name="HTML pendente alheio")
+        foreign_source = OjsSeoAuditRun(
+            journal_id=foreign_journal.id, status="completed", completed_at=utcnow(),
+        )
+        db.session.add(foreign_source)
+        db.session.flush()
+        foreign_run = OjsHtmlAuditRun(
+            journal_id=foreign_journal.id, source_oai_audit_run_id=foreign_source.id, status="pending",
+        )
+        db.session.add_all((running, foreign_run))
+        db.session.commit()
+
+        self._login_owner()
+        own_path = f"/analytics/ojs-seo/journals/{journal.id}/technical-audits/{running.id}/cancel"
+        refused = self.client.post(own_path, data={"csrf_token": self._csrf(
+            f"/analytics/ojs-seo/journals/{journal.id}/history"
+        )})
+        self.assertEqual(302, refused.status_code)
+        self.assertEqual(("running", running.claim_token), (
+            db.session.get(OjsHtmlAuditRun, running.id).status,
+            db.session.get(OjsHtmlAuditRun, running.id).claim_token,
+        ))
+        foreign_path = (
+            f"/analytics/ojs-seo/journals/{foreign_journal.id}/technical-audits/{foreign_run.id}/cancel"
+        )
+        denied = self.client.post(foreign_path, data={"csrf_token": self._csrf(
+            f"/analytics/ojs-seo/journals/{journal.id}/history"
+        )})
+        self.assertEqual(404, denied.status_code)
+        self.assertEqual("pending", db.session.get(OjsHtmlAuditRun, foreign_run.id).status)
 
     def test_audit_dashboard_and_article_details_preserve_multivalued_metadata(self):
         journal = _journal(self.owner, name="Auditoria OJS")
@@ -1933,7 +2093,8 @@ class OjsSeoRouteTests(unittest.TestCase):
         self._login_owner()
         history_path = f"/analytics/ojs-seo/journals/{journal.id}/history"
         page = self.client.get(history_path)
-        self.assertIn("Analisar periódico", page.get_data(as_text=True))
+        self.assertIn("Análise completa", page.get_data(as_text=True))
+        self.assertIn("Análise bibliográfica", page.get_data(as_text=True))
         response = self.client.post(
             f"/analytics/ojs-seo/journals/{journal.id}/integrated-analyses",
             data={"csrf_token": self._csrf(history_path)},

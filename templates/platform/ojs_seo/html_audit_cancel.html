@@ -1,0 +1,17 @@
+{% extends "platform/base.html" %}
+{% block title %}Cancelar análise das páginas — {{ project.name }}{% endblock %}
+{% block body %}
+<section class="platform-panel" aria-labelledby="ojs-seo-cancel-html-audit-title">
+  <h1 id="ojs-seo-cancel-html-audit-title" class="h4 mb-3">Cancelar análise das páginas?</h1>
+  <p>A análise técnica de <strong>{{ project.name }}</strong> ainda aguarda o worker HTML.</p>
+  <p class="platform-muted">A coleta bibliográfica concluída será preservada. Somente a etapa HTML ainda não iniciada será cancelada; depois que não houver outras operações abertas, o periódico poderá ser arquivado normalmente.</p>
+  <form method="post" action="{{ url_for('ojs_seo.cancel_html_audit', journal_id=journal.id, audit_id=audit.run.id) }}" data-platform-loading-overlay-form data-loading-overlay-target="ojs-seo-overlay-processamento">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="d-flex flex-wrap gap-2">
+      <a class="btn btn-outline-primary" href="{{ url_for('ojs_seo.journal_history', journal_id=journal.id, _anchor='ojs-integrated-operation') }}" data-platform-loading-overlay-link data-loading-overlay-target="ojs-seo-overlay-processamento">Voltar</a>
+      <button class="btn btn-outline-danger" type="submit" data-loading-overlay-submit>Cancelar análise das páginas</button>
+    </div>
+  </form>
+</section>
+{% include 'platform/ojs_seo/_loading_overlay.html' %}
+{% endblock %}
