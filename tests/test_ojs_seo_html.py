@@ -1155,7 +1155,13 @@ class OjsHtmlPersistenceAndExecutorTests(unittest.TestCase):
         self.assertEqual("html_pending", advanced.status)
         self.assertIsNotNone(advanced.html_campaign_id)
         campaign = db.session.get(OjsHtmlAuditCampaign, advanced.html_campaign_id)
-        self.assertEqual(run.id, campaign.source_oai_audit_run_id)
+        # A referência atual é idêntica à anterior. A continuidade deve usar
+        # a cobertura da referência anterior, explicitamente vinculada à nova
+        # coleta, em vez de repetir páginas já verificadas.
+        self.assertEqual(self.source.id, campaign.source_oai_audit_run_id)
+        self.assertEqual(run.id, campaign.parameters_json["compatible_with_oai_audit_run_id"])
+        self.assertEqual("integrated_unchanged_continuation", campaign.parameters_json["requested_by"])
+        self.assertEqual(self.source.id, advanced.parameters_json["html_continuation_reference_oai_audit_run_id"])
         self.assertEqual(1, campaign.batch_count)
 
     def test_integrated_update_without_bibliographic_changes_reuses_only_the_labeled_prior_coverage(self):

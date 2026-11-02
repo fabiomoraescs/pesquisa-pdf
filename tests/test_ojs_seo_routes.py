@@ -397,6 +397,7 @@ class OjsSeoRouteTests(unittest.TestCase):
 
     def test_journal_list_uses_archive_confirmation_and_delete_is_archived_only(self):
         journal = _journal(self.owner, name="Projeto para exclusão")
+        _allocate(self.subscription, journal)
         self._login_owner()
         delete_path = f"/analytics/ojs-seo/journals/{journal.id}/delete"
         archive_path = f"/analytics/ojs-seo/journals/{journal.id}/archive"
@@ -440,6 +441,7 @@ class OjsSeoRouteTests(unittest.TestCase):
 
     def test_project_delete_requires_csrf_confirmation_and_owner_scope(self):
         journal = _journal(self.owner)
+        _allocate(self.subscription, journal)
         self._login_owner()
         self.assertEqual(302, self._archive(journal).status_code)
         delete_path = f"/analytics/ojs-seo/journals/{journal.id}/delete"
@@ -671,7 +673,10 @@ class OjsSeoRouteTests(unittest.TestCase):
             WorkspaceSubscriptionOjsJournal
         ).where(WorkspaceSubscriptionOjsJournal.workspace_subscription_id == self.subscription.id,
                 WorkspaceSubscriptionOjsJournal.status == "active")))
-        self.assertNotIn("Projeto para arquivar", self.client.get("/analytics/ojs-seo").get_data(as_text=True))
+        home_after_archive = self.client.get("/analytics/ojs-seo").get_data(as_text=True)
+        self.assertIn('<span class="platform-badge">0 periódico(s) ativo(s)</span>', home_after_archive)
+        archived_history_index = home_after_archive.index("Periódicos arquivados — histórico")
+        self.assertGreater(home_after_archive.index("Projeto para arquivar"), archived_history_index)
 
         archived = self.client.get("/analytics/ojs-seo/journals/archived")
         archived_html = archived.get_data(as_text=True)
@@ -761,10 +766,14 @@ class OjsSeoRouteTests(unittest.TestCase):
         self._login_owner()
         html = self.client.get("/analytics/ojs-seo").get_data(as_text=True)
         self.assertIn("Periódico ativo", html)
-        self.assertNotIn("Periódico arquivado", html)
-        self.assertIn("Última coleta concluída", html)
-        self.assertIn("Registros recuperados: 383", html)
-        self.assertIn("DOIs identificados: 337", html)
+        self.assertIn('<span class="platform-badge">1 periódico(s) ativo(s)</span>', html)
+        archived_history_index = html.index("Periódicos arquivados — histórico")
+        self.assertGreater(html.index("Periódico arquivado"), archived_history_index)
+        # O painel consolidado informa a referência pela tabela, sem duplicar
+        # os rótulos detalhados da página individual. O número ativo confirma
+        # que a referência concluída prevaleceu sobre a solicitação pendente.
+        self.assertIn("Referência bibliográfica", html)
+        self.assertIn("</td><td>383</td>", html)
         # Ambas as alocações permanecem ativas; o arquivamento não abre uma
         # vaga nem a interface deriva o uso da quantidade de cartões ativos.
         self.assertIn("<td>2</td><td>2</td><td>0</td>", html)
