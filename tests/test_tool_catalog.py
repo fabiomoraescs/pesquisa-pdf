@@ -2,6 +2,7 @@
 import json
 import re
 import unittest
+from html import unescape
 from pathlib import Path
 
 from platform_helpers import create_user, csrf_from, isolated_platform, login
@@ -29,22 +30,24 @@ class ToolCatalogTests(unittest.TestCase):
         matrix_response = self.client.get('/admin/definir-acessos')
         matrix = matrix_response.text
         sidebar = self.client.get('/').text.split('<nav class="platform-nav"', 1)[1].split('</nav>', 1)[0]
+        sidebar_text = unescape(sidebar)
         token = csrf_from(matrix_response)
         before = {(row.plan_id, row.tool_id) for row in db.session.scalars(db.select(PlanTool))}
         for identifier, name, symbol in (
             ("quantitative_analysis", "Pesquisa Quanti", "quantitativa"),
-            ("ojs_seo", "OJS SEO", "seo"),
             ("ojs_analytics", "OJS Analytics", "analytics"),
             ("bibliographic_search", "Busca Bibliográfica", "ficha"),
+            ("transcription", "Transcrição", "transcricao"),
+            ("marketing_funnels", "Marketing & Funis", "funis"),
         ):
             with self.subTest(tool=identifier):
                 card = re.search(rf'<article[^>]*data-tool-id="{identifier}"[^>]*>(.*?)</article>', tools_html, re.S)[1]
                 row = re.search(rf'<tr data-tool-id="{identifier}">(.*?)</tr>', matrix, re.S)[1]
                 for fragment in (card, row):
-                    self.assertIn(name, fragment)
+                    self.assertIn(name, unescape(fragment))
                     self.assertIn(str(icon(symbol)), fragment)
-                self.assertIn(name, sidebar)
-                self.assertNotRegex(sidebar, rf'href="[^"]*">(?:<[^>]+>)*{re.escape(name)}<')
+                self.assertIn(name, sidebar_text)
+                self.assertNotRegex(sidebar_text, rf'href="[^"]*">(?:<[^>]+>)*{re.escape(name)}<')
                 self.assertIn("Indisponível", card)
                 self.assertNotIn('<form', card)
                 inputs = re.findall(r'<input\b[^>]*>', row)
@@ -80,9 +83,10 @@ class ToolCatalogTests(unittest.TestCase):
             "Análise Documental": 0,
             "Pesquisa Quanti": 0,
             "Instagram": 0,
-            "OJS SEO": 0,
             "OJS Analytics": 0,
             "Busca Bibliográfica": 0,
+            "Transcrição": 0,
+            "Marketing & Funis": 0,
         })
         # Qualquer outra ferramenta persistida permanece no catálogo administrativo
         # e é exibida como categoria mesmo quando não possui rota implementada.
@@ -97,7 +101,8 @@ class ToolCatalogTests(unittest.TestCase):
         self.assertEqual(len(catalog), len({tool["id"] for tool in catalog}))
         self.assertEqual({tool["name"] for tool in catalog}, {
             "Raspagem por termos", "Raspagem estruturada", "Análise Documental",
-            "Pesquisa Quanti", "Instagram", "OJS SEO", "OJS Analytics", "Busca Bibliográfica",
+            "Pesquisa Quanti", "Instagram", "OJS Analytics", "Busca Bibliográfica",
+            "Transcrição", "Marketing & Funis",
             "Outra ferramenta",
         })
         for path in ('/admin/ferramentas', '/admin/definir-acessos'):
@@ -110,8 +115,9 @@ class ToolCatalogTests(unittest.TestCase):
             "Análise Documental": 3,
             "Pesquisa Quanti": 0,
             "Instagram": 0,
-            "OJS SEO": 0,
             "OJS Analytics": 0,
             "Busca Bibliográfica": 0,
+            "Transcrição": 0,
+            "Marketing & Funis": 0,
             "Outra ferramenta": 1,
         })

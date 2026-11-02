@@ -50,6 +50,14 @@ class CommercialCatalogTests(unittest.TestCase):
         self.assertTrue(commercial_plan_definition("research_quanti").eligible_for_new_assignment)
         self.assertTrue(commercial_plan_definition("marketing_sites").eligible_for_new_assignment)
         self.assertIn("ojs_seo", commercial_plan_definition("marketing_sites").planned_tool_ids)
+        for plan in COMMERCIAL_PLANS:
+            with self.subTest(plan=plan.plan_id):
+                self.assertIn("transcription", plan.planned_tool_ids)
+                self.assertNotIn("transcription", plan.available_tool_ids)
+        for plan_id in ("marketing_instagram", "marketing_sites", "marketing_complete", "integral"):
+            self.assertIn("marketing_funnels", commercial_plan_definition(plan_id).planned_tool_ids)
+        for plan_id in ("research_quali", "research_quanti", "research_complete"):
+            self.assertNotIn("marketing_funnels", commercial_plan_definition(plan_id).planned_tool_ids)
         self.assertIsNone(commercial_plan_definition("student"))
 
     def test_commercial_labels_use_definitive_names_without_changing_technical_plan_ids(self):
@@ -110,7 +118,9 @@ class CommercialPlanIntegrationTests(unittest.TestCase):
             if not tool_definition(tool_id).requires_explicit_provisioning
         }
         self.assertTrue(expected.issubset(links))
-        self.assertFalse(any(tool_id in {"quantitative_analysis", "ojs_seo", "ojs_analytics"}
+        self.assertFalse(any(tool_id in {
+            "quantitative_analysis", "ojs_seo", "ojs_analytics", "transcription", "marketing_funnels",
+        }
                              for _plan_id, tool_id in links))
         snapshot = (set(links), {plan.id for plan in db.session.scalars(select(Plan))})
         seed_platform()

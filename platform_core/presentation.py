@@ -42,6 +42,7 @@ LABELS = {
     "qualitative_analysis": "Análise Documental", "analytics_instagram": "Instagram",
     "quantitative_analysis": "Pesquisa Quanti", "ojs_seo": "OJS SEO",
     "ojs_analytics": "OJS Analytics", "bibliographic_search": "Busca Bibliográfica",
+    "transcription": "Transcrição", "marketing_funnels": "Marketing & Funis",
     "user_registered": "Usuário cadastrado", "admin_created": "Administrador criado",
     "user_status_changed": "Estado do usuário alterado",
     "access_grant_changed": "Acesso alterado", "tool_override_changed": "Permissão de ferramenta alterada",

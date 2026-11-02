@@ -49,6 +49,9 @@ class ToolDefinition:
     # publicação administrativa explícita. Isso evita que um bootstrap ou
     # seed genérico disponibilize uma integração nova por acidente.
     requires_explicit_provisioning: bool = False
+    # A descrição pertence ao catálogo, inclusive para capacidades futuras que
+    # ainda não possuem uma ``Tool`` persistida ou uma página própria.
+    description: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,6 +101,17 @@ TOOL_DEFINITIONS: tuple[ToolDefinition, ...] = (
     ),
     ToolDefinition("analytics", "ojs_analytics", "OJS Analytics", 2, "future", icon="analytics"),
     ToolDefinition(None, "bibliographic_search", "Busca Bibliográfica", 0, "future", icon="ficha"),
+    ToolDefinition(
+        None, "transcription", "Transcrição", 1, "future", icon="transcricao",
+        description="Transcrição de áudio planejada como ferramenta compartilhada para pesquisa e gestão.",
+    ),
+    ToolDefinition(
+        None, "marketing_funnels", "Marketing & Funis", 2, "future", icon="funis",
+        description=(
+            "CRM, campanhas de e-mail, funis acadêmicos, automações e reforços opcionais por WhatsApp, "
+            "planejados separadamente da Mala Direta do OJS Analytics."
+        ),
+    ),
 )
 
 
@@ -193,6 +207,7 @@ def legacy_unavailable_tool_entries() -> tuple[dict[str, object], ...]:
             "group_id": tool.group_id,
             "name": tool.name,
             "icon": tool.icon,
+            "description": tool.description,
         }
         for tool in tools_in_display_order()
         if tool.implementation_status != "available"
@@ -274,16 +289,18 @@ def administrative_catalog_entries(persisted_tools: Iterable[object]) -> list[di
             rows.append(((group.group_order if group else len(TOOL_GROUPS), tool.tool_order, tool.tool_id), {
                 "id": str(persisted.id), "group_id": tool.group_id, "name": tool.name,
                 "active": bool(persisted.active), "implemented": True, "icon": tool.icon,
+                "description": tool.description or str(getattr(persisted, "description", "") or ""),
             }))
         else:
             rows.append(((group.group_order if group else len(TOOL_GROUPS), tool.tool_order, tool.tool_id), {
                 "id": tool.tool_id, "group_id": tool.group_id, "name": tool.name,
-                "active": False, "implemented": False, "icon": tool.icon,
+                "active": False, "implemented": False, "icon": tool.icon, "description": tool.description,
             }))
     for tool_id, tool in persisted_by_id.items():
         rows.append(((len(TOOL_GROUPS), len(rows), tool_id), {
             "id": tool_id, "group_id": None, "name": str(tool.name),
             "active": bool(tool.active), "implemented": True, "icon": None,
+            "description": str(getattr(tool, "description", "") or ""),
         }))
     return [row for _sort_key, row in sorted(rows, key=lambda item: item[0])]
 

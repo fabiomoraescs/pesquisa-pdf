@@ -693,8 +693,9 @@ assert.equal(events.at(-1).detail.tema,'black');
         self.assertNotIn("dashboard-chart-workspace", admin_html)
         self.assertEqual(chart_data(admin_html, "dashboard-admin-chart-data")["usage"], {
             "labels": ["Raspagem por termos", "Raspagem estruturada", "Análise Documental",
-                       "Pesquisa Quanti", "Instagram", "OJS Analytics", "Busca Bibliográfica"],
-            "values": [1, 1, 0, 0, 0, 0, 0],
+                       "Pesquisa Quanti", "Instagram", "OJS Analytics", "Busca Bibliográfica", "Transcrição",
+                       "Marketing & Funis"],
+            "values": [1, 1, 0, 0, 0, 0, 0, 0, 0],
         })
 
     def assert_recent_records_have_no_chart(self, html):
@@ -714,6 +715,8 @@ assert.equal(events.at(-1).detail.tema,'black');
         # Ferramentas futuras podem ser visíveis, mas continuam sem link operacional.
         self.assertIn("Pesquisa Quanti", html)
         self.assertIn("OJS SEO", html)
+        self.assertIn("Transcrição", html)
+        self.assertIn("Marketing &amp; Funis", html)
         self.assertIn("OJS Analytics", html)
         self.assertIn("Busca Bibliográfica", html)
         self.assertNotIn("Editorial", html)

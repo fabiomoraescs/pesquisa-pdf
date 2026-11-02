@@ -35,6 +35,8 @@ class ToolCatalogDefinitionTests(unittest.TestCase):
                 ("analytics", "ojs_seo"),
                 ("analytics", "ojs_analytics"),
                 (None, "bibliographic_search"),
+                (None, "transcription"),
+                (None, "marketing_funnels"),
             ],
         )
         self.assertTrue(all(tool.implementation_status in IMPLEMENTATION_STATUSES for tool in TOOL_DEFINITIONS))
@@ -55,12 +57,21 @@ class ToolCatalogDefinitionTests(unittest.TestCase):
         self.assertTrue(all(tool.tool_code is None and tool.route is None for tool in unavailable))
         self.assertEqual(
             {tool.tool_id for tool in unavailable},
-            {"quantitative_analysis", "ojs_analytics", "bibliographic_search"},
+            {"quantitative_analysis", "ojs_analytics", "bibliographic_search", "transcription", "marketing_funnels"},
         )
         explicit = next(tool for tool in available if tool.tool_id == "ojs_seo")
         self.assertTrue(explicit.requires_explicit_provisioning)
         self.assertNotIn("ojs_seo", {code for code, _name, _route in persistent_tool_seed_rows()})
-        self.assertEqual([tool.tool_id for tool in standalone_tools_in_display_order()], ["bibliographic_search"])
+        self.assertEqual(
+            [tool.tool_id for tool in standalone_tools_in_display_order()],
+            ["bibliographic_search", "transcription", "marketing_funnels"],
+        )
+        transcription = next(tool for tool in unavailable if tool.tool_id == "transcription")
+        marketing_funnels = next(tool for tool in unavailable if tool.tool_id == "marketing_funnels")
+        self.assertEqual(transcription.icon, "transcricao")
+        self.assertIn("áudio", transcription.description)
+        self.assertEqual(marketing_funnels.icon, "funis")
+        self.assertIn("Mala Direta do OJS Analytics", marketing_funnels.description)
 
     def test_catalog_definition_is_immutable(self):
         with self.assertRaises(Exception):
@@ -92,7 +103,10 @@ class VisibilityPolicyTests(unittest.TestCase):
                 "quantitative_analysis", ANALYTICS_INSTAGRAM_TOOL, "ojs_seo", "ojs_analytics",
             ],
         )
-        self.assertEqual([tool.tool_id for tool in visible_standalone_tools()], ["bibliographic_search"])
+        self.assertEqual(
+            [tool.tool_id for tool in visible_standalone_tools()],
+            ["bibliographic_search", "transcription", "marketing_funnels"],
+        )
 
     def test_hidden_group_removes_all_its_tools_without_mutating_individual_preferences(self):
         tools = {"pdf_scraper": False, "document_analysis": True}
@@ -129,7 +143,10 @@ class VisibilityPolicyTests(unittest.TestCase):
         self.assertIn("quantitative_analysis", [tool.tool_id for group in result for tool in group.tools])
         self.assertIn("ojs_seo", [tool.tool_id for group in result for tool in group.tools])
 
-        self.assertEqual(visible_standalone_tools(tool_visibility={"bibliographic_search": False}), ())
+        self.assertEqual(
+            [tool.tool_id for tool in visible_standalone_tools(tool_visibility={"bibliographic_search": False})],
+            ["transcription", "marketing_funnels"],
+        )
 
     def test_multiple_hidden_items_keep_the_official_order_when_reactivated(self):
         hidden = visible_navigation_groups(
@@ -157,7 +174,10 @@ class CatalogCompatibilityTests(unittest.TestCase):
     def test_seed_rows_reference_only_implemented_tools(self):
         expected_codes = {code for code, _name, _route in persistent_tool_seed_rows()}
         self.assertEqual(expected_codes, {"pdf_scraper", "document_analysis", "qualitative_analysis", ANALYTICS_INSTAGRAM_TOOL})
-        self.assertFalse(expected_codes & {"quantitative_analysis", "ojs_seo", "ojs_analytics", "bibliographic_search"})
+        self.assertFalse(expected_codes & {
+            "quantitative_analysis", "ojs_seo", "ojs_analytics", "bibliographic_search", "transcription",
+            "marketing_funnels",
+        })
 
     def test_administrative_adapter_preserves_existing_catalog_entries_and_order(self):
         persisted = (
@@ -169,15 +189,21 @@ class CatalogCompatibilityTests(unittest.TestCase):
         )
         rows = administrative_catalog_entries(persisted)
         self.assertEqual(
-            [row["name"] for row in rows[:8]],
+            [row["name"] for row in rows[:10]],
             [
                 "Raspagem por termos", "Raspagem estruturada", "Análise Documental",
                 "Pesquisa Quanti", "Instagram", "OJS SEO", "OJS Analytics", "Busca Bibliográfica",
+                "Transcrição", "Marketing & Funis",
             ],
         )
         self.assertTrue(all(row["implemented"] is False for row in rows if row["id"] in {
-            "quantitative_analysis", "ojs_analytics", "bibliographic_search",
+            "quantitative_analysis", "ojs_analytics", "bibliographic_search", "transcription", "marketing_funnels",
         }))
+        self.assertIn("áudio", next(row for row in rows if row["id"] == "transcription")["description"])
+        self.assertIn(
+            "Mala Direta do OJS Analytics",
+            next(row for row in rows if row["id"] == "marketing_funnels")["description"],
+        )
         self.assertTrue(next(row for row in rows if row["id"] == "ojs_seo")["implemented"])
 
 

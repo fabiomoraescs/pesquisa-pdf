@@ -71,6 +71,7 @@ class SidebarHeaderTests(unittest.TestCase):
             '>Raspagem por termos<', '>Raspagem estruturada<', '>Análise Documental<',
             '<span>Pesquisa Quanti</span>', '>Pesquisa Quanti<',
             '<span>Analytics</span>', '>Instagram<', '>OJS SEO<', '>OJS Analytics<', '>Busca Bibliográfica<',
+            '>Transcrição<', '>Marketing &amp; Funis<',
             'id="platform-admin-toggle"',
         )]
         self.assertEqual(positions, sorted(positions))
@@ -93,6 +94,8 @@ class SidebarHeaderTests(unittest.TestCase):
         self.assertIn('OJS SEO', nav)
         self.assertIn('OJS Analytics', nav)
         self.assertIn('Busca Bibliográfica', nav)
+        self.assertIn('Transcrição', nav)
+        self.assertIn('Marketing &amp; Funis', nav)
         self.assertNotIn('>Bases de análise</a>', nav)
         self.assertNotIn('Projetos arquivados', nav)
         self.assertNotIn('href="/chatdoc"', nav)
@@ -107,7 +110,7 @@ class SidebarHeaderTests(unittest.TestCase):
         ):
             self.assertNotIn(legacy_name, nav)
         self.assertNotIn('class="platform-nav-subdropdown"', nav)
-        self.assertEqual(nav.count('aria-disabled="true"'), 4)
+        self.assertEqual(nav.count('aria-disabled="true"'), 6)
         self.assertIn('aria-expanded="true"', nav)
         self.assertEqual(nav.count('class="platform-admin-submenu platform-nav-dropdown-menu"'), 3)
         self.assertIn('aria-controls="platform-admin-submenu"', nav)

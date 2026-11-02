@@ -46,6 +46,8 @@ class ToolVisibilitySidebarTests(unittest.TestCase):
         self.assertIn("OJS SEO", initial)
         self.assertIn("OJS Analytics", initial)
         self.assertIn("Busca Bibliográfica", initial)
+        self.assertIn("Transcrição", initial)
+        self.assertIn("Marketing &amp; Funis", initial)
         self.assertNotIn('href="/ojs-seo"', initial)
         self.assertNotIn('href="/ojs-analytics"', initial)
         self.assertNotIn("Editorial", initial)
@@ -100,21 +102,33 @@ class ToolVisibilitySidebarTests(unittest.TestCase):
         self.assertIn("OJS SEO", initial)
         self.assertIn("OJS Analytics", initial)
         self.assertIn("Busca Bibliográfica", initial)
+        self.assertIn("Transcrição", initial)
+        self.assertIn("Marketing &amp; Funis", initial)
         self.assertNotIn('href="/busca-bibliografica"', initial)
+        self.assertNotRegex(initial, r'href="[^"]*">(?:<[^>]+>)*Transcrição<')
+        self.assertNotRegex(initial, r'href="[^"]*">(?:<[^>]+>)*Marketing &amp; Funis<')
 
         self._set_visibility("tool", "ojs_seo", False)
         self._set_visibility("tool", "bibliographic_search", False)
+        self._set_visibility("tool", "transcription", False)
+        self._set_visibility("tool", "marketing_funnels", False)
         hidden = _sidebar(self.client.get("/").get_data(as_text=True))
         self.assertNotIn("OJS SEO", hidden)
         self.assertNotIn("Busca Bibliográfica", hidden)
+        self.assertNotIn("Transcrição", hidden)
+        self.assertNotIn("Marketing &amp; Funis", hidden)
         self.assertIn("OJS Analytics", hidden)
 
         self._set_visibility("tool", "ojs_seo", True)
         self._set_visibility("tool", "bibliographic_search", True)
+        self._set_visibility("tool", "transcription", True)
+        self._set_visibility("tool", "marketing_funnels", True)
         restored = _sidebar(self.client.get("/").get_data(as_text=True))
         self.assertLess(restored.index("Instagram"), restored.index("OJS SEO"))
         self.assertLess(restored.index("OJS SEO"), restored.index("OJS Analytics"))
         self.assertLess(restored.index("OJS Analytics"), restored.index("Busca Bibliográfica"))
+        self.assertLess(restored.index("Busca Bibliográfica"), restored.index("Transcrição"))
+        self.assertLess(restored.index("Transcrição"), restored.index("Marketing &amp; Funis"))
 
     def test_hidden_instagram_blocks_new_operations_without_altering_an_existing_run(self):
         project = AnalyticsProject(owner_user_id=self.user.id, module_key="instagram", name="Instagram")
@@ -169,8 +183,8 @@ class ToolVisibilitySidebarTests(unittest.TestCase):
         self.assertIn('.form-check-input:checked { background-color: var(--blue);', css)
         self.assertIn('.form-check-input.tool-visibility-child-switch:checked {', css)
         self.assertIn('background-color: var(--tool-visibility-switch-on);', css)
-        dark_default = 'html[data-theme="dark"] .form-check-input:checked'
-        dark_child = 'html[data-theme="dark"] .form-check-input.tool-visibility-child-switch:checked'
+        dark_default = 'html:is([data-theme="dark"], [data-theme="black"]) .form-check-input:checked'
+        dark_child = 'html:is([data-theme="dark"], [data-theme="black"]) .form-check-input.tool-visibility-child-switch:checked'
         self.assertGreater(css.index(dark_child), css.index(dark_default))
 
         sidebar_css = (Path(__file__).resolve().parents[1] / "static" / "css" / "platform.css").read_text(
