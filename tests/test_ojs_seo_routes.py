@@ -134,6 +134,16 @@ def _user(name: str, email: str):
     return user
 
 
+def _administrator(name: str, email: str):
+    from platform_core.models import User
+
+    user = User(name=name, email=email, role="admin", status="active")
+    user.set_password("senha-de-teste-segura-123")
+    db.session.add(user)
+    db.session.commit()
+    return user
+
+
 def _subscription(owner, *, status: str = "active", limit: int = 2) -> WorkspaceSubscription:
     workspace = Workspace(
         name=f"Área {owner.id[:8]}", workspace_type="individual", status="active", owner_user_id=owner.id
@@ -250,6 +260,7 @@ class OjsSeoRouteTests(unittest.TestCase):
         db.session.commit()
         self.owner = _user("Titular OJS", "route-owner@example.org")
         self.other = _user("Outra conta", "route-other@example.org")
+        self.administrator = _administrator("Administrador OJS", "route-admin@example.org")
         self.subscription = _subscription(self.owner)
         self.client = self.app.test_client()
 
@@ -260,6 +271,9 @@ class OjsSeoRouteTests(unittest.TestCase):
 
     def _login_owner(self):
         self._login_client(self.client, self.owner.email)
+
+    def _login_administrator(self):
+        self._login_client(self.client, self.administrator.email)
 
     @staticmethod
     def _login_client(client, email: str):
@@ -337,6 +351,49 @@ class OjsSeoRouteTests(unittest.TestCase):
         self.assertIn(self.subscription.id, html)
         self.assertNotIn('name="oai_endpoint_url"', html)
         self.assertIn('ojs-seo-action-group', html)
+
+    def test_administrator_without_subscription_uses_explicit_administrative_registration_context(self):
+        from platform_core.models import AccessGrant
+
+        subscriptions_before = db.session.scalar(select(func.count()).select_from(WorkspaceSubscription))
+        grants_before = db.session.scalar(select(func.count()).select_from(AccessGrant))
+        self._login_administrator()
+
+        form_response = self.client.get("/analytics/ojs-seo/journals/new")
+        form = form_response.get_data(as_text=True)
+        self.assertEqual(200, form_response.status_code)
+        self.assertIn("Cadastro administrativo", form)
+        self.assertNotIn('name="workspace_subscription_id"', form)
+        self.assertNotIn("Nenhuma assinatura elegível foi encontrada.", form)
+
+        token = csrf_from(form_response)
+        response = self.client.post("/analytics/ojs-seo/journals", data={
+            "csrf_token": token,
+            "project_name": "Revista Latitude",
+            "public_url": "https://periodicos.ufal.br/latitude",
+        })
+        self.assertEqual(302, response.status_code)
+        journal = db.session.scalar(select(OjsJournal).where(OjsJournal.analytics_project.has(
+            AnalyticsProject.name == "Revista Latitude"
+        )))
+        self.assertIsNotNone(journal)
+        self.assertEqual(self.administrator.id, journal.analytics_project.owner_user_id)
+        self.assertIsNone(db.session.scalar(select(WorkspaceSubscriptionOjsJournal).where(
+            WorkspaceSubscriptionOjsJournal.ojs_journal_id == journal.id
+        )))
+        self.assertEqual(subscriptions_before, db.session.scalar(select(func.count()).select_from(WorkspaceSubscription)))
+        self.assertEqual(grants_before, db.session.scalar(select(func.count()).select_from(AccessGrant)))
+
+        detail = self.client.get(response.headers["Location"])
+        self.assertEqual(200, detail.status_code)
+        audit = self.client.post(
+            f"/analytics/ojs-seo/journals/{journal.id}/audits",
+            data={"csrf_token": csrf_from(detail)},
+        )
+        self.assertEqual(302, audit.status_code)
+        self.assertEqual("pending", db.session.scalar(select(OjsSeoAuditRun.status).where(
+            OjsSeoAuditRun.journal_id == journal.id
+        )))
 
     def test_journal_list_uses_archive_confirmation_and_delete_is_archived_only(self):
         journal = _journal(self.owner, name="Projeto para exclusão")

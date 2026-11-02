@@ -6,10 +6,13 @@ sempre partem do proprietário do ``AnalyticsProject``. A autorização
 operacional continua sendo a já consolidada em ``AccessGrant``, ``PlanTool``
 e ``UserToolOverride``.
 
-O cadastro utiliza uma reserva durável de ``ojs_journals`` por
-``WorkspaceSubscription``. A descoberta externa é concluída antes da reserva;
-projeto, periódico e reserva são então confirmados em uma única transação
-curta. Nenhuma rota é exposta por este módulo.
+O cadastro comercial utiliza uma reserva durável de ``ojs_journals`` por
+``WorkspaceSubscription``. Administradores com a ferramenta operacional podem
+registrar periódicos próprios em um contexto administrativo explícito, sem
+criar uma assinatura ou reserva sintética. A descoberta externa é concluída
+antes da persistência; projeto, periódico e eventual reserva são então
+confirmados em uma única transação curta. Nenhuma rota é exposta por este
+módulo.
 """
 
 from __future__ import annotations
@@ -138,6 +141,19 @@ class OjsSeoSubscriptionUsage:
     available_slots: int
 
 
+@dataclass(frozen=True, slots=True)
+class OjsSeoJournalRegistrationContext:
+    """Contexto explícito que autoriza um novo periódico.
+
+    O modo administrativo não representa contrato comercial: ele é exclusivo
+    de administrador ativo com a ferramenta OJS SEO operacional e nunca gera
+    ``WorkspaceSubscription`` ou ``WorkspaceSubscriptionOjsJournal``.
+    """
+
+    mode: str
+    subscription: WorkspaceSubscription | None = None
+
+
 def require_ojs_seo_access(actor: User) -> None:
     """Aplica a autorização operacional existente sem usar ``abort``.
 
@@ -152,6 +168,31 @@ def require_ojs_seo_access(actor: User) -> None:
     if not can_access_tool(actor, OJS_SEO_TOOL_ID):
         raise OjsSeoAuthorizationError(
             "ojs_seo_access_denied", "A conta não está autorizada a utilizar OJS SEO."
+        )
+
+
+def has_administrative_ojs_context(actor: User) -> bool:
+    """Indica o contexto administrativo explícito, sem simular assinatura.
+
+    A condição depende da mesma autorização operacional do módulo. Assim, uma
+    conta marcada como administradora não contorna uma ferramenta desativada ou
+    removida do catálogo.
+    """
+    return bool(
+        isinstance(actor, User)
+        and actor.id
+        and actor.is_active
+        and actor.role == "admin"
+        and can_access_tool(actor, OJS_SEO_TOOL_ID)
+    )
+
+
+def _require_administrative_ojs_context(actor: User) -> None:
+    require_ojs_seo_access(actor)
+    if not has_administrative_ojs_context(actor):
+        raise OjsSeoAuthorizationError(
+            "ojs_seo_administrative_context_required",
+            "A operação administrativa do OJS SEO não está autorizada para esta conta.",
         )
 
 
@@ -189,7 +230,7 @@ def discover_ojs_journal(
 def register_ojs_journal(
     actor: User,
     *,
-    workspace_subscription_id: str,
+    workspace_subscription_id: str | None,
     public_url: str,
     oai_endpoint_url: str | None = None,
     project_name: str,
@@ -197,16 +238,18 @@ def register_ojs_journal(
     client_factory: ClientFactory | None = None,
     endpoint_validator: EndpointValidator = validate_oai_endpoint,
 ) -> OjsJournal:
-    """Descobre e cadastra uma revista com reserva comercial atômica.
+    """Descobre e cadastra uma revista em contexto comercial ou administrativo.
 
     A autorização é verificada duas vezes: antes da descoberta externa e outra
-    vez dentro da transação da reserva. Dessa forma, uma revogação de plano,
-    membership ou ferramenta entre as duas fases não confirma um projeto sem
-    direito comercial. O serviço possui e confirma a transação local; a sessão
-    precisa estar limpa antes da chamada.
+    vez dentro da transação de persistência. Dessa forma, uma revogação de
+    plano, membership ou ferramenta entre as duas fases não confirma um projeto
+    sem direito comercial nem sem contexto administrativo válido. O serviço
+    possui e confirma a transação local; a sessão precisa estar limpa antes da
+    chamada.
     """
     normalized_name = _validate_project_name(project_name)
     normalized_description = _validate_project_description(project_description)
+    registration_context = _registration_context_for_actor(actor, workspace_subscription_id)
     endpoint_candidate = oai_endpoint_url or suggested_oai_endpoint(public_url)
     discovery = discover_ojs_journal(
         actor,
@@ -219,11 +262,13 @@ def register_ojs_journal(
 
     try:
         with _exclusive_reservation_transaction():
-            subscription = _subscription_for_actor(
-                actor, workspace_subscription_id, require_capacity=True
+            registration_context = _registration_context_for_actor(
+                actor, workspace_subscription_id
             )
-            _reject_active_identity_duplicate(subscription.id, identity_hash)
-            _require_available_capacity(subscription)
+            subscription = registration_context.subscription
+            if subscription is not None:
+                _reject_active_identity_duplicate(subscription.id, identity_hash)
+                _require_available_capacity(subscription)
             project = AnalyticsProject(
                 owner_user_id=actor.id,
                 module_key=OJS_SEO_PROJECT_MODULE,
@@ -242,12 +287,17 @@ def register_ojs_journal(
             )
             db.session.add_all((project, journal))
             db.session.flush()
-            allocation = _reserve_journal_in_transaction(
-                subscription, journal, identity_hash, discovery.endpoint_url
+            allocation = (
+                _reserve_journal_in_transaction(
+                    subscription, journal, identity_hash, discovery.endpoint_url
+                )
+                if subscription is not None
+                else None
             )
             record_audit(actor, "ojs_seo_journal_registered", "ojs_journal", journal.id, {}, {
-                "workspace_subscription_id": subscription.id,
-                "allocation_id": allocation.id,
+                "registration_context": registration_context.mode,
+                "workspace_subscription_id": subscription.id if subscription is not None else None,
+                "allocation_id": allocation.id if allocation is not None else None,
                 "discovery_status": journal.discovery_status,
             })
             return journal
@@ -427,6 +477,8 @@ def delete_ojs_seo_project_permanently(
                     )
                 )
             ))
+            if not allocations:
+                _require_administrative_journal_context(actor, journal)
             released_allocations = 0
             for allocation in allocations:
                 # A mesma checagem usada para liberação isolada prova que o
@@ -503,11 +555,12 @@ def archive_ojs_seo_project(actor: User, journal_id: str) -> OjsJournal:
             # Confirma que o titular ainda pode administrar qualquer reserva
             # existente, mesmo se a assinatura tiver expirado. Arquivar é uma
             # operação de preservação; não concede nova capacidade comercial.
-            for allocation in db.session.scalars(_locked_statement(
+            allocations = list(db.session.scalars(_locked_statement(
                 select(WorkspaceSubscriptionOjsJournal).where(
                     WorkspaceSubscriptionOjsJournal.ojs_journal_id == journal.id,
                 )
-            )):
+            )))
+            for allocation in allocations:
                 _subscription_for_actor(
                     actor,
                     allocation.workspace_subscription_id,
@@ -515,6 +568,9 @@ def archive_ojs_seo_project(actor: User, journal_id: str) -> OjsJournal:
                     require_operational_access=False,
                     require_active_subscription=False,
                 )
+
+            if not allocations:
+                _require_administrative_journal_context(actor, journal)
 
             project.status = "archived"
             project.archived_at = utcnow()
@@ -557,22 +613,25 @@ def restore_ojs_seo_project(actor: User, journal_id: str) -> OjsJournal:
                 )
             _reject_open_ojs_audits(journal, "restaurar")
 
-            allocation = db.session.scalar(_locked_statement(
-                select(WorkspaceSubscriptionOjsJournal).where(
-                    WorkspaceSubscriptionOjsJournal.ojs_journal_id == journal.id,
-                    WorkspaceSubscriptionOjsJournal.status == "active",
+            if _journal_uses_administrative_context(journal):
+                _require_administrative_journal_context(actor, journal)
+            else:
+                allocation = db.session.scalar(_locked_statement(
+                    select(WorkspaceSubscriptionOjsJournal).where(
+                        WorkspaceSubscriptionOjsJournal.ojs_journal_id == journal.id,
+                        WorkspaceSubscriptionOjsJournal.status == "active",
+                    )
+                ))
+                if allocation is None:
+                    raise OjsSeoSubscriptionError(
+                        "ojs_journal_allocation_inactive",
+                        "O periódico não possui uma alocação comercial ativa para ser restaurado.",
+                    )
+                _subscription_for_actor(
+                    actor,
+                    allocation.workspace_subscription_id,
+                    require_capacity=True,
                 )
-            ))
-            if allocation is None:
-                raise OjsSeoSubscriptionError(
-                    "ojs_journal_allocation_inactive",
-                    "O periódico não possui uma alocação comercial ativa para ser restaurado.",
-                )
-            _subscription_for_actor(
-                actor,
-                allocation.workspace_subscription_id,
-                require_capacity=True,
-            )
 
             project.status = "active"
             project.archived_at = None
@@ -1125,6 +1184,30 @@ def _exclusive_reservation_transaction():
         raise
 
 
+def _registration_context_for_actor(
+    actor: User, workspace_subscription_id: str | None,
+) -> OjsSeoJournalRegistrationContext:
+    """Resolve a única origem legítima de autorização para um novo periódico.
+
+    Assinantes continuam obrigados a informar uma assinatura elegível. O único
+    caminho sem assinatura é o contexto administrativo explícito; ele não cria
+    ou reutiliza contratos comerciais e é revalidado depois da descoberta.
+    """
+    subscription_id = workspace_subscription_id.strip() if isinstance(workspace_subscription_id, str) else ""
+    if subscription_id:
+        return OjsSeoJournalRegistrationContext(
+            mode="subscription",
+            subscription=_subscription_for_actor(actor, subscription_id, require_capacity=True),
+        )
+    if has_administrative_ojs_context(actor):
+        return OjsSeoJournalRegistrationContext(mode="administrator")
+    require_ojs_seo_access(actor)
+    raise OjsSeoSubscriptionError(
+        "ojs_subscription_not_found",
+        "Nenhuma assinatura elegível foi encontrada para cadastrar um periódico OJS.",
+    )
+
+
 def _subscription_for_actor(
     actor: User,
     subscription_id: str,
@@ -1294,7 +1377,46 @@ def _locked_statement(statement):
     return statement
 
 
-def _require_active_journal_allocation(actor: User, journal: OjsJournal) -> WorkspaceSubscriptionOjsJournal:
+def _journal_uses_administrative_context(journal: OjsJournal) -> bool:
+    """Reconhece periódico administrativo sem inferir uma assinatura ausente.
+
+    A única combinação aceita é projeto OJS pertencente a administrador ativo
+    e sem qualquer histórico de reserva. Um periódico de assinante nunca entra
+    nesse caminho, mesmo se a reserva estiver inativa ou expirada.
+    """
+    project = journal.analytics_project
+    owner = project.owner if project is not None else None
+    if (
+        project is None
+        or project.module_key != OJS_SEO_PROJECT_MODULE
+        or owner is None
+        or not owner.is_active
+        or owner.role != "admin"
+    ):
+        return False
+    return db.session.scalar(
+        select(WorkspaceSubscriptionOjsJournal.id)
+        .where(WorkspaceSubscriptionOjsJournal.ojs_journal_id == journal.id)
+        .limit(1)
+    ) is None
+
+
+def _require_administrative_journal_context(actor: User, journal: OjsJournal) -> None:
+    if not _journal_uses_administrative_context(journal):
+        raise OjsSeoSubscriptionError(
+            "ojs_journal_allocation_inactive",
+            "O periódico não possui uma alocação comercial ativa.",
+        )
+    _require_administrative_ojs_context(actor)
+
+
+def _require_active_journal_allocation(
+    actor: User, journal: OjsJournal,
+) -> WorkspaceSubscriptionOjsJournal | None:
+    """Confirma capacidade comercial ou o contexto administrativo persistível."""
+    if _journal_uses_administrative_context(journal):
+        _require_administrative_journal_context(actor, journal)
+        return None
     allocation = db.session.scalar(
         select(WorkspaceSubscriptionOjsJournal).where(
             WorkspaceSubscriptionOjsJournal.ojs_journal_id == journal.id,
@@ -1313,14 +1435,15 @@ def _require_active_journal_allocation(actor: User, journal: OjsJournal) -> Work
     return allocation
 
 
-def journal_has_active_ojs_commercial_entitlement(journal: OjsJournal) -> bool:
-    """Confere a elegibilidade comercial atual para o worker interno.
+def journal_has_active_ojs_execution_authorization(journal: OjsJournal) -> bool:
+    """Confere autorização atual do periódico para os workers internos.
 
     O worker não recebe uma identidade de pessoa e não pode inferir que um
-    claim antigo continua válido. Esta verificação usa o proprietário já
-    persistido do projeto e repete membership de titular, assinatura, plano,
-    ferramenta, ``PlanTool`` e cota positiva. Ela não grava nada e não inicia
-    rede; o executor decide como finalizar uma auditoria pendente inelegível.
+    claim antigo continua válido. Periódicos comerciais repetem membership de
+    titular, assinatura, plano, ferramenta, ``PlanTool`` e cota positiva.
+    Periódicos administrativos exigem proprietário administrador ativo e
+    ferramenta operacional, sem criar direito comercial artificial. A função
+    não grava nem inicia rede; o executor decide como finalizar pendências.
     """
     project = journal.analytics_project
     if (
@@ -1331,6 +1454,8 @@ def journal_has_active_ojs_commercial_entitlement(journal: OjsJournal) -> bool:
         or project.owner is None
     ):
         return False
+    if _journal_uses_administrative_context(journal):
+        return has_administrative_ojs_context(project.owner)
     allocation = db.session.scalar(
         select(WorkspaceSubscriptionOjsJournal).where(
             WorkspaceSubscriptionOjsJournal.ojs_journal_id == journal.id,

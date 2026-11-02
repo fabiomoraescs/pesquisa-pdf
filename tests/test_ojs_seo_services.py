@@ -8,13 +8,14 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 
 from app import create_app
 from platform_core.extensions import db
 from platform_core.models import (
     AnalyticsProject,
+    AccessGrant,
     AuditLog,
     OjsJournal,
     OjsSeoAuditRun,
@@ -39,6 +40,7 @@ from platform_core.ojs_seo_services import (
     OjsSeoAuthorizationError,
     OjsSeoNotFoundError,
     OjsSeoSubscriptionError,
+    archive_ojs_seo_project,
     cancel_pending_ojs_seo_audit,
     discover_ojs_journal,
     get_ojs_journal,
@@ -46,6 +48,7 @@ from platform_core.ojs_seo_services import (
     list_ojs_journals,
     list_ojs_seo_audits,
     register_ojs_journal,
+    restore_ojs_seo_project,
     request_ojs_seo_audit,
 )
 from platform_core.services import replace_grant, seed_platform
@@ -93,6 +96,14 @@ def create_user(name: str, email: str) -> User:
     replace_grant(user, "marketing_sites", "admin_courtesy", "active")
     db.session.commit()
     return user
+
+
+def create_administrator(name: str, email: str) -> User:
+    administrator = User(name=name, email=email, role="admin", status="active")
+    administrator.set_password("senha-de-teste-segura-123")
+    db.session.add(administrator)
+    db.session.commit()
+    return administrator
 
 
 def make_journal(owner: User, *, endpoint: str = "https://journal.example.test/oai") -> OjsJournal:
@@ -192,6 +203,7 @@ class OjsSeoServiceTests(unittest.TestCase):
         self.app = self.scope.__enter__()
         self.user = create_user("Titular", "titular-ojs@example.org")
         self.other = create_user("Outra conta", "outra-ojs@example.org")
+        self.administrator = create_administrator("Administrador", "admin-ojs@example.org")
 
     def tearDown(self):
         self.scope.__exit__(None, None, None)
@@ -225,6 +237,66 @@ class OjsSeoServiceTests(unittest.TestCase):
         ))
         self.assertEqual("ojs_seo", journal.analytics_project.module_key)
         self.assertEqual(subscription.id, allocation.workspace_subscription_id)
+
+    def test_administrator_without_subscription_registers_manages_and_requests_audit_without_commercial_records(self):
+        subscriptions_before = db.session.scalar(select(func.count()).select_from(WorkspaceSubscription))
+        grants_before = db.session.scalar(select(func.count()).select_from(AccessGrant))
+        allocations_before = db.session.scalar(select(func.count()).select_from(WorkspaceSubscriptionOjsJournal))
+
+        journal = register_ojs_journal(
+            self.administrator,
+            workspace_subscription_id=None,
+            public_url="https://periodicos.ufal.br/latitude",
+            oai_endpoint_url="https://periodicos.ufal.br/latitude/oai",
+            project_name="Revista Latitude",
+            client_factory=lambda _endpoint: _FakeClient(successful_discovery()),
+            endpoint_validator=fake_validator,
+        )
+        self.assertEqual(self.administrator.id, journal.analytics_project.owner_user_id)
+        self.assertEqual("ojs_seo", journal.analytics_project.module_key)
+        self.assertIsNone(db.session.scalar(select(WorkspaceSubscriptionOjsJournal).where(
+            WorkspaceSubscriptionOjsJournal.ojs_journal_id == journal.id
+        )))
+        self.assertEqual(subscriptions_before, db.session.scalar(select(func.count()).select_from(WorkspaceSubscription)))
+        self.assertEqual(grants_before, db.session.scalar(select(func.count()).select_from(AccessGrant)))
+        self.assertEqual(allocations_before, db.session.scalar(select(func.count()).select_from(WorkspaceSubscriptionOjsJournal)))
+        registration_audit = db.session.scalar(select(AuditLog).where(
+            AuditLog.action == "ojs_seo_journal_registered",
+            AuditLog.target_id == journal.id,
+        ))
+        self.assertEqual("administrator", registration_audit.after_json["registration_context"])
+        self.assertIsNone(registration_audit.after_json["workspace_subscription_id"])
+        self.assertIsNone(registration_audit.after_json["allocation_id"])
+
+        run = request_ojs_seo_audit(self.administrator, journal.id)
+        db.session.commit()
+        self.assertEqual("pending", run.status)
+        canceled = cancel_pending_ojs_seo_audit(self.administrator, run.id)
+        self.assertEqual("canceled", canceled.status)
+        archived = archive_ojs_seo_project(self.administrator, journal.id)
+        self.assertEqual("archived", archived.analytics_project.status)
+        restored = restore_ojs_seo_project(self.administrator, journal.id)
+        self.assertEqual("active", restored.analytics_project.status)
+        self.assertEqual([], list(db.session.execute(text("PRAGMA foreign_key_check"))))
+
+    def test_user_with_tool_access_but_without_subscription_cannot_start_registration_or_create_commercial_records(self):
+        client_calls: list[str] = []
+        subscriptions_before = db.session.scalar(select(func.count()).select_from(WorkspaceSubscription))
+        allocations_before = db.session.scalar(select(func.count()).select_from(WorkspaceSubscriptionOjsJournal))
+        with self.assertRaises(OjsSeoSubscriptionError) as error:
+            register_ojs_journal(
+                self.user,
+                workspace_subscription_id="",
+                public_url="https://periodicos.ufal.br/latitude",
+                oai_endpoint_url="https://periodicos.ufal.br/latitude/oai",
+                project_name="Sem assinatura",
+                client_factory=lambda endpoint: client_calls.append(endpoint),
+                endpoint_validator=fake_validator,
+            )
+        self.assertEqual("ojs_subscription_not_found", error.exception.code)
+        self.assertEqual([], client_calls)
+        self.assertEqual(subscriptions_before, db.session.scalar(select(func.count()).select_from(WorkspaceSubscription)))
+        self.assertEqual(allocations_before, db.session.scalar(select(func.count()).select_from(WorkspaceSubscriptionOjsJournal)))
 
     def test_registration_checks_existing_tool_authorization_before_the_quota_block(self):
         unassigned = User(name="Sem plano", email="registro-sem-plano@example.org", role="user", status="active")

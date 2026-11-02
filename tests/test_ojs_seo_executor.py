@@ -276,6 +276,27 @@ class OjsSeoExecutorTests(unittest.TestCase):
         db.session.commit()
         return journal
 
+    def administrative_journal(self, *, endpoint: str = "https://periodicos.ufal.br/latitude/oai") -> OjsJournal:
+        administrator = User(
+            name="Administrador OJS", email="executor-admin-ojs@example.org", role="admin", status="active"
+        )
+        administrator.set_password("senha-de-teste-segura-123")
+        project = AnalyticsProject(
+            owner=administrator,
+            module_key="ojs_seo",
+            name="Revista Latitude",
+            description="",
+        )
+        journal = OjsJournal(
+            analytics_project=project,
+            public_url="https://periodicos.ufal.br/latitude",
+            oai_endpoint_url=endpoint,
+            discovery_status="identified",
+        )
+        db.session.add_all((administrator, project, journal))
+        db.session.commit()
+        return journal
+
     @staticmethod
     def run_for(journal: OjsJournal) -> OjsSeoAuditRun:
         run = OjsSeoAuditRun(
@@ -705,6 +726,20 @@ class OjsSeoExecutorTests(unittest.TestCase):
         stored = self.stored(run.id)
         self.assertEqual(("failed", "ojs_subscription_ineligible"), (stored.status, stored.completion_reason))
         self.assertEqual([], calls)
+
+    def test_administrative_journal_without_subscription_is_processed_without_creating_commercial_allocation(self):
+        journal = self.administrative_journal()
+        run = self.run_for(journal)
+        result = _audit_result(_collection(records=(_active("oai:latitude:admin"),)))
+
+        processed = process_ojs_seo_audit(
+            run.id, client_factory=self.client_factory(result)[0], lease_seconds=120
+        )
+
+        self.assertEqual("completed", processed.status)
+        self.assertEqual(0, db.session.scalar(select(func.count()).select_from(
+            WorkspaceSubscriptionOjsJournal
+        ).where(WorkspaceSubscriptionOjsJournal.ojs_journal_id == journal.id)))
 
     def test_process_next_is_conservative_and_leaves_second_pending_for_next_worker_cycle(self):
         journal = self.journal()

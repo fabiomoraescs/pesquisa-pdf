@@ -26,7 +26,7 @@ from .models import (
 )
 from .ojs_html_client import HtmlPageClient, analyze_html_page
 from .ojs_seo_coordinator import advance_integrated_after_html_campaign
-from .ojs_seo_services import journal_has_active_ojs_commercial_entitlement
+from .ojs_seo_services import journal_has_active_ojs_execution_authorization
 from .ojs_seo_technical import (
     HTML_AUDIT_MAX_RESPONSE_BYTES,
     HtmlAuditCandidate,
@@ -256,9 +256,9 @@ def _scope_and_candidates_for_claim(claim: OjsHtmlAuditClaim):
     if journal.analytics_project.module_key != "ojs_seo" or journal.analytics_project.status != "active":
         db.session.rollback()
         raise OjsHtmlExecutorError("invalid_ojs_project", "O periódico não pertence a um projeto OJS SEO ativo.")
-    if not journal_has_active_ojs_commercial_entitlement(journal):
+    if not journal_has_active_ojs_execution_authorization(journal):
         db.session.rollback()
-        raise OjsHtmlExecutorError("ojs_subscription_ineligible", "A assinatura responsável não está elegível para uma análise técnica OJS.")
+        raise OjsHtmlExecutorError("ojs_subscription_ineligible", "O periódico não possui autorização ativa para uma análise técnica OJS.")
     eligible, candidates = list_html_audit_candidates(journal, run)
     snapshots = tuple(_snapshot_candidate(candidate) for candidate in candidates)
     # Fecha a transação de leitura antes de qualquer GET público. A persistência

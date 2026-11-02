@@ -62,6 +62,7 @@ from .ojs_seo_services import (
     delete_ojs_seo_project_permanently,
     get_ojs_journal,
     get_ojs_seo_audit_result,
+    has_administrative_ojs_context,
     list_ojs_article_observations,
     list_archived_ojs_journals,
     list_ojs_journals,
@@ -751,15 +752,17 @@ def archived_journals():
 @login_required
 def new_journal():
     _require_tool()
+    administrative_registration = has_administrative_ojs_context(current_user)
     subscriptions = _subscriptions_for_form()
     subscription_usage = _subscription_usage_for_current_user()
     return render_template(
         "platform/ojs_seo/journal_new.html",
         subscriptions=subscriptions,
+        administrative_registration=administrative_registration,
         quota_exhausted=any(
             usage.contracted_limit > 0 and usage.available_slots == 0
             for usage in subscription_usage
-        ) and not subscriptions,
+        ) and not subscriptions and not administrative_registration,
     )
 
 

@@ -35,7 +35,7 @@ from .ojs_seo_services import (
     OjsSeoNotFoundError,
     OjsSeoServiceError,
     get_ojs_journal,
-    journal_has_active_ojs_commercial_entitlement,
+    journal_has_active_ojs_execution_authorization,
     require_ojs_seo_access,
 )
 from .pagination import PAGE_SIZE, PlatformPage
@@ -209,9 +209,9 @@ def request_ojs_html_audit(
     mode = _validated_selection_mode(selection_mode)
     require_ojs_seo_access(actor)
     journal = get_ojs_journal(actor, journal_id)
-    if not journal_has_active_ojs_commercial_entitlement(journal):
+    if not journal_has_active_ojs_execution_authorization(journal):
         raise OjsSeoServiceError(
-            "ojs_subscription_ineligible", "A assinatura responsável não está elegível para uma nova análise OJS."
+            "ojs_subscription_ineligible", "O periódico não possui autorização ativa para uma nova análise OJS."
         )
     reference = _source_reference(actor, journal.id)
     if db.session.scalar(select(OjsSeoAuditRun.id).where(
@@ -301,7 +301,7 @@ def can_request_ojs_html_audit(
     try:
         mode = _validated_selection_mode(selection_mode)
         journal = get_ojs_journal(actor, journal_id)
-        if not journal_has_active_ojs_commercial_entitlement(journal):
+        if not journal_has_active_ojs_execution_authorization(journal):
             return False
         reference = _source_reference(actor, journal.id)
         force_revalidation = mode == HTML_SELECTION_REVALIDATE
@@ -339,9 +339,9 @@ def request_ojs_html_audit_campaign(actor: User, journal_id: str) -> OjsHtmlAudi
     """
     require_ojs_seo_access(actor)
     journal = get_ojs_journal(actor, journal_id)
-    if not journal_has_active_ojs_commercial_entitlement(journal):
+    if not journal_has_active_ojs_execution_authorization(journal):
         raise OjsSeoServiceError(
-            "ojs_subscription_ineligible", "A assinatura responsável não está elegível para uma nova análise OJS."
+            "ojs_subscription_ineligible", "O periódico não possui autorização ativa para uma nova análise OJS."
         )
     reference = _source_reference(actor, journal.id)
     if db.session.scalar(select(OjsSeoAuditRun.id).where(
@@ -410,7 +410,7 @@ def can_request_ojs_html_audit_campaign(actor: User, journal_id: str) -> bool:
     """Indica se uma nova campanha integral pode ser registrada com segurança."""
     try:
         journal = get_ojs_journal(actor, journal_id)
-        if not journal_has_active_ojs_commercial_entitlement(journal):
+        if not journal_has_active_ojs_execution_authorization(journal):
             return False
         reference = _source_reference(actor, journal.id)
         if db.session.scalar(select(OjsSeoAuditRun.id).where(
@@ -463,8 +463,8 @@ def start_ojs_html_campaign_for_reference(
                 "invalid_html_compatible_reference",
                 "A referência bibliográfica compatível não está disponível para a continuidade HTML.",
             )
-    if not journal_has_active_ojs_commercial_entitlement(journal):
-        raise OjsSeoServiceError("ojs_subscription_ineligible", "A assinatura responsável não está elegível para uma análise OJS.")
+    if not journal_has_active_ojs_execution_authorization(journal):
+        raise OjsSeoServiceError("ojs_subscription_ineligible", "O periódico não possui autorização ativa para uma análise OJS.")
     if _open_html_campaign(journal.id, source.id) is not None:
         raise OjsSeoServiceError("ojs_html_campaign_open", "Já existe uma análise completa para esta referência bibliográfica.")
     if db.session.scalar(select(OjsHtmlAuditRun.id).where(
@@ -500,9 +500,9 @@ def resume_ojs_html_audit_campaign(actor: User, journal_id: str, campaign_id: st
     """Recoloca uma campanha interrompida na fila sem recriar seu histórico."""
     require_ojs_seo_access(actor)
     journal = get_ojs_journal(actor, journal_id)
-    if not journal_has_active_ojs_commercial_entitlement(journal):
+    if not journal_has_active_ojs_execution_authorization(journal):
         raise OjsSeoServiceError(
-            "ojs_subscription_ineligible", "A assinatura responsável não está elegível para retomar a análise OJS."
+            "ojs_subscription_ineligible", "O periódico não possui autorização ativa para retomar a análise OJS."
         )
     campaign = _get_html_campaign_for_journal(journal.id, campaign_id)
     if campaign.status != "interrupted":

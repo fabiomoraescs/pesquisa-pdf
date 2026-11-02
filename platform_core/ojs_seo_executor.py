@@ -31,7 +31,7 @@ from .ojs_oai_client import (
 )
 from .ojs_seo_persistence import OjsPersistenceError, persist_oai_collection
 from .ojs_seo_coordinator import advance_integrated_after_oai, interrupt_integrated_for_oai_run, mark_integrated_oai_running
-from .ojs_seo_services import journal_has_active_ojs_commercial_entitlement
+from .ojs_seo_services import journal_has_active_ojs_execution_authorization
 
 
 OJS_SEO_WORKER_VERSION = "ojs-seo-worker-v1"
@@ -424,14 +424,16 @@ def _endpoint_for_claim(claim: OjsSeoAuditClaim) -> str:
     journal = db.session.get(OjsJournal, claim.journal_id)
     project = journal.analytics_project if journal is not None else None
     endpoint = journal.oai_endpoint_url if journal is not None else None
-    commercially_eligible = bool(journal is not None and journal_has_active_ojs_commercial_entitlement(journal))
+    execution_authorized = bool(
+        journal is not None and journal_has_active_ojs_execution_authorization(journal)
+    )
     db.session.rollback()
     if project is None or project.module_key != "ojs_seo":
         raise OjsSeoExecutorError("invalid_ojs_project", "O periódico não está vinculado a um domínio OJS SEO válido.")
-    if not commercially_eligible:
+    if not execution_authorized:
         raise OjsSeoExecutorError(
             "ojs_subscription_ineligible",
-            "A assinatura responsável pelo periódico não está elegível para uma nova auditoria OJS.",
+            "O periódico não possui autorização ativa para uma nova auditoria OJS.",
         )
     if not isinstance(endpoint, str) or not endpoint.strip():
         raise OjsSeoExecutorError("oai_endpoint_unavailable", "O periódico não possui endpoint OAI-PMH confirmado.")
