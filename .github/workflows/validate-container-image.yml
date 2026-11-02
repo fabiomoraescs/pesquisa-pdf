@@ -129,9 +129,17 @@ jobs:
           from sqlalchemy import select
           from app import app
           from platform_core.extensions import db
-          from platform_core.models import User
+          from platform_core.models import User, WorkspaceSubscriptionOjsJournal
+          from platform_core.ojs_oai_client import (
+              OaiCollectionResult,
+              OaiMetadataFormat,
+              OaiPmhAuditResult,
+              OaiRepositoryIdentity,
+              ValidatedOaiEndpoint,
+          )
           from platform_core.ojs_seo_activation import activate_ojs_seo_tool, provision_ojs_seo_tool
           from platform_core.ojs_seo_exports import build_ojs_seo_export, render_ojs_seo_export
+          from platform_core.ojs_seo_services import register_ojs_journal, request_ojs_seo_audit
 
           with app.app_context():
               admin = User(name="Image validation admin", email="image-validation@example.test", role="admin", status="active")
@@ -148,10 +156,59 @@ jobs:
               assert client.get("/", follow_redirects=False).status_code == 200
               home_rule = next(rule.rule for rule in app.url_map.iter_rules() if rule.endpoint == "ojs_seo.home")
               assert client.get(home_rule, follow_redirects=False).status_code == 200
+              endpoint = "https://periodicos.ufal.br/latitude/oai"
+
+              def endpoint_validator(value):
+                  return ValidatedOaiEndpoint(
+                      canonical_url=value,
+                      host="periodicos.ufal.br",
+                      port=443,
+                      path="/latitude/oai",
+                      addresses=("200.0.0.1",),
+                  )
+
+              class OfflineOaiClient:
+                  def inspect(self):
+                      return OaiPmhAuditResult(
+                          endpoint=endpoint,
+                          status="completed",
+                          identity=OaiRepositoryIdentity(
+                              repository_name="Revista Latitude",
+                              base_url=endpoint,
+                              protocol_version="2.0",
+                          ),
+                          metadata_formats=(OaiMetadataFormat("oai_dc", None, None),),
+                          collection=OaiCollectionResult(
+                              status="completed",
+                              completion_reason=None,
+                              pages_fetched=1,
+                              total_response_bytes=0,
+                              records=(),
+                              deleted_records=(),
+                              unique_identifiers=(),
+                              duplicate_identifiers=(),
+                          ),
+                      )
+
+              journal = register_ojs_journal(
+                  admin,
+                  workspace_subscription_id=None,
+                  public_url="https://periodicos.ufal.br/latitude",
+                  oai_endpoint_url=endpoint,
+                  project_name="Revista Latitude",
+                  client_factory=lambda _endpoint: OfflineOaiClient(),
+                  endpoint_validator=endpoint_validator,
+              )
+              assert db.session.scalar(select(WorkspaceSubscriptionOjsJournal).where(
+                  WorkspaceSubscriptionOjsJournal.ojs_journal_id == journal.id
+              )) is None
+              assert request_ojs_seo_audit(admin, journal.id).status == "pending"
+              db.session.commit()
               assert callable(build_ojs_seo_export)
               assert callable(render_ojs_seo_export)
               print("dashboard=ok")
               print("ojs_seo=ok")
+              print("ojs_admin_registration=ok")
               print("ojs_exports=registered")
           PY
             '
