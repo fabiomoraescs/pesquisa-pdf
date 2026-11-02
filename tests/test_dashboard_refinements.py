@@ -252,10 +252,40 @@ class DashboardRefinementsTests(unittest.TestCase):
         self.assertIn('Escuro azul', html)
         self.assertIn('>Preto<', html)
         self.assertIn("['light', 'dark', 'black'].includes(t)", html)
+        self.assertIn("? t : 'light'; } catch (_) { document.documentElement.dataset.theme = 'light'; }", html)
         css = (Path(__file__).resolve().parents[1] / "static/css/style.css").read_text(encoding="utf-8")
+        interface = (Path(__file__).resolve().parents[1] / "static/js/interface.js").read_text(encoding="utf-8")
+        self.assertIn('color-scheme: light;', css)
+        self.assertNotIn('prefers-color-scheme', css)
+        self.assertIn("? raiz.dataset.theme : 'light'", interface)
+        self.assertIn("? tema : 'light'", interface)
         self.assertIn('html[data-theme="black"]', css)
         for token, value in (("--paper", "#0d0d0d"), ("--surface", "#1c1c1c"), ("--border", "#343434"), ("--ink", "#f5f5f5")):
             self.assertIn(f'{token}: {value}', css)
+
+    def test_all_theme_bootstraps_default_to_light_before_loading_stylesheets(self):
+        root = Path(__file__).resolve().parents[1]
+        partial = (root / "templates/platform/_theme_bootstrap.html").read_text(encoding="utf-8")
+        bootstrap = (
+            "document.documentElement.dataset.theme = ['light', 'dark', 'black'].includes(t) "
+            "? t : 'light'; } catch (_) { document.documentElement.dataset.theme = 'light'; }"
+        )
+        self.assertIn(bootstrap, partial)
+        self.assertNotIn("? t : 'dark'", partial)
+        templates = (
+            "templates/platform/base.html",
+            "templates/platform/error.html",
+            "templates/index.html",
+            "templates/resultado.html",
+            "templates/historico_racial/index.html",
+            "templates/historico_racial/resultado.html",
+            "templates/historico_racial/vocabulario.html",
+        )
+        for relative_path in templates:
+            source = (root / relative_path).read_text(encoding="utf-8")
+            with self.subTest(template=relative_path):
+                self.assertIn("{% include 'platform/_theme_bootstrap.html' %}", source)
+                self.assertLess(source.index("{% include 'platform/_theme_bootstrap.html' %}"), source.index('<link href='))
 
     def test_ojs_overview_uses_metric_trends_without_decorative_icons_and_accessible_table_actions(self):
         root = Path(__file__).resolve().parents[1]
@@ -367,7 +397,7 @@ class DashboardRefinementsTests(unittest.TestCase):
         self.assertIn('align-items: flex-end;', css)
         self.assertNotIn('-webkit-mask: url("data:image/svg+xml', css)
 
-    def test_theme_selector_persists_black_and_keeps_legacy_dark(self):
+    def test_theme_selector_preserves_explicit_dark_and_persists_new_choices(self):
         node = shutil.which("node")
         if not node:
             self.skipTest("Node não disponível")
@@ -715,10 +745,10 @@ assert.equal(events.at(-1).detail.tema,'black');
         # Ferramentas futuras podem ser visíveis, mas continuam sem link operacional.
         self.assertIn("Pesquisa Quanti", html)
         self.assertIn("OJS SEO", html)
-        self.assertIn("Transcrição", html)
-        self.assertIn("Marketing &amp; Funis", html)
         self.assertIn("OJS Analytics", html)
         self.assertIn("Busca Bibliográfica", html)
+        self.assertIn("Transcrição", html)
+        self.assertIn("Marketing &amp; Funis", html)
         self.assertNotIn("Editorial", html)
         self.assertFalse(any("editorial" in rule.rule.lower() for rule in self.app.url_map.iter_rules()))
         self.assertFalse(any(name.startswith("editorial_") for name in db.metadata.tables))
@@ -747,24 +777,22 @@ assert.equal(events.at(-1).detail.tema,'black');
         self.assertIn('id="structured-analysis-chart-data"', html)
         self.assertNotIn("Primeiras ocorrências", html)
         self.assertNotIn('title="Ver trechos" aria-label="Ver trechos"', html)
-        self.assertIn("© 2026 Análysis. Todos os direitos reservados.", html)
+        self.assertIn("Todos os direitos reservados © - Análysis | 2026.", html)
 
-    def test_shared_footer_has_exact_wording_and_external_link_safety(self):
+    def test_shared_footer_has_only_the_required_centered_message(self):
         create_user()
         login_html = self.client.get("/login").get_data(as_text=True)
         login(self.client)
         for path in ("/", "/raspagem-livre", "/login"):
             with self.subTest(path=path):
                 html = login_html if path == "/login" else self.client.get(path).get_data(as_text=True)
+                self.assertEqual(html.count('<footer class="app-footer">'), 1)
                 footer = html.split('<footer class="app-footer">', 1)[1].split('</footer>', 1)[0]
                 plain = " ".join(unescape(re.sub(r"<[^>]+>", "", footer)).split())
-                self.assertEqual(plain, "© 2026 Análysis. Todos os direitos reservados. "
-                                 "Criado e desenvolvido por Fabio Monteiro de Moraes. "
-                                 "Parceria: Grupo de pesquisa: ConsCiências-Sociais")
-                self.assertIn('href="http://lattes.cnpq.br/0075160400322127" '
-                              'target="_blank" rel="noopener noreferrer"', footer)
-                self.assertIn('href="http://dgp.cnpq.br/dgp/espelhogrupo/538438" '
-                              'target="_blank" rel="noopener noreferrer"', footer)
+                self.assertEqual(plain, "Todos os direitos reservados © - Análysis | 2026.")
+                self.assertNotIn("<a", footer)
+                self.assertNotIn("Fabio Monteiro de Moraes", footer)
+                self.assertNotIn("ConsCiências-Sociais", footer)
                 self.assertNotIn("Versão beta", html)
 
 

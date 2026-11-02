@@ -15,7 +15,7 @@
   const avisoSemantico = document.getElementById('aviso-semantico');
 
   function temaAtual() {
-    return temasValidos.has(raiz.dataset.theme) ? raiz.dataset.theme : 'dark';
+    return temasValidos.has(raiz.dataset.theme) ? raiz.dataset.theme : 'light';
   }
 
   function atualizarBotaoTema() {
@@ -40,7 +40,7 @@
   }
 
   function aplicarTema(tema, salvar = true) {
-    raiz.dataset.theme = temasValidos.has(tema) ? tema : 'dark';
+    raiz.dataset.theme = temasValidos.has(tema) ? tema : 'light';
     if (salvar) {
       try { localStorage.setItem(chaveTema, raiz.dataset.theme); } catch (_) { /* preferência opcional */ }
     }
