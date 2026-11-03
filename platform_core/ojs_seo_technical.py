@@ -798,10 +798,21 @@ def get_html_coverage_for_journal_reference(journal: OjsJournal, source_oai_audi
     return _coverage_selection(journal, source_oai_audit_run_id).coverage
 
 
-def list_html_audit_candidates(journal: OjsJournal, run: OjsHtmlAuditRun) -> tuple[int, tuple[HtmlAuditCandidate, ...]]:
-    """Seleciona até cem páginas sem repetir cobertura já verificada."""
+def list_html_audit_candidates(
+    journal: OjsJournal,
+    run: OjsHtmlAuditRun,
+    *,
+    max_pages: int | None = None,
+) -> tuple[int, tuple[HtmlAuditCandidate, ...]]:
+    """Seleciona um lote limitado, sem repetir cobertura já verificada."""
     if run.journal_id != journal.id or run.source_oai_audit_run_id is None:
         raise OjsSeoServiceError("invalid_html_audit_scope", "A análise técnica não pertence ao periódico informado.")
+    page_limit = HTML_AUDIT_MAX_PAGES if max_pages is None else max_pages
+    if not isinstance(page_limit, int) or isinstance(page_limit, bool) or not 1 <= page_limit <= HTML_AUDIT_MAX_PAGES:
+        raise OjsSeoServiceError(
+            "invalid_html_page_limit",
+            f"O limite de páginas HTML deve estar entre 1 e {HTML_AUDIT_MAX_PAGES}.",
+        )
     mode = _validated_selection_mode(
         run.parameters_json.get("selection_mode") if isinstance(run.parameters_json, dict) else HTML_SELECTION_CONTINUE
     )
@@ -814,7 +825,7 @@ def list_html_audit_candidates(journal: OjsJournal, run: OjsHtmlAuditRun) -> tup
         else selection.unprocessed if mode == HTML_SELECTION_CONTINUE
         else selection.retryable_unverified
     )
-    return selection.coverage.eligible_article_count, candidates[:HTML_AUDIT_MAX_PAGES]
+    return selection.coverage.eligible_article_count, candidates[:page_limit]
 
 
 def _coverage_selection(
@@ -1108,6 +1119,7 @@ def persist_html_audit_results(
     warnings: Sequence[dict[str, str]] = (),
     errors: Sequence[dict[str, str]] = (),
     response_bytes: int = 0,
+    page_limit: int | None = None,
     completed_at: datetime | None = None,
 ) -> OjsHtmlAuditRun:
     """Persiste análises novas e finaliza o run; não confirma a transação."""
@@ -1116,6 +1128,9 @@ def persist_html_audit_results(
         raise OjsSeoServiceError("html_audit_claim_lost", "A análise técnica não está mais disponível para persistência.")
     if final_status not in {"completed", "partial", "failed"}:
         raise OjsSeoServiceError("invalid_html_audit_status", "O estado final da análise técnica é inválido.")
+    effective_page_limit = HTML_AUDIT_MAX_PAGES if page_limit is None else page_limit
+    if not isinstance(effective_page_limit, int) or isinstance(effective_page_limit, bool) or not 1 <= effective_page_limit <= HTML_AUDIT_MAX_PAGES:
+        raise OjsSeoServiceError("invalid_html_page_limit", "O limite de páginas HTML é inválido.")
     seen: set[str] = set()
     for candidate, result in pages:
         if candidate.article.journal_id != journal.id or candidate.observation.journal_id != journal.id:
@@ -1166,7 +1181,7 @@ def persist_html_audit_results(
         "records_processed": len(pages),
         "pages_analyzed": len(pages),
         "verified_pages": verified,
-        "sample_limit": HTML_AUDIT_MAX_PAGES,
+        "sample_limit": effective_page_limit,
         "sampled": eligible_article_count > len(pages),
         "confirmed_problem_pages": confirmed,
         "potential_problem_pages": potential,

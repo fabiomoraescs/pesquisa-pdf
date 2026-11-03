@@ -90,6 +90,14 @@ def register_cli(app: Flask) -> None:
     @click.option("--audit-run-id", default=None, help="Processa somente a análise técnica indicada.")
     @click.option("--max-jobs", default=None, type=int,
                   help="Máximo de análises antes de encerrar; omita para manter o worker em espera.")
+    @click.option("--max-pages-per-job", default=None, type=int,
+                  help="Teto efetivo de páginas no lote atual (1 a 5); útil para piloto controlado.")
+    @click.option("--page-timeout-seconds", default=30.0, show_default=True, type=float,
+                  help="Orçamento máximo total de rede por página HTML.")
+    @click.option("--max-execution-seconds", default=240, show_default=True, type=int,
+                  help="Duração máxima do lote antes de encerrar parcialmente.")
+    @click.option("--min-request-interval", default=0.5, show_default=True, type=float,
+                  help="Intervalo mínimo entre requisições HTML do mesmo lote.")
     @click.option("--until-idle", is_flag=True,
                   help="Processa lotes e campanhas pendentes até a fila HTML ficar vazia e encerra.")
     @click.option("--poll-interval", default=5.0, show_default=True, type=float,
@@ -100,6 +108,10 @@ def register_cli(app: Flask) -> None:
         once: bool,
         audit_run_id: str | None,
         max_jobs: int | None,
+        max_pages_per_job: int | None,
+        page_timeout_seconds: float,
+        max_execution_seconds: int,
+        min_request_interval: float,
         until_idle: bool,
         poll_interval: float,
         lease_seconds: int,
@@ -109,12 +121,20 @@ def register_cli(app: Flask) -> None:
 
         if until_idle and (once or audit_run_id):
             raise click.ClickException("--until-idle não pode ser combinado com --once ou --audit-run-id.")
+        if max_pages_per_job is not None and not audit_run_id:
+            raise click.ClickException(
+                "--max-pages-per-job exige --audit-run-id para limitar uma única análise HTML."
+            )
         try:
             run_ojs_html_worker(
                 app,
                 once=once,
                 audit_run_id=audit_run_id,
                 max_jobs=max_jobs,
+                max_pages_per_job=max_pages_per_job,
+                page_timeout_seconds=page_timeout_seconds,
+                max_execution_seconds=max_execution_seconds,
+                min_request_interval_seconds=min_request_interval,
                 until_idle=until_idle,
                 poll_interval=poll_interval,
                 lease_seconds=lease_seconds,

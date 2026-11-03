@@ -82,6 +82,7 @@ from platform_core.ojs_seo_technical import (
     persist_html_audit_results,
     request_ojs_html_audit_campaign,
     request_ojs_html_audit,
+    resume_ojs_html_audit_campaign,
     reuse_compatible_html_evidence,
 )
 from platform_core.services import replace_grant, seed_platform
@@ -568,12 +569,88 @@ class OjsHtmlPersistenceAndExecutorTests(unittest.TestCase):
         db.session.commit()
 
         eligible, candidates = list_html_audit_candidates(self.journal, pending)
+        _eligible, limited_candidates = list_html_audit_candidates(self.journal, pending, max_pages=3)
 
         self.assertEqual(101, eligible)
         self.assertEqual(100, len(candidates))
+        self.assertEqual(3, len(limited_candidates))
         selected = {candidate.source_url for candidate in candidates}
         self.assertNotIn("https://doi.org/10.1000/example", selected)
         self.assertIn("https://public.example.test/article", selected)
+
+        with self.assertRaises(OjsSeoServiceError):
+            list_html_audit_candidates(self.journal, pending, max_pages=0)
+
+    def test_targeted_html_executor_enforces_page_cap_without_enqueuing_a_follow_up_batch(self):
+        for suffix in range(2, 6):
+            self._add_article(f"pilot-{suffix}")
+        campaign = request_ojs_html_audit_campaign(self.user, self.journal.id)
+        db.session.commit()
+        initial_run = db.session.scalar(select(OjsHtmlAuditRun).where(
+            OjsHtmlAuditRun.campaign_id == campaign.id,
+            OjsHtmlAuditRun.status == "pending",
+        ))
+
+        class _LocalClient:
+            def fetch(self, url, *, deadline):
+                return HtmlFetchResult(
+                    url, url, 200, {"content-type": "text/html"},
+                    b"<html><head><title>Registro</title><link rel='canonical' href='https://public.example.test/article'></head><body><h1>Registro</h1></body></html>",
+                    0, 1,
+                )
+
+        process_ojs_html_audit(
+            initial_run.id,
+            max_pages_per_job=3,
+            max_execution_seconds=150,
+            lease_seconds=300,
+            client_factory=lambda: _LocalClient(),
+        )
+
+        db.session.expire_all()
+        completed = db.session.get(OjsHtmlAuditRun, initial_run.id)
+        next_run = db.session.scalar(select(OjsHtmlAuditRun).where(
+            OjsHtmlAuditRun.campaign_id == campaign.id,
+            OjsHtmlAuditRun.status == "pending",
+        ))
+        stopped_campaign = db.session.get(OjsHtmlAuditCampaign, campaign.id)
+        self.assertEqual(("partial", "pilot_page_limit", 3, 3), (
+            completed.status, completed.completion_reason, completed.analyzed_page_count, completed.metrics_json["sample_limit"],
+        ))
+        self.assertIsNone(next_run)
+        self.assertEqual(("interrupted", "pilot_page_limit"), (
+            stopped_campaign.status, stopped_campaign.completion_reason,
+        ))
+        self.assertEqual(3, db.session.scalar(select(func.count()).select_from(OjsArticleHtmlAnalysis).where(
+            OjsArticleHtmlAnalysis.html_audit_run_id == completed.id,
+        )))
+
+        resumed = resume_ojs_html_audit_campaign(self.user, self.journal.id, campaign.id)
+        db.session.commit()
+        resumed_run = db.session.scalar(select(OjsHtmlAuditRun).where(
+            OjsHtmlAuditRun.campaign_id == campaign.id,
+            OjsHtmlAuditRun.status == "pending",
+        ))
+        self.assertEqual("pending", resumed.status)
+        self.assertIsNotNone(resumed_run)
+        self.assertNotEqual(initial_run.id, resumed_run.id)
+        _eligible, remaining_candidates = list_html_audit_candidates(self.journal, resumed_run)
+        completed_article_ids = list(db.session.scalars(select(OjsArticleHtmlAnalysis.article_id).where(
+            OjsArticleHtmlAnalysis.journal_id == self.journal.id,
+        )))
+        self.assertEqual(2, len(remaining_candidates))
+        self.assertEqual(3, len(completed_article_ids))
+        self.assertEqual(3, len(set(completed_article_ids)))
+        self.assertTrue(all(candidate.article.id not in completed_article_ids for candidate in remaining_candidates))
+
+        canceled = cancel_pending_ojs_html_audit(self.user, self.journal.id, resumed_run.id)
+        db.session.commit()
+        db.session.expire_all()
+        self.assertEqual("canceled", canceled.status)
+        self.assertEqual("canceled", db.session.get(OjsHtmlAuditCampaign, campaign.id).status)
+        self.assertEqual(3, db.session.scalar(select(func.count()).select_from(OjsArticleHtmlAnalysis).where(
+            OjsArticleHtmlAnalysis.journal_id == self.journal.id,
+        )))
 
     def test_progressive_coverage_advances_to_articles_not_processed_before(self):
         second_article, second_observation = self._add_article("2")
@@ -1196,9 +1273,26 @@ class OjsHtmlPersistenceAndExecutorTests(unittest.TestCase):
             self.assertFalse(worker.call_args.kwargs["once"])
             self.assertTrue(worker.call_args.kwargs["until_idle"])
 
+            worker.reset_mock()
+            pilot = runner.invoke(args=[
+                "ojs-seo-html-worker", "--audit-run-id", "pilot-run", "--max-jobs", "1",
+                "--max-pages-per-job", "3", "--page-timeout-seconds", "20",
+                "--max-execution-seconds", "150", "--min-request-interval", "1",
+            ])
+            self.assertEqual(0, pilot.exit_code, pilot.output)
+            self.assertEqual(("pilot-run", 1, 3, 20.0, 150, 1.0), (
+                worker.call_args.kwargs["audit_run_id"], worker.call_args.kwargs["max_jobs"],
+                worker.call_args.kwargs["max_pages_per_job"], worker.call_args.kwargs["page_timeout_seconds"],
+                worker.call_args.kwargs["max_execution_seconds"], worker.call_args.kwargs["min_request_interval_seconds"],
+            ))
+
             invalid = runner.invoke(args=["ojs-seo-html-worker", "--once", "--until-idle"])
             self.assertNotEqual(0, invalid.exit_code)
             self.assertIn("não pode ser combinado", invalid.output)
+
+            unscoped_pilot = runner.invoke(args=["ojs-seo-html-worker", "--max-pages-per-job", "3"])
+            self.assertNotEqual(0, unscoped_pilot.exit_code)
+            self.assertIn("exige --audit-run-id", unscoped_pilot.output)
 
     def test_html_worker_stops_before_claiming_when_shutdown_is_requested(self):
         stopping = Event()
@@ -1219,6 +1313,23 @@ class OjsHtmlPersistenceAndExecutorTests(unittest.TestCase):
         )
 
         self.assertEqual([], calls)
+
+    def test_html_pilot_rejects_an_unscoped_or_oversized_page_limit(self):
+        with self.assertRaisesRegex(ValueError, "identificação explícita"):
+            run_ojs_html_worker(
+                self.app, once=True, poll_interval=1, lease_seconds=300,
+                max_pages_per_job=3,
+            )
+        with self.assertRaisesRegex(ValueError, "entre 1 e 5"):
+            run_ojs_html_worker(
+                self.app, once=True, audit_run_id="pilot-run", poll_interval=1,
+                lease_seconds=300, max_pages_per_job=6,
+            )
+        with self.assertRaisesRegex(ValueError, "deve caber no prazo"):
+            run_ojs_html_worker(
+                self.app, once=True, audit_run_id="pilot-run", poll_interval=1,
+                lease_seconds=120, max_pages_per_job=3, max_execution_seconds=150,
+            )
 
     def test_integrated_operation_enqueues_html_only_after_usable_oai_reference(self):
         operation = request_ojs_integrated_analysis(self.user, self.journal.id)
