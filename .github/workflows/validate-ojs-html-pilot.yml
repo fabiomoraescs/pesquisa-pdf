@@ -82,6 +82,9 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
+          # The test module deliberately keeps disposable SQLite files outside
+          # of the tracked tree. A fresh Actions checkout has no such folder.
+          mkdir -p .test-tmp
           python -m pip install --upgrade pip
           python -m pip install --index-url https://download.pytorch.org/whl/cpu 'torch==2.7.1+cpu'
           python -m pip install -r requirements.txt
