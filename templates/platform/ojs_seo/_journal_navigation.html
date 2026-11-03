@@ -1,0 +1,12 @@
+<nav class="platform-toolbar platform-toolbar-actions mb-3" aria-label="Áreas do periódico">
+  <div>
+    <span class="platform-muted d-block small">OJS SEO</span>
+    <strong>{{ project.name }}</strong>
+  </div>
+  <div class="d-flex flex-wrap gap-2 align-items-center">
+    <a class="btn btn-outline-primary btn-sm{% if active_area == 'overview' %} active{% endif %}" href="{{ url_for('ojs_seo.journal_detail', journal_id=journal.id) }}"{% if active_area == 'overview' %} aria-current="page"{% endif %} data-platform-loading-overlay-link data-loading-overlay-target="ojs-seo-overlay-processamento">Visão geral</a>
+    <a class="btn btn-outline-primary btn-sm{% if active_area == 'recommendations' %} active{% endif %}" href="{{ url_for('ojs_seo.recommendations', journal_id=journal.id) }}"{% if active_area == 'recommendations' %} aria-current="page"{% endif %} data-platform-loading-overlay-link data-loading-overlay-target="ojs-seo-overlay-processamento">O que corrigir</a>
+    <a class="btn btn-outline-primary btn-sm{% if active_area == 'articles' %} active{% endif %}" href="{{ url_for('ojs_seo.articles', journal_id=journal.id) }}"{% if active_area == 'articles' %} aria-current="page"{% endif %} data-platform-loading-overlay-link data-loading-overlay-target="ojs-seo-overlay-processamento">Artigos</a>
+    <a class="btn btn-outline-primary btn-sm{% if active_area == 'history' %} active{% endif %}" href="{{ url_for('ojs_seo.journal_history', journal_id=journal.id) }}"{% if active_area == 'history' %} aria-current="page"{% endif %} data-platform-loading-overlay-link data-loading-overlay-target="ojs-seo-overlay-processamento">Histórico e análises</a>
+  </div>
+</nav>

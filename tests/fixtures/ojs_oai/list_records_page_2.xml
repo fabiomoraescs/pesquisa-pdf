@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<OAI-PMH xmlns="http://www.openarchives.org/OAI/2.0/" xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <ListRecords>
+    <record><header><identifier>oai:test:article-1</identifier><datestamp>2025-01-01</datestamp></header><metadata><dc:dc><dc:title>Duplicado</dc:title></dc:dc></metadata></record>
+    <record><header><identifier>oai:test:article-2</identifier><datestamp>2025-01-02</datestamp></header><metadata><dc:dc><dc:title>Título dois</dc:title><dc:identifier>doi:10.5555/second</dc:identifier><dc:identifier>10.invalid/no</dc:identifier><dc:type>Review</dc:type></dc:dc></metadata></record>
+  </ListRecords>
+</OAI-PMH>

@@ -1,0 +1,108 @@
+name: Validate OJS SEO HTML pilot on real Docker
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/validate-ojs-html-pilot.yml'
+      - 'scripts/oracle/run-ojs-html-pilot.sh'
+      - 'scripts/oracle/test-ojs-html-pilot-docker.sh'
+      - 'tests/fixtures/ojs_html_pilot/**'
+      - 'platform_core/cli.py'
+      - 'platform_core/ojs_seo_html_executor.py'
+      - 'platform_core/ojs_seo_technical.py'
+      - 'tests/test_ojs_seo_html.py'
+      - 'requirements.txt'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ojs-html-pilot-validation-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate-pilot:
+    name: Linux Docker pilot validation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+      PIP_DISABLE_PIP_VERSION_CHECK: '1'
+      PILOT_FIXTURE_IMAGE: analisys-html-pilot-fixture:${{ github.sha }}
+    steps:
+      - name: Check out the revision under validation
+        uses: actions/checkout@v4
+
+      - name: Confirm the Linux runner and Docker Engine
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(uname -s)" = Linux
+          docker version --format 'client={{.Client.Version}} server={{.Server.Version}}'
+          docker info --format 'architecture={{.Architecture}} cgroup_driver={{.CgroupDriver}}'
+          test "$(docker version --format '{{.Server.Os}}/{{.Server.Arch}}')" = linux/amd64
+
+      - name: Validate shell script syntax and line endings
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          for script in scripts/oracle/run-ojs-html-pilot.sh scripts/oracle/test-ojs-html-pilot-docker.sh; do
+            test -f "$script"
+            ! grep -q $'\r' "$script"
+            bash -n "$script"
+          done
+
+      - name: Build the isolated Docker fixture
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          docker build --pull --tag "$PILOT_FIXTURE_IMAGE" \
+            --file tests/fixtures/ojs_html_pilot/Dockerfile \
+            tests/fixtures/ojs_html_pilot
+          docker image inspect "$PILOT_FIXTURE_IMAGE" --format 'fixture_architecture={{.Architecture}} fixture_size={{.Size}}'
+
+      - name: Exercise the procedure with real Docker resources
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          CI=true PILOT_FIXTURE_IMAGE="$PILOT_FIXTURE_IMAGE" \
+            bash scripts/oracle/test-ojs-html-pilot-docker.sh
+
+      - name: Install the application test dependencies
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Run isolated SQLite lifecycle and network-error tests
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          # The test module deliberately keeps disposable SQLite files outside
+          # of the tracked tree. A fresh Actions checkout has no such folder.
+          mkdir -p .test-tmp
+          python -m pip install --upgrade pip
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu 'torch==2.7.1+cpu'
+          python -m pip install -r requirements.txt
+          python -m pip check
+          python -m unittest -v \
+            tests.test_ojs_seo_html.OjsHtmlClientTests \
+            tests.test_ojs_seo_html.OjsHtmlPersistenceAndExecutorTests.test_targeted_html_executor_enforces_page_cap_without_enqueuing_a_follow_up_batch \
+            tests.test_ojs_seo_html.OjsHtmlPersistenceAndExecutorTests.test_html_cancel_and_worker_claim_are_mutually_exclusive_between_processes \
+            tests.test_ojs_seo_html.OjsHtmlPersistenceAndExecutorTests.test_html_worker_stops_before_claiming_when_shutdown_is_requested \
+            tests.test_ojs_seo_html.OjsHtmlPersistenceAndExecutorTests.test_html_pilot_rejects_an_unscoped_or_oversized_page_limit
+
+      - name: Remove only temporary validation resources
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set +e
+          docker ps -aq --filter 'name=^/pesquisa-pdf$' | xargs -r docker rm -f
+          docker ps -aq --filter 'name=^/pesquisa-pdf-ojs-worker$' | xargs -r docker rm -f
+          docker ps -aq --filter 'name=^/pesquisa-pdf-ojs-html-pilot-' | xargs -r docker rm -f
+          docker volume inspect pesquisa-pdf-data >/dev/null 2>&1 && docker volume rm pesquisa-pdf-data
+          docker image rm -f "$PILOT_FIXTURE_IMAGE"

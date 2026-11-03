@@ -255,7 +255,7 @@ class QualitativeCorpusTests(unittest.TestCase):
         empty = self.client.get(response.json["next_url"], follow_redirects=True)
         self.assertIn("Você ainda não tem documentos adicionados", empty.get_data(as_text=True))
         self.assertNotIn("Você ainda não tem arquivos adicionados", empty.get_data(as_text=True))
-        self.assertIn("Adicione para começar a análise quali-dados.", empty.get_data(as_text=True))
+        self.assertIn("Adicione documentos para começar a usar a Análise Documental.", empty.get_data(as_text=True))
         self.assertIn("Adicionar documentos", empty.get_data(as_text=True))
         self.assertNotIn("data-qualitative-records", empty.get_data(as_text=True))
         db.session.expire_all()
@@ -371,7 +371,7 @@ class QualitativeCorpusTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         html = response.get_data(as_text=True)
         self.assertIn("Você ainda não tem documentos adicionados", html)
-        self.assertIn("Adicione para começar a análise quali-dados.", html)
+        self.assertIn("Adicione documentos para começar a usar a Análise Documental.", html)
         self.assertNotIn("Você ainda não possui projetos qualitativos", html)
         self.assertNotIn("Códigos (0)", html)
         self.assertNotIn("Memos (0)", html)
@@ -397,7 +397,7 @@ class QualitativeCorpusTests(unittest.TestCase):
         self.assertIn(f'<h1 class="h4">{project.name}</h1>', html)
         self.assertNotIn(f'<h1 class="h4">{analysis.name}</h1>', html)
         self.assertIn("Adicionar documentos", html)
-        self.assertIn("Como funciona a Análise quali-dados", html)
+        self.assertIn("Como funciona a Análise Documental", html)
         self.assertNotIn("Bases do projeto", html)
         self.assertEqual(manifest["documents"][0]["document_id"],
                          db.session.scalar(select(AnalysisDocument.id).where(
@@ -566,7 +566,7 @@ class QualitativeCorpusTests(unittest.TestCase):
     def test_project_creation_routes_permission_and_sidebar(self):
         self.assertEqual(self.client.get("/analise-qualitativa").status_code, 403)
         self.assertEqual(self.client.get("/projetos/qualitativos/novo").status_code, 403)
-        self.assertIn('platform-nav-unavailable', self.client.get("/").get_data(as_text=True))
+        self.assertIn('platform-nav-tool-unavailable', self.client.get("/").get_data(as_text=True))
         self.allow()
         page = self.client.get("/projetos/qualitativos/novo")
         self.assertEqual(page.status_code, 200)
@@ -1250,7 +1250,8 @@ class QualitativeCorpusTests(unittest.TestCase):
         css = (Path(__file__).resolve().parents[1] / "static/css/platform.css").read_text(encoding="utf-8")
         self.assertIn('.platform-qualitative-search-options { display: flex; flex-wrap: wrap', css)
         self.assertIn('.platform-qualitative-search-options label, '
-                      '.platform-qualitative-automatic-options label { display: inline-flex', css)
+                      '.platform-qualitative-automatic-options label, .platform-method-toggle '
+                      '{ display: inline-flex', css)
         self.assertIn('white-space: nowrap; cursor: pointer', css)
         self.assertIn('.platform-qualitative-search-results [data-result-prev]', css)
         self.assertIn('.platform-qualitative-search-results [data-result-count]', css)

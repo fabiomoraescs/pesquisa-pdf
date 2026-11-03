@@ -1,0 +1,108 @@
+{% from 'platform/_icons.html' import icon %}
+{% from 'platform/_metric_card.html' import metric_card_content %}
+
+{% macro bibliography_metric(metric, variant=none) -%}
+  {{ metric_card_content(metric, variant) }}
+{%- endmacro %}
+
+{% macro history_panel() -%}
+  <section class="platform-panel ojs-dashboard ojs-dashboard--history" aria-labelledby="ojs-dashboard-history-title">
+    <h2 id="ojs-dashboard-history-title" class="h5 mb-1">Evolução das análises bibliográficas</h2><p class="platform-muted mb-3">Cada ponto corresponde a uma auditoria registrada. Universos diferentes, cobertura incompleta e critérios diferentes não demonstram, isoladamente, melhoria ou piora.</p>
+    {% if dashboard.history | length > 1 %}
+      {% if dashboard.history | length > 2 %}
+        {% set history_chart = namespace(labels=[], active_records=[], records=[], statuses=[]) %}
+        {% for point in dashboard.history %}{% set _ = history_chart.labels.append(point.recorded_at | data_hora_local) %}{% set _ = history_chart.active_records.append(point.active_records) %}{% set _ = history_chart.records.append(point.records) %}{% set _ = history_chart.statuses.append(audit_status_labels.get(point.status, point.status)) %}{% endfor %}
+        <div id="ojs-dashboard-chart-history" class="ojs-dashboard-history-plot mb-3" role="img" aria-label="Evolução das publicações ativas por auditoria"></div>
+        <script id="ojs-dashboard-history-chart-data" type="application/json">{{ {'labels': history_chart.labels, 'active_records': history_chart.active_records, 'records': history_chart.records, 'statuses': history_chart.statuses} | tojson }}</script>
+      {% else %}
+        <p class="platform-muted small mb-3">Há duas auditorias registradas. Os valores são apresentados na tabela para evitar sugerir uma tendência ainda insuficiente.</p>
+      {% endif %}
+      <div class="table-responsive"><table class="table platform-themed-table table-sm align-middle mb-0"><thead><tr><th scope="col">Data</th><th scope="col">Situação</th><th scope="col">Registros</th><th scope="col">Publicações ativas</th><th scope="col">DOIs identificados</th><th scope="col">Ação</th></tr></thead><tbody>{% for point in dashboard.history %}<tr><td>{{ point.recorded_at | data_hora_local }}</td><td>{{ audit_status_labels.get(point.status, point.status) }}</td><td>{{ point.records }}</td><td>{{ point.active_records }}</td><td>{{ point.dois_identified }}</td><td><span class="platform-table-actions"><a class="btn btn-outline-primary btn-sm platform-action-button" href="{{ url_for('ojs_seo.audit_detail', journal_id=journal.id, audit_id=point.audit_run_id) }}" title="Visualizar auditoria de {{ point.recorded_at | data_hora_local }}" aria-label="Visualizar auditoria de {{ point.recorded_at | data_hora_local }}" data-platform-loading-overlay-link data-loading-overlay-target="ojs-seo-overlay-processamento">{{ icon('ficha') }}</a></span></td></tr>{% endfor %}</tbody></table></div>
+    {% else %}<div class="platform-empty-state"><h3 class="h6">Ainda não há histórico suficiente para comparar análises.</h3><p>Uma nova análise bibliográfica registrada permitirá acompanhar mudanças de universo com contexto.</p></div>{% endif %}
+  </section>
+{%- endmacro %}
+
+{% if dashboard.reference %}
+<section class="ojs-dashboard ojs-dashboard--summary mb-3" aria-labelledby="ojs-dashboard-summary-title">
+  <div class="d-flex flex-wrap justify-content-between align-items-end gap-2 mb-3">
+    <div>
+      <h2 id="ojs-dashboard-summary-title" class="h5 mb-1">Situação geral</h2>
+      <p class="platform-muted mb-0">Indicadores da {{ 'coleta parcial' if dashboard.reference.kind == 'partial' else 'última coleta concluída' }} de {{ dashboard.reference.audit_run.completed_at | data_hora_local if dashboard.reference.audit_run.completed_at else dashboard.reference.audit_run.created_at | data_hora_local }}.</p>
+    </div>
+    <a class="btn btn-outline-primary btn-sm" href="{{ url_for('ojs_seo.audit_detail', journal_id=journal.id, audit_id=dashboard.reference.audit_run.id) }}" data-platform-loading-overlay-link data-loading-overlay-target="ojs-seo-overlay-processamento">Ver análise bibliográfica</a>
+  </div>
+  <div class="row g-2 platform-kpi-grid" aria-label="Indicadores bibliográficos principais">
+    {% for metric in dashboard.bibliography %}
+      <div class="col-6 col-lg-4">{% if metric.article_filter %}<a class="metric-card platform-metric-card platform-kpi-card ojs-dashboard-metric-link p-3" href="{{ url_for('ojs_seo.articles', journal_id=journal.id, audit=dashboard.reference.audit_run.id, filter=metric.article_filter) }}" data-platform-loading-overlay-link data-loading-overlay-target="ojs-seo-overlay-processamento">{{ bibliography_metric(metric, loop.index0) }}</a>{% else %}<div class="metric-card platform-metric-card platform-kpi-card p-3">{{ bibliography_metric(metric, loop.index0) }}</div>{% endif %}</div>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="platform-panel ojs-dashboard ojs-dashboard--problems mb-3" aria-labelledby="ojs-dashboard-problems-title">
+  <div class="mb-3"><h2 id="ojs-dashboard-problems-title" class="h5 mb-1">Problemas identificados</h2><p class="platform-muted mb-0">Os gráficos mostram ocorrências. Uma publicação pode participar de mais de um achado.</p></div>
+  {% if dashboard.recommendations %}
+    {% set problem_metrics = [
+      {'key': 'confirmed-articles', 'label': 'Publicações com problema confirmado', 'value': dashboard.confirmed_articles, 'description': 'Publicações distintas'},
+      {'key': 'potential-articles', 'label': 'Publicações com possível problema', 'value': dashboard.potential_articles, 'description': 'Exigem conferência'},
+      {'key': 'recommendation-types', 'label': 'Tipos de recomendação', 'value': dashboard.recommendations | length, 'description': 'Categorias consolidadas'},
+      {'key': 'high-priorities', 'label': 'Prioridades altas', 'value': dashboard.high_priority_recommendation_count, 'description': 'Recomendações prioritárias'}
+    ] %}
+    <div class="row g-2 mb-3 platform-kpi-grid" aria-label="Indicadores resumidos dos problemas">
+      {% for metric in problem_metrics %}
+        <div class="col-12 col-sm-6 col-xl-3"><div class="metric-card platform-metric-card platform-kpi-card p-3">{{ metric_card_content(metric, loop.index0) }}</div></div>
+      {% endfor %}
+    </div>
+    <div class="ojs-dashboard-problem-grid" aria-label="Distribuições dos problemas identificados">
+      <article class="ojs-dashboard-chart-card ojs-dashboard-chart-card--severity">
+        <h3 class="h6">Ocorrências por gravidade</h3>
+        <p class="platform-muted small">Distribuição de ocorrências classificadas por gravidade.</p>
+        <dl class="ojs-simple-bars" aria-label="Ocorrências por gravidade">
+          {% for item in dashboard.problems_by_severity %}
+            <div class="ojs-simple-bars__row"><dt title="{{ item.label }}">{{ item.label }}</dt><dd><span class="ojs-simple-bars__track" aria-hidden="true"><span class="ojs-simple-bars__fill ojs-simple-bars__fill--{{ item.key }}" style="width: {{ item.percentage }}%"></span></span><strong>{{ item.value }}</strong><span class="visually-hidden">{{ item.label }}: {{ item.value }} ocorrência(s), {{ item.percentage }}%.</span></dd></div>
+          {% endfor %}
+        </dl>
+      </article>
+      <article class="ojs-dashboard-chart-card ojs-dashboard-chart-card--certainty">
+        <h3 class="h6">Evidência</h3>
+        <p class="platform-muted small">Confirmações e situações que ainda exigem verificação.</p>
+        {% set certainty_total = dashboard.problems_by_certainty | map(attribute='value') | sum %}
+        {% set certainty_confirmed = dashboard.problems_by_certainty[0].value if dashboard.problems_by_certainty | length else 0 %}
+        {% set certainty_potential = dashboard.problems_by_certainty[1].value if dashboard.problems_by_certainty | length > 1 else 0 %}
+        {% set certainty_first = (certainty_confirmed * 100 / certainty_total) if certainty_total else 0 %}
+        {% set certainty_second = ((certainty_confirmed + certainty_potential) * 100 / certainty_total) if certainty_total else 0 %}
+        <div class="ojs-simple-donut-layout">
+          <div class="ojs-simple-donut" role="img" aria-label="{{ certainty_total }} ocorrência(s): {{ certainty_confirmed }} confirmada(s), {{ certainty_potential }} potencial(is) e {{ (dashboard.problems_by_certainty[2].value if dashboard.problems_by_certainty | length > 2 else 0) }} não verificada(s)" style="--ojs-donut-first: {{ certainty_first }}%; --ojs-donut-second: {{ certainty_second }}%;"><span><strong>{{ certainty_total }}</strong><small>ocorrências</small></span></div>
+          <ul class="ojs-simple-legend">{% for item in dashboard.problems_by_certainty %}<li><i class="ojs-simple-legend__dot ojs-simple-legend__dot--{{ item.key }}" aria-hidden="true"></i><span>{{ item.label }}</span><strong>{{ item.value }} · {{ item.percentage }}%</strong></li>{% endfor %}</ul>
+        </div>
+      </article>
+      <article class="ojs-dashboard-chart-card ojs-dashboard-chart-card--nature">
+        <h3 class="h6">Origem dos problemas</h3>
+        <p class="platform-muted small">Dados bibliográficos, informações das páginas ou diferenças entre as fontes.</p>
+        <dl class="ojs-simple-bars" aria-label="Ocorrências por origem">
+          {% for item in dashboard.problems_by_nature %}
+            <div class="ojs-simple-bars__row"><dt title="{{ item.label }}">{{ item.label }}</dt><dd><span class="ojs-simple-bars__track" aria-hidden="true"><span class="ojs-simple-bars__fill ojs-simple-bars__fill--nature" style="width: {{ item.percentage }}%"></span></span><strong>{{ item.value }}</strong><span class="visually-hidden">{{ item.label }}: {{ item.value }} ocorrência(s), {{ item.percentage }}%.</span></dd></div>
+          {% endfor %}
+        </dl>
+      </article>
+      <article class="ojs-dashboard-chart-card ojs-dashboard-chart-card--types"><h3 class="h6">Principais problemas por tipo</h3><div class="ojs-dashboard-bars">{% for item in dashboard.problem_types %}<a class="ojs-dashboard-bar-link ojs-dashboard-bar-link--problem-type" href="{{ url_for('ojs_seo.recommendation_detail', journal_id=journal.id, source_audit_id=dashboard.reference.audit_run.id, recommendation_code=item.key) }}"><span class="ojs-dashboard-bar-label">{{ item.label }}</span><span class="ojs-dashboard-bar-track"><span class="ojs-dashboard-bar-fill ojs-dashboard-bar-fill--problem" style="width: {{ item.percentage }}%"></span></span><strong>{{ item.value }}</strong><span class="visually-hidden">{{ item.description }}</span></a>{% endfor %}</div></article>
+    </div>
+  {% else %}
+    <div class="platform-empty-state"><h3 class="h6">Nenhuma recomendação foi consolidada para esta referência.</h3><p>Isso não comprova adequação integral: a interpretação depende da cobertura e das evidências disponíveis.</p></div>
+  {% endif %}
+</section>
+
+{{ history_panel() }}
+
+<section class="platform-panel ojs-dashboard ojs-dashboard--bibliography mb-3" aria-labelledby="ojs-dashboard-bibliography-title">
+  <div class="mb-3"><h2 id="ojs-dashboard-bibliography-title" class="h5 mb-1">Dados bibliográficos</h2><p class="platform-muted mb-0">Presença dos campos na mesma referência usada pelos indicadores. Uma ausência no registro não confirma uma falha na página pública.</p></div>
+  <div class="ojs-dashboard-bars" aria-label="Completude dos metadados bibliográficos">
+    {% for item in dashboard.metadata_completeness %}
+      <a class="ojs-dashboard-bar-link" href="{{ url_for('ojs_seo.articles', journal_id=journal.id, audit=dashboard.reference.audit_run.id, filter='missing_' ~ item.key) }}" title="Ver publicações sem {{ item.label.lower() }}">
+        <span class="ojs-dashboard-bar-label">{{ item.label }}</span><span class="ojs-dashboard-bar-track"><span class="ojs-dashboard-bar-fill" style="width: {{ item.percentage }}%"></span></span><strong>{{ item.value }}/{{ item.total }}</strong><span class="visually-hidden">{{ item.description }}</span>
+      </a>
+    {% endfor %}
+  </div>
+</section>
+{% else %}
+<section class="platform-empty-state mb-3"><h2 class="h5">Ainda não há uma análise bibliográfica disponível.</h2><p>Solicite a primeira análise em Histórico e análises. Depois, a Visão geral apresentará indicadores e orientações baseados nos resultados registrados.</p><a class="btn btn-primary btn-sm" href="{{ url_for('ojs_seo.journal_history', journal_id=journal.id) }}" data-platform-loading-overlay-link data-loading-overlay-target="ojs-seo-overlay-processamento">Ir para Histórico e análises</a></section>
+{% endif %}

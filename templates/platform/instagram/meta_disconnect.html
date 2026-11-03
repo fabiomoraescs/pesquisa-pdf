@@ -1,0 +1,20 @@
+{% extends 'platform/base.html' %}
+{% from 'platform/instagram/_project_tabs.html' import project_tabs %}
+
+{% block title %}Desconectar API do Instagram — {{ project.name }}{% endblock %}
+{% block body %}
+<section class="platform-panel mb-3" aria-labelledby="instagram-meta-disconnect-title">
+  <div class="d-flex flex-wrap align-items-start justify-content-between gap-2">
+    <div><h1 id="instagram-meta-disconnect-title" class="platform-page-title">Desconectar a API do Instagram</h1><p class="platform-muted mb-0">A conexão de @{{ connection.instagram_account.username }} será removida deste projeto.</p></div>
+  </div>
+</section>
+{{ project_tabs(project, 'import') }}
+<section class="platform-panel" aria-label="Confirmação de desconexão">
+  <p class="platform-danger-note"><strong>A conexão será removida deste projeto.</strong> O histórico manual, as execuções, os insights e os relatórios serão preservados.</p>
+  <form method="post" action="{{ url_for('instagram.disconnect_meta_account', project_id=project.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="confirm" value="yes">
+    <div class="d-flex flex-wrap gap-2"><button class="btn btn-danger" type="submit">Desconectar</button><a class="btn btn-outline-primary" href="{{ url_for('instagram.new_import', project_id=project.id) }}">Cancelar</a></div>
+  </form>
+</section>
+{% endblock %}

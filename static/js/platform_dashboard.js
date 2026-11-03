@@ -1,6 +1,8 @@
 (() => {
   const source = document.getElementById('dashboard-admin-chart-data');
   if (!source || !window.Plotly || !window.PesquisaPdfPlotTheme) return;
+  if (window.__platformDashboardChartsInitialized) return;
+  window.__platformDashboardChartsInitialized = true;
 
   let admin;
   try {
@@ -9,9 +11,11 @@
     return;
   }
 
-  const theme = window.PesquisaPdfPlotTheme;
+  const theme = window.PesquisaPdfPlotTheme.forElement
+    ? window.PesquisaPdfPlotTheme.forElement(source)
+    : window.PesquisaPdfPlotTheme;
 
-  function draw(id, series, { horizontal = true, colorIndex = 0, label = 'registro(s)' } = {}) {
+  function draw(id, series, { horizontal = true, colorIndex = 0, color = null, label = 'registro(s)' } = {}) {
     const target = document.getElementById(id);
     if (!target || !series) return;
     const labels = series.labels || [];
@@ -22,7 +26,7 @@
       x: horizontal ? values : labels,
       y: horizontal ? labels : values,
       orientation: horizontal ? 'h' : 'v',
-      marker: { color: theme.palette()[colorIndex] },
+      marker: { color: color || theme.palette()[colorIndex] },
       hovertemplate: horizontal
         ? `%{y}<br><b>%{x} ${label}</b><extra></extra>`
         : `%{x}<br><b>%{y} ${label}</b><extra></extra>`,
@@ -44,9 +48,9 @@
       values: admin.registrations?.values || [],
     };
     draw('dashboard-chart-users', registrations,
-      { horizontal: false, colorIndex: 2, label: 'cadastro(s)' });
+      { horizontal: false, colorIndex: 2, color: theme.color?.('--chart-magenta'), label: 'cadastro(s)' });
     draw('dashboard-chart-usage', admin.usage,
-      { colorIndex: 3, label: 'Base(s) concluída(s)' });
+      { colorIndex: 0, color: theme.color?.('--chart-cyan'), label: 'Base(s) concluída(s)' });
   }
 
   let resizeFrame;
@@ -61,9 +65,5 @@
   render();
   document.addEventListener('tema-alterado', render);
   document.addEventListener('dashboard-redimensionar', resizeCharts);
-  if ('ResizeObserver' in window) {
-    const observer = new ResizeObserver(resizeCharts);
-    document.querySelectorAll('.platform-dashboard-admin .platform-panel')
-      .forEach(card => observer.observe(card));
-  }
+  window.addEventListener?.('resize', resizeCharts, { passive: true });
 })();

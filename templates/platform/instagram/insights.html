@@ -1,0 +1,127 @@
+{% extends "platform/base.html" %}
+{% from 'platform/_icons.html' import icon %}
+{% from 'platform/_tutorial_info.html' import tutorial_button, tutorial_dialog with context %}
+{% from 'platform/instagram/_project_tabs.html' import project_tabs %}
+{% from 'platform/instagram/_temporal_period.html' import temporal_period_controls %}
+{% from 'platform/_pagination.html' import pagination_controls %}
+
+{% block title %}Insights — {{ project.name }} — Instagram{% endblock %}
+{% block body %}
+{% set instagram_tutorial = platform_help_for('instagram_insights') %}
+{% set recommendation_type_labels = {'content_mix': 'Míx de conteúdo', 'editorial_strategy': 'Estratégia editorial', 'media_format': 'Formato de mídia', 'information_clarity': 'Clareza informacional', 'community_response': 'Resposta à comunidade', 'risk_review': 'Revisão de risco', 'measurement_quality': 'Qualidade da medição'} %}
+<section class="platform-panel mb-3" aria-labelledby="instagram-insights-title">
+  <div class="d-flex flex-wrap align-items-start justify-content-between gap-2">
+    <div>
+      <h1 id="instagram-insights-title" class="platform-page-title">{{ project.name }}</h1>
+      <p class="platform-muted mb-0">Insights · Padrões descritivos, versionados e rastreáveis nos dados registrados.</p>
+    </div>
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      {% if can_generate %}
+      <form method="post" action="{{ url_for('instagram.generate_project_insights', project_id=project.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="period" value="{{ period }}">
+        {% if period_form.key == 'custom' %}<input type="hidden" name="period_start" value="{{ period_form.start }}"><input type="hidden" name="period_end" value="{{ period_form.end }}">{% endif %}
+        <button class="btn btn-primary btn-sm" type="submit">Gerar insights</button>
+      </form>
+      {% endif %}
+      {{ tutorial_button(instagram_tutorial, label='Abrir tutorial de Insights') }}
+    </div>
+  </div>
+</section>
+{{ project_tabs(project, 'insights') }}
+<section id="instagram-insights-content">
+  <div class="platform-filter-band" id="instagram-insights-period" aria-label="Período dos insights">
+    <form class="platform-filter-control-row" method="get" action="{{ url_for('instagram.insights', project_id=project.id, _anchor='instagram-insights-content') }}" data-partial-update data-partial-target="#instagram-insights-content" data-partial-history="replace">
+      <input type="hidden" name="action_kind" value="{{ action_kind }}"><input type="hidden" name="action_status" value="{{ action_status }}">
+      {{ temporal_period_controls('instagram-insights', period_form, period_options, auto_submit=true) }}
+      <noscript><button class="btn btn-outline-primary btn-sm" type="submit">Atualizar</button></noscript>
+    </form>
+  </div>
+  {% if not insight_run %}
+  <section class="platform-empty-state" aria-labelledby="instagram-insights-empty-title">
+    <h2 id="instagram-insights-empty-title" class="h5">Ainda não há insights gerados para este projeto.</h2>
+    <p>Gere primeiro os Insights do projeto para registrar achados descritivos e suas evidências rastreáveis no período selecionado.</p>
+    {% if can_generate %}<form method="post" action="{{ url_for('instagram.generate_project_insights', project_id=project.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="period" value="{{ period }}">{% if period_form.key == 'custom' %}<input type="hidden" name="period_start" value="{{ period_form.start }}"><input type="hidden" name="period_end" value="{{ period_form.end }}">{% endif %}<button class="btn btn-primary" type="submit">Gerar insights</button></form>{% else %}<p class="platform-muted mb-0">Projeto arquivado: o histórico pode ser consultado, mas não recebe novas execuções.</p>{% endif %}
+  </section>
+  {% else %}
+  <section class="platform-panel mb-3" aria-labelledby="instagram-insights-run-title">
+    <div class="d-flex flex-wrap align-items-start justify-content-between gap-2"><div><h2 id="instagram-insights-run-title" class="h5 mb-1">Última execução do recorte</h2><p class="platform-muted mb-0">Gerada em {{ insight_run.generated_at | data_hora_local }} · referência dos dados: {{ insight_run.reference_at | data_hora_local if insight_run.reference_at else 'Não informada' }}</p></div><div class="d-flex flex-wrap align-items-center gap-2"><span class="platform-badge">{{ insight_run.engine_version }}</span>{% if can_generate %}<form method="post" action="{{ url_for('instagram.generate_project_recommendations', project_id=project.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="insight_run_id" value="{{ insight_run.id }}"><button class="btn btn-outline-primary btn-sm" type="submit">Gerar recomendações</button></form>{% endif %}</div></div>
+    <dl class="row mb-0 mt-3"><dt class="col-sm-4">Período</dt><dd class="col-sm-8">{{ period_label }}</dd><dt class="col-sm-4">Publicações analisadas</dt><dd class="col-sm-8">{{ insight_run.publication_count }}</dd><dt class="col-sm-4">Comentários analisados</dt><dd class="col-sm-8">{{ insight_run.comment_count }}</dd><dt class="col-sm-4">Achados gerados</dt><dd class="col-sm-8">{{ insight_run.finding_count }}</dd></dl>
+  </section>
+  {% if findings_by_group %}
+    {% for group, findings in findings_by_group.items() %}
+    {% set finding_page_param = 'findings_page_' ~ loop.index %}
+    <section class="platform-panel mb-3" aria-labelledby="instagram-insights-{{ loop.index }}">
+      <h2 id="instagram-insights-{{ loop.index }}" class="h5">{{ 'Achados analíticos' if group == 'Tipo de mídia' else group }}</h2>
+      <div class="platform-view-list">
+      {% for finding in findings %}
+        <article class="platform-list-item">
+          <div><div class="platform-list-title"><span class="platform-list-index" aria-hidden="true">{{ '%02d' | format(loop.index) }}</span>{{ finding.title }}</div><div class="platform-list-meta">{{ finding.summary.removesuffix(' O padrão é descritivo e não causal.') }}</div></div>
+          <div class="platform-list-meta"><span class="platform-badge">Suporte {{ {'exploratory': 'exploratório', 'moderate': 'moderado', 'consistent': 'consistente'}[finding.support_level] }}</span><div class="mt-1">n = {{ finding.group_n }} · cobertura {{ '%.0f' | format(finding.coverage * 100) }}%{% if finding.absolute_difference is not none %} · diferença {{ '%+.2f' | format(finding.absolute_difference) }}{% endif %}</div></div>
+          <div class="platform-list-actions"><a class="btn btn-outline-primary btn-sm platform-action-button" href="{{ url_for('instagram.insight_detail', project_id=project.id, finding_id=finding.id) }}" title="Ver evidências" aria-label="Ver evidências">{{ icon('abrir') }}</a></div>
+        </article>
+      {% endfor %}
+      </div>
+      {{ pagination_controls(finding_paginations[group], 'instagram.insights', 'instagram-insights-' ~ loop.index, finding_page_param) }}
+    </section>
+    {% endfor %}
+  {% else %}
+  <section class="platform-empty-state" aria-labelledby="instagram-insights-insufficient-title"><h2 id="instagram-insights-insufficient-title" class="h5">Os dados atuais ainda são insuficientes para gerar achados com os critérios desta versão.</h2><p>O motor exige tamanho mínimo de grupo, cobertura conhecida e diferenças descritivas antes de registrar um achado.</p></section>
+  {% endif %}
+  <section id="instagram-recommendations" class="platform-panel mb-3" aria-labelledby="instagram-recommendations-title">
+    <div class="d-flex flex-wrap align-items-start justify-content-between gap-2"><div><h2 id="instagram-recommendations-title" class="h5 mb-1">Recomendações</h2><p class="platform-muted mb-0">Orientações de teste derivadas dos achados deste run; não são ordens nem relações causais.</p></div>{% if recommendation_run %}<span class="platform-badge">{{ recommendation_run.engine_version }}</span>{% endif %}</div>
+    {% if recommendation_run %}
+      <p class="platform-list-meta mt-3">{{ recommendation_run.number_of_findings_considered }} achado(s) considerado(s) · {{ recommendation_run.number_of_recommendations_generated }} recomendação(ões) gerada(s) · {{ recommendation_run.parameters_json.get('findings_ignored_by_rules', 0) }} achado(s) sem recomendação nesta versão.</p>
+      {% if recommendation_run.parameters_json.get('converged_source_findings', 0) %}<p class="platform-muted">{{ recommendation_run.parameters_json.get('converged_source_findings') }} achado(s) compatível(is) foram reunidos em recomendações únicas.</p>{% endif %}
+      {% if recommendation_run.parameters_json.get('truncated_by_limit') %}<p class="platform-muted">A execução aplicou o limite de {{ recommendation_run.parameters_json.get('rules', {}).get('max_recommendations_per_run') }} recomendações desta versão.</p>{% endif %}
+      {% if recommendations %}
+      <div class="platform-view-list">
+        {% for recommendation in recommendations %}
+        <article class="platform-list-item">
+          <div><div class="platform-list-title"><span class="platform-list-index" aria-hidden="true">{{ '%02d' | format(loop.index) }}</span>{{ recommendation.title }}</div><div class="platform-list-meta">{{ recommendation.summary }}</div></div>
+          <div class="platform-list-meta"><span class="platform-badge">Prioridade {{ {'low': 'baixa', 'medium': 'média', 'high': 'alta'}[recommendation.priority] }}</span><span class="platform-badge ms-1">Suporte {{ {'exploratory': 'exploratório', 'moderate': 'moderado', 'consistent': 'consistente'}[recommendation.support_level] }}</span><div class="mt-1">{{ recommendation_type_labels[recommendation.recommendation_type] }} · {{ recommendation.finding_links | length }} achado(s) de origem</div></div>
+          <div class="platform-list-actions">{% if can_mutate %}<a class="btn btn-outline-primary btn-sm platform-action-button" href="{{ url_for('instagram.new_recommendation_action', project_id=project.id, recommendation_id=recommendation.id, action_kind='action') }}" title="Transformar em ação" aria-label="Transformar em ação">{{ icon('ativar') }}</a><a class="btn btn-outline-primary btn-sm platform-action-button" href="{{ url_for('instagram.new_recommendation_action', project_id=project.id, recommendation_id=recommendation.id, action_kind='test') }}" title="Criar teste" aria-label="Criar teste">{{ icon('analytics') }}</a>{% endif %}<a class="btn btn-outline-primary btn-sm platform-action-button" href="{{ url_for('instagram.recommendation_detail', project_id=project.id, recommendation_id=recommendation.id) }}" title="Ver recomendação" aria-label="Ver recomendação">{{ icon('abrir') }}</a></div>
+        </article>
+        {% endfor %}
+      </div>
+      {{ pagination_controls(recommendations_pagination, 'instagram.insights', 'instagram-recommendations', 'recommendations_page') }}
+      {% else %}
+      <div class="platform-empty-state mt-3"><p class="mb-0">Os achados deste período ainda não sustentam recomendações segundo os critérios desta versão.</p></div>
+      {% endif %}
+    {% else %}
+      <div class="platform-empty-state mt-3"><p class="mb-0">Gere recomendações a partir deste run de Insights para registrar orientações rastreáveis.</p></div>
+    {% endif %}
+  </section>
+  <section id="instagram-actions" class="platform-panel mb-3" aria-labelledby="instagram-actions-title">
+    <div class="d-flex flex-wrap align-items-start justify-content-between gap-2">
+      <div><h2 id="instagram-actions-title" class="h5 mb-1">Ações/Testes</h2><p class="platform-muted mb-0">Registros operacionais vinculados às recomendações; não executam intervenções fora do Análysis.</p></div>
+      {% if action_counts['planned'] or action_counts['in_progress'] or action_counts['completed'] or action_counts['cancelled'] %}<div class="d-flex flex-wrap gap-1"><span class="platform-badge">Planejadas {{ action_counts['planned'] }}</span><span class="platform-badge">Em andamento {{ action_counts['in_progress'] }}</span><span class="platform-badge">Concluídas {{ action_counts['completed'] }}</span></div>{% endif %}
+    </div>
+    {% if action_counts['planned'] or action_counts['in_progress'] or action_counts['completed'] or action_counts['cancelled'] %}
+      <form class="platform-filter-control-row platform-filter-control-row--start mt-3" method="get" action="{{ url_for('instagram.insights', project_id=project.id, _anchor='instagram-actions') }}" data-partial-update data-partial-target="#instagram-actions" data-partial-history="replace">
+        <input type="hidden" name="period" value="{{ period }}">
+        {% if period_form.key == 'custom' %}<input type="hidden" name="period_start" value="{{ period_form.start }}"><input type="hidden" name="period_end" value="{{ period_form.end }}">{% endif %}
+        <label class="visually-hidden" for="instagram-action-kind-filter">Tipo</label><select class="form-select platform-filter-select" id="instagram-action-kind-filter" name="action_kind" data-auto-submit><option value="all"{% if action_kind == 'all' %} selected{% endif %}>Tipo: Todos</option>{% for key, label in action_kind_labels.items() %}<option value="{{ key }}"{% if action_kind == key %} selected{% endif %}>Tipo: {{ label }}</option>{% endfor %}</select>
+        <label class="visually-hidden" for="instagram-action-status-filter">Status</label><select class="form-select platform-filter-select" id="instagram-action-status-filter" name="action_status" data-auto-submit><option value="all"{% if action_status == 'all' %} selected{% endif %}>Status: Todos</option>{% for key, label in action_status_labels.items() %}<option value="{{ key }}"{% if action_status == key %} selected{% endif %}>Status: {{ label }}</option>{% endfor %}</select>
+        <noscript><button class="btn btn-outline-primary btn-sm" type="submit">Atualizar</button></noscript>
+      </form>
+      {% if actions %}<div class="platform-view-list mt-3">
+      {% for action in actions %}
+        <article class="platform-list-item"><div><div class="platform-list-title"><span class="platform-list-index" aria-hidden="true">{{ '%02d' | format(loop.index) }}</span>{{ action.title }}</div><div class="platform-list-meta">{{ action_kind_labels[action.action_kind] }} · Origem: {{ action.recommendation.title }}</div></div><div class="platform-list-meta"><span class="platform-badge">{{ action_status_labels[action.status] }}</span>{% if action.target_metric %}<div class="mt-1">Métrica: {{ action.target_metric }}</div>{% endif %}</div><div class="platform-list-actions"><a class="btn btn-outline-primary btn-sm platform-action-button" href="{{ url_for('instagram.recommendation_action_detail', project_id=project.id, action_id=action.id) }}" title="Abrir {{ action_kind_labels[action.action_kind] | lower }}" aria-label="Abrir {{ action_kind_labels[action.action_kind] | lower }}">{{ icon('abrir') }}</a>{% if can_mutate %}{% if action.evaluations %}{% set delete_unavailable_reason = 'Esta ação possui acompanhamento registrado e não pode ser excluída.' if action.action_kind == 'action' else 'Este teste possui acompanhamento registrado e não pode ser excluído.' %}<span class="btn btn-outline-danger btn-sm platform-action-button platform-action-button--disabled" role="button" aria-disabled="true" tabindex="0" title="{{ delete_unavailable_reason }}" aria-label="Excluir indisponível. {{ delete_unavailable_reason }}">{{ icon('lixeira') }}</span>{% else %}{% set delete_label = 'Excluir ' ~ action_kind_labels[action.action_kind] | lower %}<a class="btn btn-outline-danger btn-sm platform-action-button" href="{{ url_for('instagram.delete_recommendation_action_route', project_id=project.id, action_id=action.id, period=period, action_kind=action_kind, action_status=action_status) }}" title="{{ delete_label }}" aria-label="{{ delete_label }}">{{ icon('lixeira') }}</a>{% endif %}{% endif %}</div></article>
+      {% endfor %}
+      </div>{% else %}<div class="platform-empty-state mt-3"><p class="mb-0">Nenhuma ação ou teste corresponde aos filtros selecionados.</p></div>{% endif %}
+      {{ pagination_controls(actions_pagination, 'instagram.insights', 'instagram-actions', 'actions_page') }}
+    {% else %}
+      <div class="platform-empty-state mt-3"><p class="mb-0">Ainda não há ações ou testes derivados das recomendações deste projeto.</p></div>
+    {% endif %}
+  </section>
+  <section id="instagram-learnings" class="platform-panel mb-3" aria-labelledby="instagram-learnings-title">
+    <div class="d-flex flex-wrap align-items-start justify-content-between gap-2"><div><h2 id="instagram-learnings-title" class="h5 mb-1">Aprendizados</h2><p class="platform-muted mb-0">Sínteses humanas baseadas em acompanhamentos comparáveis; não produzem automaticamente novas recomendações ou ações.</p></div>{% if can_mutate and eligible_learning_evaluations %}<a class="btn btn-primary btn-sm" href="{{ url_for('instagram.new_learning', project_id=project.id, period=period) }}">Novo aprendizado</a>{% endif %}</div>
+    {% if learnings %}<div class="platform-view-list mt-3">{% for learning in learnings %}<article class="platform-list-item"><div><div class="platform-list-title"><span class="platform-list-index" aria-hidden="true">{{ '%02d' | format(loop.index) }}</span>{{ learning.title }}</div><div class="platform-list-meta">{{ metric_label(learning.metric_key) or 'Métrica não disponível' }} · {{ learning_cohort_label(learning) }} · {{ learning.evaluations | length }} acompanhamento(s)</div></div><div class="platform-list-meta"><span class="platform-badge">{{ learning_assessment_labels[learning.assessment] }}</span><div class="mt-1">{{ learning.created_at | data_hora_local }}</div></div><div class="platform-list-actions"><a class="btn btn-outline-primary btn-sm platform-action-button" href="{{ url_for('instagram.learning_detail', project_id=project.id, learning_id=learning.id) }}" title="Abrir aprendizado" aria-label="Abrir aprendizado">{{ icon('abrir') }}</a></div></article>{% endfor %}</div>{{ pagination_controls(learnings_pagination, 'instagram.insights', 'instagram-learnings', 'learnings_page') }}{% else %}<div class="platform-empty-state mt-3"><p class="mb-0">Ainda não há aprendizados consolidados neste projeto.</p>{% if not eligible_learning_evaluations %}<p class="platform-muted mb-0">Registre acompanhamentos comparáveis para consolidar uma síntese humana.</p>{% endif %}</div>{% endif %}
+    {% if not can_mutate %}<p class="platform-muted mt-3 mb-0">Projeto arquivado: o histórico de aprendizados é somente leitura.</p>{% endif %}
+  </section>
+  {% endif %}
+</section>
+{{ tutorial_dialog(instagram_tutorial) }}
+<script defer src="{{ url_for('static', filename='js/platform_tutorial.js') }}"></script><script defer src="{{ url_for('static', filename='js/instagram_temporal_period.js') }}"></script><script defer src="{{ url_for('static', filename='js/platform_auto_submit.js') }}"></script>
+{% endblock %}

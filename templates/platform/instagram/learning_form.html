@@ -1,0 +1,35 @@
+{% extends "platform/base.html" %}
+{% from 'platform/_tutorial_info.html' import tutorial_button, tutorial_dialog with context %}
+{% from 'platform/_icons.html' import icon %}
+{% from 'platform/instagram/_project_tabs.html' import project_tabs %}
+
+{% block title %}Novo aprendizado — {{ project.name }} — Instagram{% endblock %}
+{% block body %}
+{% set instagram_tutorial = platform_help_for('instagram_insights') %}
+<section class="platform-panel mb-3" aria-labelledby="instagram-learning-new-title">
+  <div class="d-flex flex-wrap align-items-start justify-content-between gap-2">
+    <div><h1 id="instagram-learning-new-title" class="platform-page-title">Novo aprendizado</h1><p class="platform-muted mb-0">Síntese humana de acompanhamentos comparáveis. O sistema não soma variações nem infere causalidade.</p></div>
+    <div class="d-flex flex-wrap align-items-center gap-2"><a class="btn btn-outline-primary btn-sm" href="{{ url_for('instagram.insights', project_id=project.id, period=period, _anchor='instagram-learnings') }}">Voltar aos insights</a>{{ tutorial_button(instagram_tutorial, label='Abrir tutorial de Insights') }}</div>
+  </div>
+</section>
+{{ project_tabs(project, 'insights') }}
+<section class="platform-panel" aria-labelledby="instagram-learning-form-title">
+  <h2 id="instagram-learning-form-title" class="h5">Acompanhamentos de origem</h2>
+  {% if evaluations %}
+  <form method="post" class="platform-form-grid" action="{{ url_for('instagram.new_learning', project_id=project.id, period=period) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <fieldset class="platform-form-group" style="grid-column: 1 / -1"><legend class="form-label">Selecione acompanhamentos comparáveis</legend><div class="platform-view-list">
+      {% for evaluation in evaluations %}
+      <label class="platform-list-item"><span><input class="form-check-input me-2" type="checkbox" name="evaluation_ids" value="{{ evaluation.id }}"{% if evaluation.id in selected_ids %} checked{% endif %}> <span class="platform-list-title">{{ evaluation.action.title }}</span><span class="platform-list-meta d-block">{{ metric_label(evaluation.metric_key) or 'Métrica não disponível' }} · {{ evaluation.cohort_json.get('label') }} · baseline {{ evaluation.baseline_value }} → follow-up {{ evaluation.followup_value }}</span></span><span class="platform-list-meta">{{ evaluation.analytics_run.period_start | data_hora_local if evaluation.analytics_run.period_start else 'Período não informado' }}</span></label>
+      {% endfor %}
+    </div><div class="form-text">Somente avaliações com a mesma métrica e a mesma coorte podem ser consolidadas.</div></fieldset>
+    <div class="platform-form-group"><label class="form-label" for="instagram-learning-title">Título</label><input class="form-control" id="instagram-learning-title" name="title" maxlength="320" required value="{{ form_values.title }}"></div>
+    <div class="platform-form-group"><label class="form-label" for="instagram-learning-assessment">Interpretação consolidada</label><select class="form-select" id="instagram-learning-assessment" name="assessment" required>{% for key, label in learning_assessment_labels.items() %}<option value="{{ key }}"{% if form_values.assessment == key %} selected{% endif %}>Interpretação: {{ label }}</option>{% endfor %}</select></div>
+    <div class="platform-form-group" style="grid-column: 1 / -1"><label class="form-label" for="instagram-learning-summary">Síntese humana</label><textarea class="form-control" id="instagram-learning-summary" name="learning_summary" rows="5" maxlength="4000" required>{{ form_values.learning_summary }}</textarea><div class="form-text">Registre a leitura contextual; avaliações divergentes permanecem visíveis e não representam prova de causalidade.</div></div>
+    <div style="grid-column: 1 / -1"><button class="btn btn-primary" type="submit">Registrar aprendizado</button></div>
+  </form>
+  {% else %}<div class="platform-empty-state"><p class="mb-0">Ainda não há acompanhamentos comparáveis para consolidar neste projeto.</p></div>{% endif %}
+</section>
+{{ tutorial_dialog(instagram_tutorial) }}
+<script defer src="{{ url_for('static', filename='js/platform_tutorial.js') }}"></script>
+{% endblock %}

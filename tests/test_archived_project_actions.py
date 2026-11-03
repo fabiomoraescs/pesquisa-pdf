@@ -106,9 +106,9 @@ class ArchivedProjectActionsTests(unittest.TestCase):
 
     def test_all_types_keep_header_controls_csrf_and_owner_checks(self):
         for kind, path, label in (
-            ("free", "/projetos/livres/arquivados", "Busca por termos"),
-            ("systematic", "/projetos/arquivados", "Busca estruturada"),
-            ("qualitative", "/projetos/qualitativos/arquivados", "Análise quali-dados"),
+            ("free", "/projetos/livres/arquivados", "Raspagem por termos"),
+            ("systematic", "/projetos/arquivados", "Raspagem estruturada"),
+            ("qualitative", "/projetos/qualitativos/arquivados", "Análise Documental"),
         ):
             with self.subTest(kind=kind):
                 project = self.project(f"Arquivado {kind}", kind)

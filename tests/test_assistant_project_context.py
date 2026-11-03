@@ -389,7 +389,7 @@ class AssistantProjectContextTemplateTests(unittest.TestCase):
         html = response.get_data(as_text=True)
         self.assertEqual(html.count("data-assistant-toggle"), 1)
         self.assertEqual(html.count("data-assistant-context-indicator"), 1)
-        self.assertIn("Contexto: Indicador · Análise quali-dados", html)
+        self.assertIn("Contexto: Indicador · Análise Documental", html)
 
 
 if __name__ == "__main__":

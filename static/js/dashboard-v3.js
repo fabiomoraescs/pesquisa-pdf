@@ -20,11 +20,12 @@
     target.appendChild(aviso);
   }
 
-  function dimensoes(target, colunas, linhas) {
-    const largura = Math.max(target.parentElement?.clientWidth || 0, 640, colunas * 118);
-    const altura = Math.max(290, linhas * 38 + 145);
-    target.style.minWidth = `${largura}px`;
-    return { largura, altura };
+  function dimensoes(target, colunas, linhas, { compacta = false } = {}) {
+    if (compacta) return theme.matrixDimensions(target, colunas, linhas);
+    const largura = Math.max(target.parentElement?.clientWidth || target.clientWidth || 0, 280);
+    target.style.width = '100%';
+    target.style.minWidth = '0';
+    return { largura, altura: Math.max(290, linhas * 38 + 145) };
   }
 
   function mapaDeCalor() {
@@ -33,15 +34,18 @@
     const termos = serie.termos || [];
     const documentos = serie.documentos || [];
     if (!alvo || !termos.length || !documentos.length) return vazio(alvo, 'Não há termos e documentos suficientes para compor a matriz.');
-    const tamanho = dimensoes(alvo, documentos.length, termos.length);
+    const tamanho = dimensoes(alvo, documentos.length, termos.length, { compacta: true });
+    const documentosVisiveis = documentos.map(documento => theme.abbreviateLabel(documento, 22));
+    const termosVisiveis = termos.map(termo => theme.abbreviateLabel(termo, 28));
+    const detalhes = termos.map(termo => documentos.map(documento => [documento, termo]));
     Plotly.react(alvo, [{
-      type: 'heatmap', x: documentos, y: termos, z: serie.matriz || [],
-      colorscale: document.documentElement.dataset.theme === 'dark' ? 'Tealgrn' : 'Blues',
+      type: 'heatmap', x: documentosVisiveis, y: termosVisiveis, z: serie.matriz || [], customdata: detalhes,
+      colorscale: document.documentElement.dataset.theme === 'light' ? 'Blues' : 'Tealgrn',
       colorbar: { title: { text: 'Ocorrências', font: { color: theme.color('--plot-text') } }, tickfont: { color: theme.color('--plot-text') } },
-      hovertemplate: 'Documento: %{x}<br>Termo: %{y}<br><b>%{z} ocorrência(s)</b><extra></extra>',
+      hovertemplate: 'Documento: %{customdata[0]}<br>Termo: %{customdata[1]}<br><b>%{z} ocorrência(s)</b><extra></extra>',
     }], {
-      ...theme.layout({ l: 145, r: 80, t: 20, b: 120 }), width: tamanho.largura, height: tamanho.altura,
-      xaxis: theme.axis({ title: 'Documentos', automargin: true, tickangle: -35 }),
+      ...theme.layout({ l: 145, r: 80, t: 20, b: 74 }), width: tamanho.largura, height: tamanho.altura,
+      xaxis: theme.axis({ title: 'Documentos', automargin: true, tickangle: 0 }),
       yaxis: theme.axis({ title: 'Termos', automargin: true, autorange: 'reversed' }),
     }, config);
   }
@@ -59,15 +63,17 @@
     const ocorrencias = serie.ocorrencias || [];
     const palavras = serie.palavras || [];
     const valores = porMil.map(valor => Number.isFinite(valor) ? valor : 0);
-    const detalhes = documentos.map((_, indice) => [
+    const documentosVisiveis = documentos.map(documento => theme.abbreviateLabel(documento, 28));
+    const detalhes = documentos.map((documento, indice) => [
+      documento,
       ocorrencias[indice] || 0,
       palavras[indice] || 0,
       Number.isFinite(porMil[indice]) ? Number(porMil[indice]).toLocaleString('pt-BR', { maximumFractionDigits: 2 }) : 'não disponível',
     ]);
     Plotly.react(alvo, [{
-      type: 'bar', orientation: 'h', y: documentos, x: valores, customdata: detalhes,
+      type: 'bar', orientation: 'h', y: documentosVisiveis, x: valores, customdata: detalhes,
       marker: { color: theme.palette()[1] },
-      hovertemplate: 'Documento: %{y}<br>Ocorrências: %{customdata[0]}<br>Palavras consideradas: %{customdata[1]}<br><b>%{customdata[2]} por 1.000 palavras</b><extra></extra>',
+      hovertemplate: 'Documento: %{customdata[0]}<br>Ocorrências: %{customdata[1]}<br>Palavras consideradas: %{customdata[2]}<br><b>%{customdata[3]} por 1.000 palavras</b><extra></extra>',
     }], {
       ...theme.layout({ l: 145, r: 24, t: 20, b: 60 }), width: tamanho.largura, height: tamanho.altura,
       xaxis: theme.axis({ title: 'Ocorrências por 1.000 palavras', rangemode: 'tozero' }),
@@ -88,8 +94,5 @@
     quadro = requestAnimationFrame(() => document.querySelectorAll('.analysis-chart-scroll .js-plotly-plot')
       .forEach(grafico => Plotly.Plots.resize(grafico)));
   };
-  if ('ResizeObserver' in window) {
-    const observador = new ResizeObserver(redimensionar);
-    document.querySelectorAll('.analysis-chart-scroll').forEach(container => observador.observe(container));
-  }
+  window.addEventListener('resize', redimensionar, { passive: true });
 })();

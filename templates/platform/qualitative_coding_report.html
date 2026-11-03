@@ -1,6 +1,6 @@
 {% extends 'platform/base.html' %}
 {% block title %}Relatório de codificação — {{ project.name }} — Análysis{% endblock %}
-{% block page_intro %}<h1 class="h4">Relatório de codificação</h1>{% endblock %}
+{% block page_intro %}<h1 class="h4 mb-1">{{ project.name }}</h1><p class="platform-muted">Relatório de codificação</p>{% endblock %}
 {% block body %}
 <div class="platform-toolbar platform-toolbar-actions"><span class="platform-muted">{{ project.name }}</span>{% if grouped.values() | map('length') | sum %}<a class="btn btn-outline-primary btn-sm ms-auto" href="{{ url_for('qualitative.coding_report_excel', analysis_id=analysis.id) }}">Exportar Excel</a>{% endif %}<a class="btn btn-outline-primary btn-sm{% if not grouped.values() | map('length') | sum %} ms-auto{% endif %}" href="{{ url_for('qualitative.project_workspace', project_id=project.id) }}">Voltar ao projeto</a></div>
 {% if not codes %}

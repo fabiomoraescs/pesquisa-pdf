@@ -1,0 +1,15 @@
+{% macro temporal_period_controls(id_prefix, period_form, period_options, select_name='period', start_name='period_start', end_name='period_end', compact=true, disabled=false, all_history_warning=false, show_label=false, auto_submit=false) -%}
+  <div class="platform-temporal-control{% if compact %} platform-temporal-control--compact{% endif %}" data-instagram-temporal-period{% if auto_submit %} data-instagram-temporal-auto-submit{% endif %}>
+    <div class="platform-form-group mb-0">
+      <label class="{% if show_label %}form-label{% else %}visually-hidden{% endif %}" for="{{ id_prefix }}-period-select">{% if select_name == 'sync_period' %}Período da sincronização{% else %}Período{% endif %}</label>
+      <select class="form-select{% if compact %} form-select-sm{% endif %} platform-temporal-select" id="{{ id_prefix }}-period-select" name="{{ select_name }}" data-instagram-temporal-period-select{% if select_name == 'sync_period' %} data-meta-sync-period-select{% endif %}{% if auto_submit %} data-auto-submit data-reset-pagination{% endif %}{% if disabled %} disabled aria-disabled="true"{% endif %}>
+        {% for key, label in period_options %}<option value="{{ key }}"{% if period_form.key == key %} selected{% endif %}>{% if compact and not show_label %}Período: {% endif %}{{ label }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="platform-temporal-control__custom" data-instagram-temporal-period-custom{% if select_name == 'sync_period' %} data-meta-sync-custom-period{% endif %}{% if period_form.key != 'custom' %} hidden{% endif %}>
+      <div class="platform-form-group mb-0"><label class="{% if period_form.key == 'custom' %}form-label{% else %}visually-hidden{% endif %}" data-instagram-temporal-period-label for="{{ id_prefix }}-start">Data inicial</label><input class="form-control{% if compact %} form-control-sm{% endif %}" id="{{ id_prefix }}-start" name="{{ start_name }}" type="date" value="{{ period_form.start }}"{% if period_form.key != 'custom' or disabled %} disabled{% endif %}{% if period_form.key == 'custom' %} required{% endif %}></div>
+      <div class="platform-form-group mb-0"><label class="{% if period_form.key == 'custom' %}form-label{% else %}visually-hidden{% endif %}" data-instagram-temporal-period-label for="{{ id_prefix }}-end">Data final</label><input class="form-control{% if compact %} form-control-sm{% endif %}" id="{{ id_prefix }}-end" name="{{ end_name }}" type="date" value="{{ period_form.end }}"{% if period_form.key != 'custom' or disabled %} disabled{% endif %}{% if period_form.key == 'custom' %} required{% endif %}></div>
+    </div>
+    {% if all_history_warning %}<p class="form-text mb-0 w-100" data-instagram-temporal-all-history-warning{% if select_name == 'sync_period' %} data-meta-sync-all-history-warning{% endif %}{% if period_form.key not in ('all', 'all_history') %} hidden{% endif %}>A sincronização de todo o histórico pode levar mais tempo em contas com muitas publicações.</p>{% endif %}
+  </div>
+{%- endmacro %}

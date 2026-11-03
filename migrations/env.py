@@ -92,21 +92,41 @@ def run_migrations_online():
                 directives[:] = []
                 logger.info('No changes in schema detected.')
 
-    conf_args = current_app.extensions['migrate'].configure_args
+    conf_args = dict(current_app.extensions['migrate'].configure_args)
     if conf_args.get("process_revision_directives") is None:
         conf_args["process_revision_directives"] = process_revision_directives
 
     connectable = get_engine()
 
     with connectable.connect() as connection:
+        # SQLite cannot change PRAGMA foreign_keys inside a real transaction.
+        # Its schema migrations therefore own their short, explicit commit
+        # boundaries when a batch rebuild needs that PRAGMA; the migration
+        # itself verifies the state before touching the schema.
+        if connection.dialect.name == "sqlite":
+            conf_args["transactional_ddl"] = False
         context.configure(
             connection=connection,
             target_metadata=get_metadata(),
             **conf_args
         )
 
-        with context.begin_transaction():
-            context.run_migrations()
+        if connection.dialect.name == "sqlite":
+            # Não abra uma transação externa: migrations SQLite que precisam
+            # alternar foreign_keys devem fazê-lo fora dela. Ao fim, este
+            # commit persiste também a atualização de alembic_version; em
+            # falha, o que ainda for transacional é revertido.
+            try:
+                context.run_migrations()
+                if connection.in_transaction():
+                    connection.commit()
+            except Exception:
+                if connection.in_transaction():
+                    connection.rollback()
+                raise
+        else:
+            with context.begin_transaction():
+                context.run_migrations()
 
 
 if context.is_offline_mode():

@@ -64,7 +64,7 @@ class HomeProfileTests(unittest.TestCase):
 
     def test_dashboard_and_profile_do_not_require_free_scraper_permission(self):
         create_user()
-        db.session.delete(db.session.get(PlanTool, ("student", "pdf_scraper")))
+        db.session.delete(db.session.get(PlanTool, ("research_quali", "pdf_scraper")))
         db.session.commit()
         login(self.client)
         self.assertEqual(self.client.get("/").status_code, 200)

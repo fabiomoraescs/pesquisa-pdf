@@ -1,6 +1,9 @@
 .git
+.github
 .gitignore
 .venv
+.pytest_cache
+.test-tmp
 __pycache__/
 **/__pycache__/
 **pycache**
@@ -14,4 +17,17 @@ outputs/*
 !outputs/.gitkeep
 *.pdf
 *.xlsx
+*.sqlite
+*.sqlite3
+*.db
+*.tar
+*.tar.*
+*.log
+*.key
+*.pem
+*.p12
+*.pfx
+analisys-backups/
+analisys-rehearsals/
+tests/
 !resources/modelo_biblioteca.xlsx

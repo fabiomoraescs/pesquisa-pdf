@@ -136,7 +136,7 @@ class AssistantRoutesTests(unittest.TestCase):
         self.app.extensions["assistant_ai_provider"] = GeminiToolLoopFake()
         with patch("platform_core.assistant_routes.suggestion_scope_for_id", side_effect=RuntimeError("stale-cache")):
             response = self.ask({
-                "question": "Para que serve a Busca por termos?",
+                "question": "Para que serve a Raspagem por termos?",
                 "context": "term_search",
                 "suggestion_id": "opaque-id",
             })
@@ -146,11 +146,11 @@ class AssistantRoutesTests(unittest.TestCase):
 
     def test_term_and_structured_help_complete_a_gemini_tool_round_as_json(self):
         cases = (
-            ("term_search", "Para que serve a Busca por termos?", "term_search"),
+            ("term_search", "Para que serve a Raspagem por termos?", "term_search"),
             ("term_search", "Como funciona o método Híbrido?", "term_search"),
-            ("structured_search", "Para que serve a Busca estruturada?", "structured_search"),
+            ("structured_search", "Para que serve a Raspagem estruturada?", "structured_search"),
             ("structured_search", "Qual a diferença entre grupo, entidade e variante?", "structured_search"),
-            # Controle: a ajuda do Quali-dados continua no mesmo contrato.
+            # Controle: a ajuda da Análise Documental continua no mesmo contrato.
             ("qualitative", "Como começo a analisar meus documentos aqui?", "qualitative"),
         )
         for context, question, tutorial_key in cases:
@@ -187,9 +187,9 @@ class AssistantRoutesTests(unittest.TestCase):
         })
         db.session.commit()
         cases = (
-            ("term_search", "Para que serve a Busca por termos?"),
+            ("term_search", "Para que serve a Raspagem por termos?"),
             ("term_search", "Explique como funciona o método Híbrido e o que o limiar modifica."),
-            ("structured_search", "Para que serve a Busca estruturada?"),
+            ("structured_search", "Para que serve a Raspagem estruturada?"),
             ("structured_search", "Qual é a diferença entre grupo, entidade e variante?"),
             ("qualitative", "Como funciona esta ferramenta?"),
         )

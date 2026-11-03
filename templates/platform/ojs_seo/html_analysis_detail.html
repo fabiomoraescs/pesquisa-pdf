@@ -1,0 +1,74 @@
+{% extends "platform/base.html" %}
+{% from 'platform/_tutorial_info.html' import tutorial_button, tutorial_dialog with context %}
+{% block title %}Diagnóstico técnico — {{ project.name }}{% endblock %}
+{% block body %}
+{% set ojs_tutorial = platform_help_for('ojs_seo') %}
+{% set facts = page.analysis.facts_json if page.analysis.facts_json is mapping else {} %}
+{% set basic = facts.get('basic', {}) if facts.get('basic', {}) is mapping else {} %}
+{% set citation = facts.get('citation', {}) if facts.get('citation', {}) is mapping else {} %}
+{% set structured = facts.get('structured_data', {}) if facts.get('structured_data', {}) is mapping else {} %}
+{% set consistency = facts.get('oai_html_consistency', {}) if facts.get('oai_html_consistency', {}) is mapping else {} %}
+{% set comparison_rows = consistency.get('comparisons', []) if consistency is mapping else [] %}
+{% set html_not_verified = page.analysis.status == 'not_verified' %}
+<section class="platform-panel mb-3" aria-labelledby="ojs-html-analysis-title"><div class="d-flex flex-wrap justify-content-between gap-2 ojs-seo-heading-actions"><div><p class="platform-muted mb-1">DIAGNÓSTICO TÉCNICO HTML</p><h1 id="ojs-html-analysis-title" class="h4 mb-1">{{ page.article.title or page.article.oai_identifier }}</h1><p class="platform-muted mb-0">{{ 'Não verificada' if page.analysis.status == 'not_verified' else 'Página analisada' }} · {{ page.analysis.checked_at | data_hora_local }}</p></div><div class="ojs-seo-action-group"><a class="btn btn-outline-primary btn-sm" href="{{ url_for('ojs_seo.html_audit_records', journal_id=journal.id, audit_id=audit.run.id) }}" data-platform-loading-overlay-link data-loading-overlay-target="ojs-seo-overlay-processamento">Voltar aos registros</a>{{ tutorial_button(ojs_tutorial, section_id='interpretacao-diagnosticos', label='Abrir guia do OJS SEO') }}</div></div></section>
+<section class="platform-panel mb-3" aria-labelledby="ojs-html-http-title"><h2 id="ojs-html-http-title" class="h5">HTTP e indexabilidade</h2><dl class="row mb-0"><dt class="col-sm-4">URL analisada</dt><dd class="col-sm-8 text-break">{{ page.analysis.final_url or page.analysis.source_url }}</dd><dt class="col-sm-4">HTTP</dt><dd class="col-sm-8">{{ page.analysis.http_status or 'Não verificado' }}</dd><dt class="col-sm-4">Tipo de conteúdo</dt><dd class="col-sm-8">{{ page.analysis.content_type or 'Não verificado' }}</dd><dt class="col-sm-4">Redirecionamentos</dt><dd class="col-sm-8">{{ 'Não verificado' if html_not_verified else page.analysis.redirect_count }}</dd><dt class="col-sm-4">Tempo observado</dt><dd class="col-sm-8">{{ page.analysis.response_time_ms if page.analysis.response_time_ms is not none else 'Não verificado' }}{% if page.analysis.response_time_ms is not none %} ms{% endif %}</dd></dl></section>
+<section class="platform-panel mb-3" aria-labelledby="ojs-html-basic-title"><h2 id="ojs-html-basic-title" class="h5">Metadados básicos</h2><dl class="row mb-0"><dt class="col-sm-4">title</dt><dd class="col-sm-8">{{ 'Não verificado' if html_not_verified else basic.get('title', []) | join(', ') or 'Não identificado' }}</dd><dt class="col-sm-4">Meta description</dt><dd class="col-sm-8">{{ 'Não verificado' if html_not_verified else basic.get('description', []) | join(', ') or 'Não identificada' }}</dd><dt class="col-sm-4">H1</dt><dd class="col-sm-8">{{ 'Não verificado' if html_not_verified else basic.get('h1', []) | join(', ') or 'Não identificado' }}</dd><dt class="col-sm-4">Canonical</dt><dd class="col-sm-8">{{ 'Não verificado' if html_not_verified else basic.get('canonical', []) | join(', ') or 'Não identificado' }}</dd><dt class="col-sm-4">Robots</dt><dd class="col-sm-8">{{ 'Não verificado' if html_not_verified else basic.get('robots', []) | join(', ') or 'Não identificado' }}</dd><dt class="col-sm-4">X-Robots-Tag</dt><dd class="col-sm-8">{{ 'Não verificado' if html_not_verified else basic.get('x_robots_tag', []) | join(', ') or 'Não identificado' }}</dd></dl></section>
+<section class="platform-panel mb-3" aria-labelledby="ojs-html-citation-title"><h2 id="ojs-html-citation-title" class="h5">Metadados acadêmicos</h2><dl class="row mb-0">{% for key in ['citation_title', 'citation_author', 'citation_journal_title', 'citation_publication_date', 'citation_issn', 'citation_volume', 'citation_issue', 'citation_firstpage', 'citation_lastpage', 'citation_doi', 'citation_pdf_url'] %}<dt class="col-sm-4">{{ key }}</dt><dd class="col-sm-8">{{ 'Não verificado' if html_not_verified else citation.get(key, []) | join(', ') or 'Não identificado' }}</dd>{% endfor %}</dl></section>
+<section class="platform-panel mb-3" aria-labelledby="ojs-html-structured-title"><h2 id="ojs-html-structured-title" class="h5">Dados estruturados e compartilhamento</h2><dl class="row mb-0"><dt class="col-sm-4">JSON-LD</dt><dd class="col-sm-8">{{ 'Não verificado' if html_not_verified else structured.get('json_ld_blocks', 0) ~ ' bloco(s); ' ~ structured.get('invalid_json_ld_blocks', 0) ~ ' inválido(s)' }}</dd><dt class="col-sm-4">Tipos Schema.org</dt><dd class="col-sm-8">{{ 'Não verificado' if html_not_verified else structured.get('schema_types', []) | join(', ') or 'Não identificado' }}</dd><dt class="col-sm-4">Open Graph</dt><dd class="col-sm-8">{{ 'Não verificado' if html_not_verified else ('Identificado' if facts.get('sharing', {}).get('open_graph_present') else 'Não identificado') }}</dd><dt class="col-sm-4">Twitter Cards</dt><dd class="col-sm-8">{{ 'Não verificado' if html_not_verified else ('Identificado' if facts.get('sharing', {}).get('twitter_card_present') else 'Não identificado') }}</dd></dl></section>
+<section class="platform-panel mb-3" aria-labelledby="ojs-html-consistency-title">
+  <h2 id="ojs-html-consistency-title" class="h5">Consistência OAI-PMH × HTML</h2>
+  {% if html_not_verified %}
+    <p class="platform-muted mb-0">Não verificado porque a página HTML não foi recuperada.</p>
+  {% elif comparison_rows %}
+    <p class="platform-muted">Critérios: {{ consistency.get('criteria_version', 'versão não informada') }}. As normalizações removem apenas diferenças formais; não usam similaridade aproximada como prova de identidade.</p>
+    <div class="table-responsive">
+      <table class="table platform-themed-table table-sm align-middle mb-0">
+        <thead><tr><th scope="col">Campo</th><th scope="col">Valor OAI-PMH</th><th scope="col">Valor HTML</th><th scope="col">Valores normalizados</th><th scope="col">Resultado</th><th scope="col">Motivo e recomendação</th></tr></thead>
+        <tbody>
+          {% for comparison in comparison_rows %}
+            <tr>
+              <td>{{ comparison.get('label', comparison.get('field', 'Campo')) }}</td>
+              <td><small class="platform-muted d-block">{{ comparison.get('oai_label', 'OAI-PMH') }}</small>{% if comparison.get('oai_values', []) %}<ul class="mb-0 ps-3">{% for value in comparison.get('oai_values', []) %}<li class="text-break">{{ value }}</li>{% endfor %}</ul>{% else %}—{% endif %}</td>
+              <td><small class="platform-muted d-block">{{ comparison.get('html_label', 'HTML') }}</small>{% if comparison.get('html_values', []) %}<ul class="mb-0 ps-3">{% for value in comparison.get('html_values', []) %}<li class="text-break">{{ value }}</li>{% endfor %}</ul>{% else %}—{% endif %}</td>
+              <td><small class="platform-muted d-block">OAI-PMH</small>{{ comparison.get('oai_normalized', []) | join('; ') or '—' }}<small class="platform-muted d-block mt-1">HTML</small>{{ comparison.get('html_normalized', []) | join('; ') or '—' }}</td>
+              <td>{{ {'compatible': 'Compatível', 'potential': 'Divergência potencial', 'not_verified': 'Não verificado', 'not_applicable': 'Não aplicável'}.get(comparison.get('result'), 'Não verificado') }}<small class="platform-muted d-block">{{ {'critical': 'Gravidade: crítica', 'high': 'Gravidade: alta', 'medium': 'Gravidade: média', 'low': 'Gravidade: baixa', 'informative': 'Gravidade: informativa'}.get(comparison.get('severity'), 'Gravidade: não classificada') }}</small></td>
+              <td><p class="mb-1">{{ comparison.get('reason', 'Evidência não disponível.') }}</p><small class="platform-muted d-block">{{ {'applicable': 'Aplicável', 'context_dependent': 'Depende de contexto editorial', 'not_verified': 'Informação insuficiente para comparar', 'not_applicable': 'Não aplicável a esta evidência'}.get(comparison.get('applicability'), 'Aplicabilidade não classificada') }}</small>{% if comparison.get('recommendation') %}<small class="d-block mt-1">{{ comparison.get('recommendation') }}</small>{% endif %}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% elif consistency %}
+    <p class="platform-muted">Esta execução histórica conserva apenas o resultado resumido; os valores originais comparados não foram persistidos.</p>
+    <ul class="mb-0">{% for field, result in consistency.items() %}{% if field != 'criteria_version' %}<li>{{ field }}: {{ 'Compatível' if result == 'match' else 'Divergente' }}</li>{% endif %}{% endfor %}</ul>
+  {% else %}
+    <p class="platform-muted mb-0">Não havia valores comparáveis suficientes nesta evidência histórica.</p>
+  {% endif %}
+</section>
+<section class="platform-panel" aria-labelledby="ojs-html-findings-title">
+  <h2 id="ojs-html-findings-title" class="h5">Achados e recomendações</h2>
+  {% if display_findings %}
+    <div class="table-responsive">
+      <table class="table platform-themed-table table-sm align-middle mb-0">
+        <thead><tr><th scope="col">Natureza</th><th scope="col">Certeza e gravidade</th><th scope="col">Aplicabilidade</th><th scope="col">Evidência e possível consequência</th><th scope="col">Recomendação</th></tr></thead>
+        <tbody>
+          {% for finding in display_findings %}
+            <tr>
+              <td>{{ finding.label }}</td>
+              <td>{{ {'confirmed': 'Evidência confirmada', 'potential': 'Problema potencial', 'unverified': 'Não verificado'}.get(finding.classification, 'Não verificado') }}<small class="platform-muted d-block">{{ {'critical': 'Crítica', 'high': 'Alta', 'medium': 'Média', 'low': 'Baixa', 'informative': 'Informativa'}.get(finding.severity, 'Não classificada') }}</small></td>
+              <td>{{ {'applicable': 'Aplicável', 'context_dependent': 'Depende de contexto', 'not_applicable': 'Não aplicável', 'not_verified': 'Não verificado'}.get(finding.applicability, 'Não verificado') }}</td>
+              <td><p class="mb-1">{{ finding.evidence }}</p><small class="platform-muted">{{ finding.impact }}</small></td>
+              <td><p class="mb-1">{{ finding.recommendation }}</p><small class="platform-muted">Destinatário: {{ finding.audience }}</small></td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="platform-muted mb-0">Nenhum achado técnico foi classificado nesta resposta. Isso não comprova indexação em mecanismos de busca.</p>
+  {% endif %}
+</section>
+{% include 'platform/ojs_seo/_loading_overlay.html' %}
+{{ tutorial_dialog(ojs_tutorial) }}
+<script defer src="{{ url_for('static', filename='js/platform_tutorial.js') }}"></script>
+{% endblock %}

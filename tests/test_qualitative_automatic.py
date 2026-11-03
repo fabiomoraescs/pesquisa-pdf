@@ -154,7 +154,7 @@ class QualitativeAutomaticTests(unittest.TestCase):
         info_button = info_buttons[0]
         self.assertEqual(info_button["type"], "button")
         self.assertEqual(info_button["aria-controls"], "platform-tutorial-dialog")
-        self.assertEqual(info_button["aria-label"], "Como funciona a Análise quali-dados")
+        self.assertEqual(info_button["aria-label"], "Como funciona a Análise Documental")
         self.assertNotIn("disabled", info_button)
         self.assertNotIn("label", info_button["_parents"])
         self.assertEqual(html.count('id="platform-tutorial-dialog"'), 1)

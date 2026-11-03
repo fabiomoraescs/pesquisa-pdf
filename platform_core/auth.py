@@ -10,11 +10,11 @@ from sqlalchemy import select
 
 from .extensions import db
 from .mail import MailDeliveryError, send_password_recovery
-from .models import Plan, User, UserProfile
+from .models import User, UserProfile
 from .password_policy import RETIRED_TEMPORARY_PASSWORD, TEMPORARY_PASSWORD
 from .password_recovery import consume_token, issue_token, revoke_token, valid_token
 from .profile import validated_profile
-from .services import access_is_active, record_audit, replace_grant
+from .services import access_is_active, awaiting_plan_activation, record_audit
 
 auth_bp = Blueprint("auth", __name__)
 
@@ -54,7 +54,10 @@ def forgot_password():
         if len(email) > 320:
             email = ""
         user = db.session.scalar(select(User).where(User.email == email)) if email else None
-        if user is not None and access_is_active(user):
+        # Uma conta aguardando plano pode recuperar a própria senha, mas as
+        # regras já existentes para contas canceladas, bloqueadas ou expiradas
+        # continuam valendo.
+        if user is not None and (access_is_active(user) or awaiting_plan_activation(user)):
             ttl_seconds = int(current_app.config["PASSWORD_RECOVERY_TTL_SECONDS"])
             token = issue_token(user, ttl_seconds)
             try:
@@ -118,8 +121,6 @@ def register():
             error = "A confirmação da senha não confere."
         elif db.session.scalar(select(User.id).where(User.email == email)):
             error = "Este e-mail já está cadastrado."
-        elif not (student_plan := db.session.get(Plan, "student")) or not student_plan.active:
-            error = "O Plano Estudante está indisponível para novos cadastros no momento."
         elif profile_error:
             error = profile_error
         if error:
@@ -130,14 +131,26 @@ def register():
             db.session.add(user)
             db.session.flush()
             db.session.add(UserProfile(user_id=user.id, **profile_values))
-            replace_grant(user, "student", "student_free", "active")
-            record_audit(None, "user_registered", "user", user.id, after={"role": "user", "status": "active"})
+            # O cadastro público cria uma conta autenticável, mas não uma
+            # concessão comercial. A ativação acontece apenas por ação
+            # explícita de um administrador no Painel de controle.
+            record_audit(
+                None,
+                "user_registered",
+                "user",
+                user.id,
+                after={"role": "user", "status": "active", "plan_assignment": "pending"},
+            )
             try:
                 db.session.commit()
             except Exception:
                 db.session.rollback()
                 raise
             login_user(user)
+            flash(
+                "Conta criada. Seu acesso às ferramentas será liberado após a atribuição de um plano pelo administrador.",
+                "success",
+            )
             return redirect(_next_url())
     return render_template("platform/auth.html", mode="register")
 

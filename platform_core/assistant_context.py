@@ -36,7 +36,7 @@ CONTEXTUAL_PROMPTS: dict[str, tuple[str, str, str]] = {
         "Qual ferramenta do Análysis posso usar aqui?",
     ),
     "term_search": (
-        "Para que serve a Busca por termos?",
+        "Para que serve a Raspagem por termos?",
         "Como faço uma busca nesta ferramenta?",
         "Que tipos de resultados esta ferramenta produz?",
     ),
@@ -46,7 +46,7 @@ CONTEXTUAL_PROMPTS: dict[str, tuple[str, str, str]] = {
         "Como consulto e exporto os resultados?",
     ),
     "structured_search": (
-        "Para que serve a Busca estruturada?",
+        "Para que serve a Raspagem estruturada?",
         "Como configuro uma análise nesta ferramenta?",
         "Que tipos de resultados posso obter aqui?",
     ),
@@ -56,7 +56,7 @@ CONTEXTUAL_PROMPTS: dict[str, tuple[str, str, str]] = {
         "Como utilizo os resultados produzidos?",
     ),
     "qualitative": (
-        "O que posso fazer no Quali-dados?",
+        "O que posso fazer na Análise Documental?",
         "Como funcionam documentos, códigos e memos?",
         "Como começo a analisar meus documentos aqui?",
     ),

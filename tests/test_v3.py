@@ -713,11 +713,11 @@ class TesteV3(unittest.TestCase):
                     self.assertIn('name="versao" value="v1"', inicio.get_data(as_text=True))
                     self.assertIn('name="versao" value="v3"', inicio.get_data(as_text=True))
                     self.assertNotIn('name="versao" value="v2"', inicio.get_data(as_text=True))
-                    self.assertIn("© 2026 Análysis. Todos os direitos reservados.", inicio.get_data(as_text=True))
+                    self.assertIn("Todos os direitos reservados © - Análysis | 2026.", inicio.get_data(as_text=True))
                     html_inicio = inicio.get_data(as_text=True)
                     for trecho in (
                         "Método de raspagem", "Literal", "Lexical", "Híbrido", "Regex",
-                        "O que a Busca por termos faz", "Quando usar Busca por termos",
+                        "O que a Raspagem por termos faz", "Quando usar Raspagem por termos",
                         "Método Literal e Literal + Regex", "Método Lexical",
                         "controle-limiar-semantico",
                         "Use ponto e vírgula ou coloque um termo por linha.",
@@ -732,10 +732,10 @@ class TesteV3(unittest.TestCase):
                     self.assertNotIn("V1: Busca lexical", html_inicio)
                     self.assertNotIn("V2: Busca lexical", html_inicio)
                     self.assertNotIn("V3: Busca híbrida", html_inicio)
-                    self.assertIn("http://lattes.cnpq.br/0075160400322127", html_inicio)
-                    self.assertIn('target="_blank" rel="noopener noreferrer"', html_inicio)
+                    self.assertNotIn("http://lattes.cnpq.br/0075160400322127", html_inicio)
+                    self.assertNotIn("ConsCiências-Sociais", html_inicio)
                     self.assertEqual(pagina_v3.status_code, 200)
-                    self.assertIn("© 2026 Análysis. Todos os direitos reservados.", pagina_v3.get_data(as_text=True))
+                    self.assertIn("Todos os direitos reservados © - Análysis | 2026.", pagina_v3.get_data(as_text=True))
                     self.assertNotIn(b"Principais correspond", pagina_v3.data)
                     self.assertNotIn(b"destaques-v3", pagina_v3.data)
                     self.assertIn(b"dashboard-v3.js", pagina_v3.data)
@@ -780,7 +780,7 @@ class TesteV3(unittest.TestCase):
                         login(cliente)
                         pagina = cliente.get(f"/resultado/{identificador}")
                     self.assertEqual(pagina.status_code, 200)
-                    self.assertIn("© 2026 Análysis. Todos os direitos reservados.", pagina.get_data(as_text=True))
+                    self.assertIn("Todos os direitos reservados © - Análysis | 2026.", pagina.get_data(as_text=True))
                     self.assertIn(b"dashboard.js", pagina.data)
                     self.assertNotIn(b"dashboard-v3.js", pagina.data)
                 finally:

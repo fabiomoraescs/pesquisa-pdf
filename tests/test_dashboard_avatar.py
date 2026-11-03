@@ -63,7 +63,7 @@ class DashboardAvatarTests(unittest.TestCase):
         self.assertNotIn("Base alheia", html)
         self.assertRegex(html, r'<strong>2</strong>\s*<span>Projetos</span>')
         self.assertRegex(html, r'<strong>2</strong>\s*<span>Bases</span>')
-        db.session.delete(db.session.get(PlanTool, ("student", "pdf_scraper")))
+        db.session.delete(db.session.get(PlanTool, ("research_quali", "pdf_scraper")))
         db.session.commit()
         restricted = self.client.get("/").get_data(as_text=True)
         self.assertNotIn("Livre própria", restricted)

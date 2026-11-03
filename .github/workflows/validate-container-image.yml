@@ -1,0 +1,226 @@
+name: Validate Linux amd64 container image
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish_image:
+        description: Publish the validated image to the authorized private GHCR package.
+        required: true
+        default: false
+        type: boolean
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: analisys-container-validation-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      LOCAL_IMAGE: analisys-validation:${{ github.sha }}
+      GHCR_IMAGE: ghcr.io/${{ github.repository_owner }}/pesquisa-pdf:${{ github.sha }}
+    steps:
+      - name: Check out the selected revision
+        uses: actions/checkout@v4
+
+      - name: Reject publication from a public repository
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_image == true }}
+        shell: bash
+        run: |
+          if [[ "${{ github.event.repository.private }}" != "true" ]]; then
+            echo "A publicação de uma imagem com o modelo embarcado exige repositório privado."
+            exit 1
+          fi
+          if [[ -z "${{ secrets.GHCR_PUBLISH_TOKEN }}" ]]; then
+            echo "Defina o secret GHCR_PUBLISH_TOKEN antes de solicitar a publicação."
+            exit 1
+          fi
+
+      - name: Prepare an amd64 BuildKit builder
+        shell: bash
+        run: |
+          docker buildx create --name analisys-amd64 --driver docker-container --use
+          docker buildx inspect --bootstrap
+
+      - name: Check runner capacity before downloading the semantic model
+        shell: bash
+        run: |
+          available_bytes="$(df --output=avail -B1 / | tail -1 | tr -d ' ')"
+          available_memory_bytes="$(free -b | awk '/Mem:/ {print $7}')"
+          printf 'disk_available_bytes=%s\n' "$available_bytes"
+          printf 'memory_available_bytes=%s\n' "$available_memory_bytes"
+          test "$available_bytes" -ge $((10 * 1024 * 1024 * 1024))
+          test "$available_memory_bytes" -ge $((6 * 1024 * 1024 * 1024))
+
+      - name: Build the image with the declared dependencies
+        shell: bash
+        run: |
+          docker buildx build \
+            --platform linux/amd64 \
+            --load \
+            --tag "$LOCAL_IMAGE" \
+            --cache-from type=gha \
+            --cache-to type=gha,mode=max \
+            .
+
+      - name: Verify architecture, dependencies and offline semantic model
+        shell: bash
+        run: |
+          docker image inspect "$LOCAL_IMAGE" --format 'architecture={{.Architecture}} size={{.Size}}'
+          docker run --rm --entrypoint python "$LOCAL_IMAGE" -c '
+          from importlib.metadata import version
+          cryptography = version("cryptography")
+          assert (43, 0) <= tuple(map(int, cryptography.split(".")[:2])) < (45, 0), cryptography
+          assert version("defusedxml") == "0.7.1"
+          print("cryptography=" + cryptography)
+          print("defusedxml=" + version("defusedxml"))
+          '
+          docker run --rm --entrypoint python "$LOCAL_IMAGE" -m pip check
+          docker run --rm --network none --entrypoint python "$LOCAL_IMAGE" -c '
+          from analyzer.v3 import carregar_modelo_semantico
+          carregar_modelo_semantico()
+          print("offline_semantic_model=ok")
+          '
+
+      - name: Smoke test with an isolated SQLite database and no automatic CMD
+        shell: bash
+        run: |
+          test_root="$RUNNER_TEMP/analisys-image-test"
+          mkdir -p "$test_root/outputs"
+
+          # O diretório pertence somente a esta execução. O contêiner auxiliar
+          # não tem rede nem portas e ajusta sua propriedade usando a identidade
+          # real declarada pela própria imagem, sem executar a aplicação como root.
+          docker run --rm --network none --user 0:0 \
+            --entrypoint sh \
+            -v "$test_root/outputs:/app/outputs" \
+            "$LOCAL_IMAGE" -ceu '
+              app_uid="$(id -u appuser)"
+              app_gid="$(id -g appuser)"
+              case "$app_uid:$app_gid" in
+                (*[!0-9:]*)
+                  echo "Identidade inválida para appuser: $app_uid:$app_gid" >&2
+                  exit 1
+                  ;;
+              esac
+              test -n "$app_uid"
+              test -n "$app_gid"
+              test "$app_uid" -ge 0
+              test "$app_gid" -ge 0
+              chown "$app_uid:$app_gid" /app/outputs
+              printf "isolated_output_owner=%s:%s\\n" "$app_uid" "$app_gid"
+            '
+
+          docker run --rm --network none \
+            --user appuser \
+            --entrypoint sh \
+            -v "$test_root/outputs:/app/outputs" \
+            "$LOCAL_IMAGE" -ceu '
+              flask --app app db upgrade
+              flask --app app seed-platform
+              python - <<"PY"
+          from sqlalchemy import select
+          from app import app
+          from platform_core.extensions import db
+          from platform_core.models import User, WorkspaceSubscriptionOjsJournal
+          from platform_core.ojs_oai_client import (
+              OaiCollectionResult,
+              OaiMetadataFormat,
+              OaiPmhAuditResult,
+              OaiRepositoryIdentity,
+              ValidatedOaiEndpoint,
+          )
+          from platform_core.ojs_seo_activation import activate_ojs_seo_tool, provision_ojs_seo_tool
+          from platform_core.ojs_seo_exports import build_ojs_seo_export, render_ojs_seo_export
+          from platform_core.ojs_seo_services import register_ojs_journal, request_ojs_seo_audit
+
+          with app.app_context():
+              admin = User(name="Image validation admin", email="image-validation@example.test", role="admin", status="active")
+              admin.set_password("not-used-outside-the-isolated-container")
+              db.session.add(admin)
+              db.session.flush()
+              provision_ojs_seo_tool(admin, allow_explicit_production=True)
+              activate_ojs_seo_tool(admin, allow_explicit_production=True)
+              db.session.commit()
+              client = app.test_client()
+              with client.session_transaction() as session:
+                  session["_user_id"] = admin.id
+                  session["_fresh"] = True
+              assert client.get("/", follow_redirects=False).status_code == 200
+              home_rule = next(rule.rule for rule in app.url_map.iter_rules() if rule.endpoint == "ojs_seo.home")
+              assert client.get(home_rule, follow_redirects=False).status_code == 200
+              endpoint = "https://periodicos.ufal.br/latitude/oai"
+
+              def endpoint_validator(value):
+                  return ValidatedOaiEndpoint(
+                      canonical_url=value,
+                      host="periodicos.ufal.br",
+                      port=443,
+                      path="/latitude/oai",
+                      addresses=("200.0.0.1",),
+                  )
+
+              class OfflineOaiClient:
+                  def inspect(self):
+                      return OaiPmhAuditResult(
+                          endpoint=endpoint,
+                          status="completed",
+                          identity=OaiRepositoryIdentity(
+                              repository_name="Revista Latitude",
+                              base_url=endpoint,
+                              protocol_version="2.0",
+                          ),
+                          metadata_formats=(OaiMetadataFormat("oai_dc", None, None),),
+                          collection=OaiCollectionResult(
+                              status="completed",
+                              completion_reason=None,
+                              pages_fetched=1,
+                              total_response_bytes=0,
+                              records=(),
+                              deleted_records=(),
+                              unique_identifiers=(),
+                              duplicate_identifiers=(),
+                          ),
+                      )
+
+              journal = register_ojs_journal(
+                  admin,
+                  workspace_subscription_id=None,
+                  public_url="https://periodicos.ufal.br/latitude",
+                  oai_endpoint_url=endpoint,
+                  project_name="Revista Latitude",
+                  client_factory=lambda _endpoint: OfflineOaiClient(),
+                  endpoint_validator=endpoint_validator,
+              )
+              assert db.session.scalar(select(WorkspaceSubscriptionOjsJournal).where(
+                  WorkspaceSubscriptionOjsJournal.ojs_journal_id == journal.id
+              )) is None
+              assert request_ojs_seo_audit(admin, journal.id).status == "pending"
+              db.session.commit()
+              assert callable(build_ojs_seo_export)
+              assert callable(render_ojs_seo_export)
+              print("dashboard=ok")
+              print("ojs_seo=ok")
+              print("ojs_admin_registration=ok")
+              print("ojs_exports=registered")
+          PY
+            '
+
+      - name: Publish the exact validated image to private GHCR
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_image == true }}
+        shell: bash
+        env:
+          GHCR_PUBLISH_TOKEN: ${{ secrets.GHCR_PUBLISH_TOKEN }}
+        run: |
+          printf '%s' "$GHCR_PUBLISH_TOKEN" | docker login ghcr.io --username "${{ github.repository_owner }}" --password-stdin
+          docker tag "$LOCAL_IMAGE" "$GHCR_IMAGE"
+          docker push "$GHCR_IMAGE"
+          digest="$(docker image inspect "$GHCR_IMAGE" --format '{{index .RepoDigests 0}}')"
+          printf 'validated_image=%s\n' "$digest" | tee "$GITHUB_STEP_SUMMARY"

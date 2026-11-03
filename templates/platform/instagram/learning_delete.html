@@ -1,0 +1,12 @@
+{% extends 'platform/base.html' %}
+
+{% block title %}Confirmar exclusão permanente — Instagram{% endblock %}
+{% block page_intro %}<div class="platform-page-heading"><h1>Confirmar exclusão permanente</h1></div>{% endblock %}
+{% block body %}
+{% set permanent_delete_action = url_for('instagram.delete_learning_route', project_id=project.id, learning_id=learning.id, period=period) %}
+{% set permanent_delete_cancel_url = url_for('instagram.learning_detail', project_id=project.id, learning_id=learning.id) %}
+{% set permanent_delete_warning = 'Você está prestes a excluir permanentemente este aprendizado consolidado. As avaliações, ações, recomendações, achados e evidências permanecerão preservados.' %}
+{% set permanent_delete_items = [learning.title] %}
+{% set permanent_delete_batch_projects = () %}
+{% include 'platform/_permanent_delete_confirmation.html' %}
+{% endblock %}

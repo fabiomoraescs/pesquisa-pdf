@@ -1,56 +1,89 @@
 {% from 'platform/_brand.html' import brand_mark %}
 {% if current_user.is_authenticated %}
 {% from 'platform/_icons.html' import icon %}
+{% from 'platform/_project_tool_heading.html' import project_tool_label %}
 {% set endpoint = request.endpoint or '' %}
+{% set header_project = none %}
+{% if project is defined and project %}{% set header_project = project %}
+{% elif selected_project is defined and selected_project %}{% set header_project = selected_project %}
+{% elif legacy_project is defined and legacy_project %}{% set header_project = legacy_project %}
+{% endif %}
 {% set free_context = endpoint in ('inicio', 'resultado', 'download', 'progresso', 'projects.list_free_projects', 'projects.new_free_project', 'projects.archived_free_projects', 'projects.free_project', 'analyses.standard_history', 'analyses.free_history') or (analysis is defined and analysis.tool_id == 'pdf_scraper') or (project is defined and project.scrape_type == 'free') %}
 {% set systematic_context = endpoint in ('projects.list_projects', 'projects.new_project', 'projects.archived_projects', 'analyses.systematic_history') or (analysis is defined and analysis.tool_id == 'document_analysis') or (project is defined and project.scrape_type == 'systematic') or endpoint.startswith('historico_racial.') or endpoint.startswith('user_libraries.') %}
 {% set qualitative_context = endpoint.startswith('qualitative.') or endpoint in ('projects.list_qualitative_projects', 'projects.new_qualitative_project', 'projects.archived_qualitative_projects') or (project is defined and project.scrape_type == 'qualitative') %}
+{% set instagram_context = endpoint.startswith('instagram.') %}
+{% set ojs_seo_context = endpoint.startswith('ojs_seo.') %}
 {% set admin_sections = {
   'admin.home': 'Visão geral', 'admin.users': 'Usuários', 'admin.user_detail': 'Usuários',
   'admin.deleted_users': 'Usuários excluídos', 'admin.delete_user': 'Usuários',
   'admin.restore_user': 'Usuários excluídos', 'admin.reset_user_password': 'Usuários',
   'admin.permanently_delete_user': 'Usuários excluídos',
   'admin.projects': 'Projetos', 'admin.project_detail': 'Projetos', 'admin.delete_project': 'Projetos',
-  'admin.tools': 'Ferramentas', 'admin.plans': 'Planos', 'admin.define_access': 'Definir acessos', 'admin.libraries': 'Bibliotecas',
+  'admin.tools': 'Ferramentas', 'admin.plans': 'Planos', 'admin.trials': 'Testes gratuitos', 'admin.define_access': 'Definir acessos', 'admin.libraries': 'Bibliotecas',
   'admin.new_library': 'Bibliotecas', 'admin.library_detail': 'Bibliotecas', 'admin.delete_library': 'Bibliotecas',
   'admin.library_template': 'Bibliotecas', 'admin.library_import': 'Bibliotecas',
-  'admin.audit': 'Auditoria', 'admin.assistant_ai_settings': 'Configuração de IA'
+  'admin.audit': 'Auditoria', 'admin.assistant_ai_settings': 'Configuração de IA',
+  'admin.meta_integration': 'Integração Meta'
 } %}
 {% if endpoint == 'home' %}{% set section_title = 'Dashboard' %}
 {% elif endpoint == 'profile.my_profile' or endpoint in ('profile.photo', 'profile.upload_photo', 'profile.remove_photo') %}{% set section_title = 'Perfil' %}
-{% elif endpoint in ('projects.archived_projects', 'projects.archived_free_projects', 'projects.archived_qualitative_projects') %}{% set section_title = 'Projetos arquivados de ' ~ ('Busca por termos' if free_context else 'Busca estruturada' if systematic_context else 'Análise quali-dados') %}
-{% elif endpoint.startswith('projects.') %}{% set section_title = 'Projetos de ' ~ ('Busca por termos' if free_context else 'Busca estruturada' if systematic_context else 'Análise quali-dados') %}
+{% elif endpoint in ('projects.archived_projects', 'projects.archived_free_projects', 'projects.archived_qualitative_projects') %}{% set section_title = 'Projetos arquivados de ' ~ ('Raspagem por termos' if free_context else 'Raspagem estruturada' if systematic_context else 'Análise Documental') %}
+{% elif endpoint.startswith('projects.') %}{% set section_title = 'Projetos de ' ~ ('Raspagem por termos' if free_context else 'Raspagem estruturada' if systematic_context else 'Análise Documental') %}
 {% elif endpoint in ('qualitative.base', 'qualitative.page', 'qualitative.upload_pending', 'qualitative.project_workspace') and project is defined %}{% set section_title = '' %}
-{% elif endpoint.startswith('qualitative.') %}{% set section_title = 'Análise quali-dados' %}
-{% elif endpoint == 'inicio' or endpoint in ('resultado', 'download', 'progresso') %}{% set section_title = 'Busca por termos' %}
+{% elif endpoint.startswith('qualitative.') %}{% set section_title = 'Análise Documental' %}
+{% elif endpoint == 'instagram.archived_projects' %}{% set section_title = 'Projetos arquivados' %}
+{% elif instagram_context %}{% set section_title = 'Instagram' %}
+{% elif ojs_seo_context %}{% set section_title = 'OJS SEO' %}
+{% elif endpoint == 'inicio' or endpoint in ('resultado', 'download', 'progresso') %}{% set section_title = 'Raspagem por termos' %}
 {% elif endpoint in ('analyses.standard_history', 'analyses.free_history', 'analyses.systematic_history', 'analyses.project_history') %}{% set section_title = 'Bases de análise' %}
 {% elif endpoint.startswith('analyses.') %}{% set section_title = 'Base de análise' %}
 {% elif endpoint == 'auth.change_password' %}{% set section_title = 'Alterar senha' %}
-{% elif request.blueprint == 'user_libraries' %}{% set section_title = 'Bibliotecas — Busca estruturada' %}
-{% elif request.blueprint == 'admin' %}{% set section_title = admin_sections.get(endpoint, 'Gerenciar') %}
+{% elif request.blueprint == 'user_libraries' %}{% set section_title = 'Bibliotecas — Raspagem estruturada' %}
+{% elif request.blueprint == 'admin' %}{% set section_title = admin_sections.get(endpoint, 'Painel de controle') %}
 {% elif project is defined %}{% set section_title = project.name %}
 {% else %}{% set section_title = 'Análysis' %}{% endif %}
+{% if header_project and instagram_context %}{% set project_tool_name = 'Instagram' %}
+{% elif header_project and ojs_seo_context %}{% set project_tool_name = 'OJS SEO' %}
+{% elif header_project and free_context %}{% set project_tool_name = 'Raspagem por termos' %}
+{% elif header_project and systematic_context %}{% set project_tool_name = 'Raspagem estruturada' %}
+{% elif header_project and qualitative_context %}{% set project_tool_name = 'Análise Documental' %}
+{% else %}{% set project_tool_name = none %}{% endif %}
+{% if project_tool_name %}{% set section_title = project_tool_label(project_tool_name, header_project) %}{% endif %}
 <aside class="platform-sidebar" id="platform-sidebar" aria-label="Menu da plataforma">
   <div class="platform-section-title" aria-label="Nome da plataforma">{{ brand_mark() }}</div>
   <nav class="platform-nav" aria-label="Navegação principal">
     <a class="{{ 'is-current' if endpoint == 'home' else '' }}" {% if endpoint == 'home' %}aria-current="page"{% endif %} href="{{ url_for('home') }}">{{ icon('grade') }}<span>Dashboard</span></a>
-    <details class="platform-nav-dropdown" {% if free_context or systematic_context %}open{% endif %}>
-      <summary>{{ icon('pdf') }}<span>Raspagem de dados</span></summary>
-      {% if free_access %}<a class="platform-nav-tool-link{{ ' is-current' if free_context else '' }}" href="{{ url_for('projects.list_free_projects') }}" {% if free_context %}aria-current="location"{% endif %}>Busca por termos</a>{% else %}<span class="platform-nav-tool-unavailable" aria-disabled="true">Busca por termos</span>{% endif %}
-      {% if systematic_access %}<a class="platform-nav-tool-link{{ ' is-current' if systematic_context else '' }}" href="{{ url_for('projects.list_projects') }}" {% if systematic_context %}aria-current="location"{% endif %}>Busca estruturada</a>{% else %}<span class="platform-nav-tool-unavailable" aria-disabled="true">Busca estruturada</span>{% endif %}
+    {% for navigation_group in navigation_groups %}
+    {% set group_current = (navigation_group.id == 'research_quali' and (free_context or systematic_context or qualitative_context)) or (navigation_group.id == 'analytics' and (instagram_context or ojs_seo_context)) %}
+    <details class="platform-nav-dropdown"{% if group_current %} open{% endif %}>
+      <summary class="{{ 'is-current' if group_current else '' }}">{{ icon(navigation_group.icon) }}<span>{{ navigation_group.name }}</span></summary>
+      <div class="platform-admin-submenu platform-nav-dropdown-menu">
+        {% for navigation_tool in navigation_group.tools %}
+        {% set tool_current = (navigation_tool.id == 'pdf_scraper' and free_context) or (navigation_tool.id == 'document_analysis' and systematic_context) or (navigation_tool.id == 'qualitative_analysis' and qualitative_context) or (navigation_tool.id == 'analytics_instagram' and instagram_context) or (navigation_tool.id == 'ojs_seo' and ojs_seo_context) %}
+        {% if navigation_tool.accessible %}<a class="platform-nav-tool-link{{ ' is-current' if tool_current else '' }}" href="{{ url_for(navigation_tool.endpoint) }}"{% if tool_current %} aria-current="location"{% endif %}>{{ navigation_tool.name }}</a>{% else %}<span class="platform-nav-tool-unavailable" aria-disabled="true">{{ navigation_tool.name }}</span>{% endif %}
+        {% endfor %}
+      </div>
     </details>
-    {% if qualitative_access %}<a class="{{ 'is-current' if qualitative_context else '' }}" href="{{ url_for('projects.list_qualitative_projects') }}" {% if qualitative_context %}aria-current="location"{% endif %}>{{ icon('qualitativa') }}<span>Análise quali-dados</span></a>{% else %}<span class="platform-nav-unavailable" aria-disabled="true">{{ icon('qualitativa') }}<span>Análise quali-dados</span></span>{% endif %}
-    {% for tool in unavailable_tools %}<span class="platform-nav-unavailable" aria-disabled="true">{{ icon(tool.icon) }}<span>{{ tool.name }}</span></span>{% endfor %}
+    {% endfor %}
+    {% for navigation_tool in navigation_standalone_tools %}
+      {% if navigation_tool.accessible %}
+      <a class="platform-nav-tool-link" href="{{ url_for(navigation_tool.endpoint) }}">{{ icon(navigation_tool.icon) }}<span>{{ navigation_tool.name }}</span></a>
+      {% else %}
+      <span class="platform-nav-unavailable" aria-disabled="true">{{ icon(navigation_tool.icon) }}<span>{{ navigation_tool.name }}</span></span>
+      {% endif %}
+    {% endfor %}
     {% if current_user.role == 'admin' %}
-    <button class="platform-admin-toggle{{ ' is-current' if request.blueprint == 'admin' else '' }}" id="platform-admin-toggle" type="button" aria-expanded="{{ 'true' if request.blueprint == 'admin' else 'false' }}" aria-controls="platform-admin-submenu">{{ icon('gerenciar') }}<span>Gerenciar</span><span class="platform-admin-chevron" aria-hidden="true">▾</span></button>
+    <button class="platform-admin-toggle{{ ' is-current' if request.blueprint == 'admin' else '' }}" id="platform-admin-toggle" type="button" aria-expanded="{{ 'true' if request.blueprint == 'admin' else 'false' }}" aria-controls="platform-admin-submenu">{{ icon('gerenciar') }}<span>Painel de controle</span><span class="platform-admin-chevron" aria-hidden="true">▾</span></button>
     <div class="platform-admin-submenu" id="platform-admin-submenu" {% if request.blueprint != 'admin' %}hidden{% endif %}>
       {% for label, target, endpoints in [
         ('Visão geral', 'admin.home', ['admin.home']),
         ('Usuários', 'admin.users', ['admin.users', 'admin.deleted_users', 'admin.user_detail', 'admin.delete_user', 'admin.restore_user', 'admin.reset_user_password', 'admin.permanently_delete_user']),
         ('Ferramentas', 'admin.tools', ['admin.tools']),
         ('Planos', 'admin.plans', ['admin.plans']),
+        ('Testes gratuitos', 'admin.trials', ['admin.trials']),
         ('Definir acessos', 'admin.define_access', ['admin.define_access']),
         ('Configuração de IA', 'admin.assistant_ai_settings', ['admin.assistant_ai_settings']),
+        ('Integração Meta', 'admin.meta_integration', ['admin.meta_integration']),
         ('Bibliotecas', 'admin.libraries', ['admin.libraries', 'admin.new_library', 'admin.library_detail', 'admin.delete_library', 'admin.library_import', 'admin.library_template']),
         ('Auditoria', 'admin.audit', ['admin.audit'])
       ] %}<a class="{{ 'is-current' if endpoint in endpoints else '' }}" {% if endpoint in endpoints %}aria-current="page"{% endif %} href="{{ url_for(target) }}">{{ label }}</a>{% endfor %}
@@ -77,12 +110,26 @@
       {% if profile_avatar_url %}<img src="{{ profile_avatar_url }}" alt="">{% else %}{{ icon('perfil') }}{% endif %}
     </a>
   </div>
-  <button class="btn btn-outline-primary theme-icon-button" id="theme-toggle" type="button" aria-label="Alternar tema" title="Alternar tema"></button>
+  <div class="theme-selector" data-theme-selector>
+    <button class="btn btn-outline-primary theme-icon-button" id="theme-toggle" type="button" aria-haspopup="menu" aria-controls="theme-menu" aria-expanded="false"></button>
+    <div class="theme-selector__menu" id="theme-menu" data-theme-menu role="menu" aria-label="Escolher aparência" hidden>
+      <button class="theme-selector__option" type="button" role="menuitemradio" data-theme-option="light" aria-checked="false"><i class="theme-selector__swatch" aria-hidden="true"></i><span>Claro</span><b class="theme-selector__check" data-theme-check aria-hidden="true" hidden>✓</b></button>
+      <button class="theme-selector__option" type="button" role="menuitemradio" data-theme-option="dark" aria-checked="false"><i class="theme-selector__swatch theme-selector__swatch--dark" aria-hidden="true"></i><span>Escuro azul</span><b class="theme-selector__check" data-theme-check aria-hidden="true" hidden>✓</b></button>
+      <button class="theme-selector__option" type="button" role="menuitemradio" data-theme-option="black" aria-checked="false"><i class="theme-selector__swatch theme-selector__swatch--black" aria-hidden="true"></i><span>Preto</span><b class="theme-selector__check" data-theme-check aria-hidden="true" hidden>✓</b></button>
+    </div>
+  </div>
 </header>
 {% endif %}
 {% else %}
 <header class="platform-header platform-header-public">
   <a class="platform-brand" href="{{ url_for('auth.login') }}" aria-label="Análysis — página inicial">{{ brand_mark() }}</a>
-  <button class="btn btn-outline-primary theme-icon-button" id="theme-toggle" type="button" aria-label="Alternar tema" title="Alternar tema"></button>
+  <div class="theme-selector" data-theme-selector>
+    <button class="btn btn-outline-primary theme-icon-button" id="theme-toggle" type="button" aria-haspopup="menu" aria-controls="theme-menu" aria-expanded="false"></button>
+    <div class="theme-selector__menu" id="theme-menu" data-theme-menu role="menu" aria-label="Escolher aparência" hidden>
+      <button class="theme-selector__option" type="button" role="menuitemradio" data-theme-option="light" aria-checked="false"><i class="theme-selector__swatch" aria-hidden="true"></i><span>Claro</span><b class="theme-selector__check" data-theme-check aria-hidden="true" hidden>✓</b></button>
+      <button class="theme-selector__option" type="button" role="menuitemradio" data-theme-option="dark" aria-checked="false"><i class="theme-selector__swatch theme-selector__swatch--dark" aria-hidden="true"></i><span>Escuro azul</span><b class="theme-selector__check" data-theme-check aria-hidden="true" hidden>✓</b></button>
+      <button class="theme-selector__option" type="button" role="menuitemradio" data-theme-option="black" aria-checked="false"><i class="theme-selector__swatch theme-selector__swatch--black" aria-hidden="true"></i><span>Preto</span><b class="theme-selector__check" data-theme-check aria-hidden="true" hidden>✓</b></button>
+    </div>
+  </div>
 </header>
 {% endif %}

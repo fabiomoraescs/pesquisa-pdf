@@ -49,7 +49,7 @@ class QualitativeRecordTests(unittest.TestCase):
         page = self.client.get(f"/analise-qualitativa/projetos/{project.id}", follow_redirects=True)
         html = page.get_data(as_text=True)
         self.assertIn("Você ainda não tem documentos adicionados", html)
-        self.assertIn("Adicione para começar a análise quali-dados.", html)
+        self.assertIn("Adicione documentos para começar a usar a Análise Documental.", html)
         self.assertNotIn("Códigos (0)", html)
         self.assertNotIn("Memos (0)", html)
         # O manual central também ensina "Novo código", mas o controle de

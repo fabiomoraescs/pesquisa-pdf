@@ -38,11 +38,11 @@ executar o comando acima:
 
 ## Uso
 
-O cadastro comum cria uma conta `user` ativa no Plano Estudante, com acesso
-gratuito às duas ferramentas inicialmente incluídas nesse plano. O admin pode
-alterar plano, forma de acesso, validade e permissões individuais em `/admin`.
-Planos e formas de acesso são registros distintos; concessões anteriores são
-preservadas para auditoria. Ainda não há cobrança real.
+O cadastro comum cria uma conta `user` ativa, mas sem plano e sem acesso
+operacional automático. Um administrador atribui posteriormente um dos planos
+comerciais elegíveis em `/admin`; concessões anteriores permanecem registradas
+para auditoria. Os grupos comerciais são Pesquisador, Gestão e Pesquisador +
+Gestão. Ainda não há cobrança real.
 
 Após entrar, abra `/projetos`, crie um projeto e selecione uma ou mais
 bibliotecas. A biblioteca oficial **Relações raciais** contém exatamente o seed
@@ -123,3 +123,26 @@ múltiplas instâncias; antes de escalar em AWS, planeje PostgreSQL,
 armazenamento compartilhado para resultados e uma fila de jobs persistente.
 Não há integração de pagamento, reprocessamento automático nem exportador
 padronizado da ferramenta documental nesta etapa.
+
+## Worker da sincronização Meta
+
+A sincronização de dados do Instagram é registrada no banco e executada em um
+processo Flask separado; a requisição do navegador apenas agenda o trabalho.
+Em desenvolvimento, use terminais distintos:
+
+```powershell
+# Terminal 1 — aplicação web
+.\.venv\Scripts\python.exe -m flask --app app run --no-reload
+
+# Terminal 2 — túnel temporário, quando for necessário validar o OAuth externo
+cloudflared tunnel --url http://127.0.0.1:5000
+
+# Terminal 3 — worker durável da sincronização Meta
+.\.venv\Scripts\python.exe -m flask --app app instagram-meta-sync-worker
+```
+
+Em produção, execute `flask --app app instagram-meta-sync-worker` como processo
+separado, com as mesmas variáveis de ambiente e o mesmo volume/banco do web
+process. O worker usa polling de cinco segundos e recupera somente runs em
+`running` sem atualização por duas horas; `--once` processa no máximo um job,
+para supervisores que prefiram esse modo.

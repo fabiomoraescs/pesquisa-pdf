@@ -191,6 +191,30 @@
     mobile.addEventListener('change', () => setOpen(false));
   }
 
+  document.querySelectorAll('[data-project-tabs]').forEach((tabs) => {
+    const toggle = tabs.querySelector('[data-project-tabs-toggle]');
+    const menu = tabs.querySelector('[data-project-tabs-menu]');
+    if (!toggle || !menu) return;
+    const mobile = window.matchMedia('(max-width: 800px)');
+    const setOpen = (open, restoreFocus = false) => {
+      const visible = mobile.matches && open;
+      menu.hidden = !visible;
+      toggle.setAttribute('aria-expanded', String(visible));
+      if (!visible && restoreFocus) toggle.focus();
+    };
+    tabs.dataset.projectTabsReady = 'true';
+    setOpen(false);
+    toggle.addEventListener('click', () => setOpen(menu.hidden, true));
+    menu.querySelectorAll('a').forEach((link) => link.addEventListener('click', () => setOpen(false)));
+    document.addEventListener('pointerdown', (event) => {
+      if (!menu.hidden && !tabs.contains(event.target)) setOpen(false);
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && !menu.hidden) setOpen(false, true);
+    });
+    mobile.addEventListener('change', () => setOpen(false));
+  });
+
   document.querySelectorAll('[data-delete-confirm]').forEach((input) => {
     const button = document.getElementById(input.dataset.deleteConfirm);
     if (!button) return;

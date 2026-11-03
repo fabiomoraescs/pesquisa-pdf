@@ -1,0 +1,59 @@
+{#
+  Conteúdo compartilhado dos indicadores numéricos. O objeto ``metric`` pode
+  ser um dataclass ou um dicionário: Jinja resolve ambas as formas por atributo.
+  O micrográfico é deliberadamente ilustrativo: não representa uma série real.
+  As cinco variações abaixo pertencem ao mesmo sistema visual e são
+  selecionadas de maneira estável; não representam uma série real.
+#}
+{% macro metric_sparkline(variant=0) -%}
+  {% set resolved_variant = (variant | int) % 5 %}
+  <svg class="platform-metric-card__sparkline" viewBox="0 0 72 28" preserveAspectRatio="xMaxYMax meet" aria-hidden="true" focusable="false" data-illustrative-sparkline="true" data-sparkline-variant="{{ resolved_variant }}">
+    {% if resolved_variant == 1 %}
+      <path class="platform-metric-card__sparkline-area" stroke="none" d="M1 26 L1 16 L12 12 L23 17 L34 9 L45 14 L57 8 L71 10 L71 26 Z"></path>
+      <path class="platform-metric-card__sparkline-line" fill="none" d="M1 16 L12 12 L23 17 L34 9 L45 14 L57 8 L71 10"></path>
+    {% elif resolved_variant == 2 %}
+      <path class="platform-metric-card__sparkline-area" stroke="none" d="M1 26 L1 21 L12 17 L23 8 L34 18 L45 10 L57 5 L71 13 L71 26 Z"></path>
+      <path class="platform-metric-card__sparkline-line" fill="none" d="M1 21 L12 17 L23 8 L34 18 L45 10 L57 5 L71 13"></path>
+    {% elif resolved_variant == 3 %}
+      <path class="platform-metric-card__sparkline-area" stroke="none" d="M1 26 L1 8 L12 10 L23 13 L34 21 L45 16 L57 11 L71 7 L71 26 Z"></path>
+      <path class="platform-metric-card__sparkline-line" fill="none" d="M1 8 L12 10 L23 13 L34 21 L45 16 L57 11 L71 7"></path>
+    {% elif resolved_variant == 4 %}
+      <path class="platform-metric-card__sparkline-area" stroke="none" d="M1 26 L1 23 L12 20 L23 18 L34 15 L45 11 L57 8 L71 5 L71 26 Z"></path>
+      <path class="platform-metric-card__sparkline-line" fill="none" d="M1 23 L12 20 L23 18 L34 15 L45 11 L57 8 L71 5"></path>
+    {% else %}
+      <path class="platform-metric-card__sparkline-area" stroke="none" d="M1 26 L1 21 L12 18 L23 20 L34 11 L45 15 L57 6 L71 3 L71 26 Z"></path>
+      <path class="platform-metric-card__sparkline-line" fill="none" d="M1 21 L12 18 L23 20 L34 11 L45 15 L57 6 L71 3"></path>
+    {% endif %}
+  </svg>
+{%- endmacro %}
+
+{% macro metric_card(label, value, description='', value_id='', value_attributes=none, variant=none) -%}
+  {{ metric_card_content({'label': label, 'value': value, 'description': description, 'value_id': value_id, 'value_attributes': value_attributes}, variant) }}
+{%- endmacro %}
+
+{% macro metric_card_content(metric, variant=none) -%}
+  {% set identity = metric.value_id if metric.value_id is defined and metric.value_id else metric.key if metric.key is defined and metric.key else metric.label %}
+  {% if variant is not none %}
+    {% set resolved_variant = variant %}
+  {% elif metric.sparkline_variant is defined and metric.sparkline_variant is not none %}
+    {% set resolved_variant = metric.sparkline_variant %}
+  {% else %}
+    {% set resolved_variant = (identity | string | length) % 5 %}
+  {% endif %}
+  <span class="platform-metric-card__title">{{ metric.label }}</span>
+  <span class="platform-metric-card__content">
+    <span class="platform-metric-card__value">
+      <strong{% if metric.value_id is defined and metric.value_id %} id="{{ metric.value_id }}"{% endif %}{% if metric.value_attributes is defined and metric.value_attributes %}{% for attribute, attribute_value in metric.value_attributes.items() %} {{ attribute }}="{{ attribute_value }}"{% endfor %}{% endif %}>{{ metric.value }}</strong>
+      {% if metric.comparison is defined and metric.comparison %}
+        {% set trend_kind = metric.comparison.tone if metric.comparison.tone is defined else 'neutral' %}
+        <span class="platform-metric-card__trend platform-metric-card__trend--{{ trend_kind }}" aria-label="{{ metric.comparison.label }}">
+          <span aria-hidden="true">{{ '↑' if metric.comparison.direction == 'up' else '↓' if metric.comparison.direction == 'down' else '→' }} {{ metric.comparison.display }}</span>
+        </span>
+      {% endif %}
+    </span>
+    {{ metric_sparkline(resolved_variant) }}
+  </span>
+  {% if metric.description is defined and metric.description %}
+    <small class="platform-metric-card__description platform-muted">{{ metric.description }}</small>
+  {% endif %}
+{%- endmacro %}

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<OAI-PMH xmlns="http://www.openarchives.org/OAI/2.0/" xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <ListRecords>
+    <record><header><identifier>oai:test:article-1</identifier><datestamp>2025-01-01</datestamp><setSpec>journal:articles</setSpec></header><metadata><dc:dc><dc:title>Título um</dc:title><dc:title>Title one</dc:title><dc:creator>Ana</dc:creator><dc:creator>Bruno</dc:creator><dc:subject>SEO</dc:subject><dc:description>Resumo</dc:description><dc:identifier>https://doi.org/10.1000/abc.1</dc:identifier><dc:identifier>https://journal.example.test/article/1</dc:identifier><dc:date>2025-01-01</dc:date><dc:language>pt-BR</dc:language><dc:type>Article</dc:type></dc:dc></metadata></record>
+    <record><header status="deleted"><identifier>oai:test:deleted-1</identifier><datestamp>2024-12-31</datestamp></header></record>
+    <resumptionToken cursor="0" completeListSize="3">next-token</resumptionToken>
+  </ListRecords>
+</OAI-PMH>

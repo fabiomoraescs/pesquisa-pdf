@@ -476,7 +476,7 @@ def _methodology_facts(context: Mapping[str, Any]) -> dict[str, Any]:
             "search_methods_used": [item.get("method_used") for item in searches if item.get("method_used")],
             "analysis_count": _as_mapping(operations.get("term_searches")).get("total", 0),
         })
-        facts["available_functionality"] = ["busca por termos", "revisão de ocorrências no PDF"]
+        facts["available_functionality"] = ["raspagem por termos", "revisão de ocorrências no PDF"]
     elif tool_id == "document_analysis":
         searches = _as_mapping(operations.get("structured_searches")).get("items", [])
         facts["observed"].update({

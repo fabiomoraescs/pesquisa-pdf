@@ -1,0 +1,42 @@
+{% extends "platform/base.html" %}
+{% from 'platform/_tutorial_info.html' import tutorial_button, tutorial_dialog with context %}
+{% from 'platform/instagram/_project_tabs.html' import project_tabs %}
+
+{% block title %}Criar {{ action_kind_label }} — {{ project.name }} — Instagram{% endblock %}
+{% block body %}
+{% set instagram_tutorial = platform_help_for('instagram_insights') %}
+{% set recommendation_type_labels = {'content_mix': 'Míx de conteúdo', 'editorial_strategy': 'Estratégia editorial', 'media_format': 'Formato de mídia', 'information_clarity': 'Clareza informacional', 'community_response': 'Resposta à comunidade', 'risk_review': 'Revisão de risco', 'measurement_quality': 'Qualidade da medição'} %}
+<section class="platform-panel mb-3" aria-labelledby="instagram-action-form-title">
+  <div class="d-flex flex-wrap align-items-start justify-content-between gap-2">
+    <div><h1 id="instagram-action-form-title" class="platform-page-title">Criar {{ action_kind_label | lower }}</h1><p class="platform-muted mb-0">Registre uma escolha operacional; ela não executa nenhuma ação fora do Análysis.</p></div>
+    <div class="d-flex flex-wrap align-items-center gap-2"><a class="btn btn-outline-primary btn-sm" href="{{ url_for('instagram.recommendation_detail', project_id=project.id, recommendation_id=recommendation.id) }}">Voltar à recomendação</a>{{ tutorial_button(instagram_tutorial, label='Abrir tutorial de Insights') }}</div>
+  </div>
+</section>
+{{ project_tabs(project, 'insights') }}
+<section class="platform-panel mb-3" aria-labelledby="instagram-action-origin-title">
+  <h2 id="instagram-action-origin-title" class="h5">Recomendação de origem</h2>
+  <p class="mb-1"><strong>{{ recommendation.title }}</strong></p><p class="platform-muted mb-0">{{ recommendation.summary }}</p>
+  <div class="d-flex flex-wrap gap-2 mt-2"><span class="platform-badge">Tipo {{ recommendation_type_labels[recommendation.recommendation_type] }}</span><span class="platform-badge">Prioridade {{ {'low': 'baixa', 'medium': 'média', 'high': 'alta'}[recommendation.priority] }}</span><span class="platform-badge">Suporte {{ {'exploratory': 'exploratório', 'moderate': 'moderado', 'consistent': 'consistente'}[recommendation.support_level] }}</span></div>
+  {% if recommendation.limitations_json %}<div class="mt-3"><h3 class="h6">Limitações para leitura</h3><ul class="mb-0">{% for limitation in recommendation.limitations_json %}<li>{{ limitation }}</li>{% endfor %}</ul></div>{% endif %}
+</section>
+<section class="platform-panel" aria-labelledby="instagram-action-fields-title">
+  <h2 id="instagram-action-fields-title" class="h5">Planejamento</h2>
+  <p class="platform-muted">Esta {{ action_kind_label | lower }} será vinculada à recomendação acima. Revise os campos sugeridos antes de salvar.</p>
+  <form method="post" class="platform-form-grid">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="platform-form-group" style="grid-column: 1 / -1"><label class="form-label" for="instagram-action-title">Título</label><input class="form-control" id="instagram-action-title" name="title" maxlength="320" required value="{{ form_values.title }}"></div>
+    <div class="platform-form-group" style="grid-column: 1 / -1"><label class="form-label" for="instagram-action-description">Descrição da intervenção</label><textarea class="form-control" id="instagram-action-description" name="description" rows="3" maxlength="4000">{{ form_values.description }}</textarea></div>
+    <div class="platform-form-group" style="grid-column: 1 / -1"><label class="form-label" for="instagram-action-objective">Objetivo</label><textarea class="form-control" id="instagram-action-objective" name="objective" rows="3" maxlength="1500" required>{{ form_values.objective }}</textarea></div>
+    {% if action_kind == 'test' %}<div class="platform-form-group" style="grid-column: 1 / -1"><label class="form-label" for="instagram-action-hypothesis">Hipótese</label><textarea class="form-control" id="instagram-action-hypothesis" name="hypothesis" rows="3" maxlength="1500" required>{{ form_values.hypothesis }}</textarea><div class="form-text">A hipótese orienta o acompanhamento; o resultado não prova causalidade.</div></div>{% endif %}
+    <div class="platform-form-group"><label class="form-label" for="instagram-action-metric">Métrica acompanhada</label><input class="form-control" id="instagram-action-metric" name="target_metric" maxlength="80" value="{{ form_values.target_metric }}"></div>
+    <div class="platform-form-group"><label class="form-label" for="instagram-action-baseline">Baseline registrada</label><input class="form-control" id="instagram-action-baseline" name="baseline_value" type="number" step="any" value="{{ form_values.baseline_value }}"><div class="form-text">É um snapshot opcional da recomendação; zero é válido.</div></div>
+    <div class="platform-form-group"><label class="form-label" for="instagram-action-target">Valor-alvo opcional</label><input class="form-control" id="instagram-action-target" name="target_value" type="number" step="any" value="{{ form_values.target_value }}"></div>
+    <div class="platform-form-group"><label class="form-label" for="instagram-action-criterion">Critério de sucesso</label><input class="form-control" id="instagram-action-criterion" name="success_criterion" maxlength="1500" value="{{ form_values.success_criterion }}"><div class="form-text">Não há meta quantitativa gerada automaticamente.</div></div>
+    <div class="platform-form-group"><label class="form-label" for="instagram-action-start">Início planejado</label><input class="form-control" id="instagram-action-start" name="planned_start_at" type="datetime-local" value="{{ form_values.planned_start_at }}"></div>
+    <div class="platform-form-group"><label class="form-label" for="instagram-action-end">Fim planejado</label><input class="form-control" id="instagram-action-end" name="planned_end_at" type="datetime-local" value="{{ form_values.planned_end_at }}"></div>
+    <div style="grid-column: 1 / -1" class="d-flex flex-wrap gap-2"><button class="btn btn-primary" type="submit">Criar {{ action_kind_label | lower }}</button><a class="btn btn-outline-primary" href="{{ url_for('instagram.recommendation_detail', project_id=project.id, recommendation_id=recommendation.id) }}">Cancelar</a></div>
+  </form>
+</section>
+{{ tutorial_dialog(instagram_tutorial) }}
+<script defer src="{{ url_for('static', filename='js/platform_tutorial.js') }}"></script>
+{% endblock %}

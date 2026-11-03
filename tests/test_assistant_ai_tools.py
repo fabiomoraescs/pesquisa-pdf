@@ -38,10 +38,11 @@ class AssistantPlatformHelpAccessTests(unittest.TestCase):
         self.assertEqual(sources_a, [])
         self.assertEqual(sources_b, [])
         self.assertEqual(help_a["access"]["access_basis"], "current_grant")
-        self.assertEqual(help_a["access"]["plan"]["id"], "student")
+        self.assertEqual(help_a["access"]["plan"]["id"], "research_quali")
+        self.assertEqual(help_a["access"]["plan"]["name"], "Quali")
         self.assertEqual(
             {tool["id"] for tool in help_a["access"]["available_tools"]},
-            {"pdf_scraper", "document_analysis"},
+            {"pdf_scraper", "document_analysis", "qualitative_analysis"},
         )
         self.assertEqual(help_b["access"]["plan"]["id"], "single-tool")
         self.assertEqual(

@@ -204,7 +204,7 @@ class PersistentAnalysisTests(unittest.TestCase):
         token = csrf_from(page)
         intro, container = page.text.split('<section class="hero-card">', 1)
         self.assertIn(f'<p class="h5 mb-0">{project.name}</p>', intro)
-        self.assertIn('aria-label="Como funciona a busca"', intro)
+        self.assertIn('aria-label="Abrir tutorial da Raspagem por termos"', intro)
         self.assertIn(f'name="project_id" value="{project.id}"', container)
         self.assertNotIn('id="free-project-id"', page.text)
         self.assertIn('>Processar</button>', page.text)
@@ -268,7 +268,7 @@ class PersistentAnalysisTests(unittest.TestCase):
         self._name_base(identifier)
         page = self.client.get(f"/analises/{identifier}")
         self.assertEqual(page.status_code, 200, page.get_data(as_text=True)[:500])
-        self.assertIn("Gráficos", page.get_data(as_text=True))
+        self.assertIn("Grupos × documentos", page.get_data(as_text=True))
         self.assertIn(identifier, self.client.get(f"/analises/projeto/{project_id}").get_data(as_text=True))
         repeat_page = self.client.get(f"/analises/{identifier}/duplicar")
         self.assertEqual(repeat_page.status_code, 302)
@@ -311,7 +311,7 @@ class PersistentAnalysisTests(unittest.TestCase):
         self.client.post("/logout", data={"csrf_token": csrf_from(self.client.get("/projetos"))})
         login(self.client, "admin@example.org")
         token = csrf_from(self.client.get("/admin/definir-acessos"))
-        restored = current + ["student|pdf_scraper"]
+        restored = current + ["research_quali|pdf_scraper"]
         self.assertEqual(self.client.post("/admin/definir-acessos", data={
             "csrf_token": token, "access": restored,
         }).status_code, 302)
@@ -327,7 +327,7 @@ class PersistentAnalysisTests(unittest.TestCase):
         db.session.commit()
         login(self.client)
         self.assertEqual(self.client.get("/ferramenta-nova").status_code, 403)
-        db.session.add(PlanTool(plan_id="student", tool_id="future_tool"))
+        db.session.add(PlanTool(plan_id="research_quali", tool_id="future_tool"))
         db.session.commit()
         self.assertEqual(self.client.get("/ferramenta-nova").status_code, 200)
 

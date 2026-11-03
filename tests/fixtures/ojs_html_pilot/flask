@@ -1,0 +1,50 @@
+#!/usr/bin/env python3
+"""Minimal command fixture for the Docker-level pilot harness.
+
+It is not an implementation of the OJS worker. Real persistence, campaign
+resumption and cancellation are covered by the application's Python tests.
+This executable only makes the shell procedure exercise a genuine Docker
+container with the same command shape and an isolated SQLite file.
+"""
+
+from __future__ import annotations
+
+import os
+import sqlite3
+import sys
+import time
+from pathlib import Path
+
+
+def _argument_value(name: str) -> str:
+    try:
+        return sys.argv[sys.argv.index(name) + 1]
+    except (ValueError, IndexError) as exc:
+        raise SystemExit(f"missing fixture argument: {name}") from exc
+
+
+audit_run_id = _argument_value("--audit-run-id")
+if "ojs-seo-html-worker" not in sys.argv:
+    raise SystemExit("unexpected fixture command")
+
+sleep_seconds = float(os.environ.get("PILOT_FIXTURE_SLEEP_SECONDS", "0"))
+if sleep_seconds:
+    time.sleep(sleep_seconds)
+
+database_path = Path("/app/outputs/platform/platform.sqlite3")
+connection = sqlite3.connect(database_path)
+try:
+    cursor = connection.execute(
+        "UPDATE ojs_html_audit_runs SET status = 'partial' WHERE id = ?",
+        (audit_run_id,),
+    )
+    if cursor.rowcount != 1:
+        raise SystemExit("fixture audit run was not found")
+    connection.commit()
+finally:
+    connection.close()
+
+Path("/app/outputs/platform/pilot-fixture-command.txt").write_text(
+    " ".join(sys.argv[1:]), encoding="utf-8"
+)
+raise SystemExit(int(os.environ.get("PILOT_FIXTURE_EXIT_CODE", "0")))

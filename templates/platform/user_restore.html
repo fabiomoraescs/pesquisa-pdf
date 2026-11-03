@@ -13,10 +13,10 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="confirm" value="yes">
     {% if previous_status %}<input type="hidden" name="restore_status" value="{{ previous_status }}">
-    {% else %}<label class="form-label" for="restore-status">Estado após restauração</label>
+    {% else %}<label class="visually-hidden" for="restore-status">Estado após restauração</label>
       <select class="form-select mb-3" id="restore-status" name="restore_status" required>
-        <option value="">Selecione</option>
-        {% for status in ['active', 'suspended', 'blocked'] %}<option value="{{ status }}">{{ status | rotulo }}</option>{% endfor %}
+        <option value="">Estado após restauração: Selecione</option>
+        {% for status in ['active', 'suspended', 'blocked'] %}<option value="{{ status }}">Estado após restauração: {{ status | rotulo }}</option>{% endfor %}
       </select>{% endif %}
     <div class="d-flex flex-wrap gap-2">
       <a class="btn btn-outline-primary" href="{{ url_for('admin.deleted_users') }}">Cancelar</a>

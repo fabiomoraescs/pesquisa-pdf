@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<OAI-PMH xmlns="http://www.openarchives.org/OAI/2.0/">
+  <ListMetadataFormats>
+    <metadataFormat><metadataPrefix>oai_dc</metadataPrefix><schema>http://www.openarchives.org/OAI/2.0/oai_dc.xsd</schema><metadataNamespace>http://www.openarchives.org/OAI/2.0/oai_dc/</metadataNamespace></metadataFormat>
+    <metadataFormat><metadataPrefix>marcxml</metadataPrefix><schema>https://example.test/marc.xsd</schema><metadataNamespace>http://www.loc.gov/MARC21/slim</metadataNamespace></metadataFormat>
+  </ListMetadataFormats>
+</OAI-PMH>

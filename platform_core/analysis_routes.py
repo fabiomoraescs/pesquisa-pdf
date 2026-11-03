@@ -13,7 +13,7 @@ from .analyses import analysis_dir, delete_analysis, documents_for, get_analysis
 from .extensions import db
 from .models import Analysis, Project
 from .scraping_types import FREE, QUALITATIVE, QUALITATIVE_TOOL, SYSTEMATIC, TOOL_BY_TYPE, tool_for_project
-from .services import can_use_tool, get_project_for_user
+from .services import get_project_for_user, require_tool_access
 
 
 analyses_bp = Blueprint("analyses", __name__, url_prefix="/analises")
@@ -21,8 +21,7 @@ analyses_bp = Blueprint("analyses", __name__, url_prefix="/analises")
 
 def _authorized(analysis_id: UUID) -> Analysis:
     analysis = get_analysis(str(analysis_id), current_user)
-    if not can_use_tool(current_user, analysis.tool_id):
-        abort(403)
+    require_tool_access(current_user, analysis.tool_id)
     if analysis.project_id:
         get_project_for_user(analysis.project_id, current_user, include_inactive=True)
     return analysis
@@ -37,11 +36,17 @@ def _can_manage(analysis: Analysis) -> bool:
     return False
 
 
+def _project_for_analysis(analysis: Analysis) -> Project | None:
+    """Resolve o projeto persistido para cabeçalhos de análises vinculadas."""
+    if not analysis.project_id:
+        return None
+    return get_project_for_user(analysis.project_id, current_user, include_inactive=True)
+
+
 @analyses_bp.get("")
 @login_required
 def standard_history():
-    if not can_use_tool(current_user, "pdf_scraper"):
-        abort(403)
+    require_tool_access(current_user, "pdf_scraper")
     items = db.session.scalars(select(Analysis).where(
         Analysis.user_id == current_user.id, Analysis.project_id.is_(None)
     ).order_by(Analysis.created_at.desc())).all()
@@ -67,8 +72,7 @@ def systematic_history():
 
 def _type_history(scrape_type: str):
     tool_id = TOOL_BY_TYPE[scrape_type]
-    if not can_use_tool(current_user, tool_id):
-        abort(403)
+    require_tool_access(current_user, tool_id)
     owned_projects = db.session.scalars(select(Project).where(
         Project.owner_user_id == current_user.id, Project.scrape_type == scrape_type,
         Project.deleted_at.is_(None)
@@ -89,8 +93,7 @@ def _type_history(scrape_type: str):
 @login_required
 def project_history(project_id: UUID):
     project = get_project_for_user(str(project_id), current_user, include_inactive=True)
-    if not can_use_tool(current_user, tool_for_project(project)):
-        abort(403)
+    require_tool_access(current_user, tool_for_project(project))
     if project.scrape_type == QUALITATIVE:
         return redirect(url_for("qualitative.project_workspace", project_id=project.id))
     items = db.session.scalars(select(Analysis).where(
@@ -104,16 +107,17 @@ def project_history(project_id: UUID):
 @login_required
 def dashboard(analysis_id: UUID):
     analysis = _authorized(analysis_id)
+    project = _project_for_analysis(analysis)
     if analysis.tool_id == QUALITATIVE_TOOL:
         return redirect(url_for("qualitative.base", analysis_id=analysis.id))
     if analysis.status != "concluida":
         return render_template("platform/analysis_pending.html", analysis=analysis,
-                               can_manage=_can_manage(analysis), projects=[])
+                               project=project, can_manage=_can_manage(analysis), projects=[])
     if not analysis.name_confirmed and _can_manage(analysis):
         return redirect(url_for("analyses.name_base", analysis_id=analysis.id))
     if not analysis.name_confirmed:
         return render_template("platform/analysis_pending.html", analysis=analysis,
-                               can_manage=False, projects=[])
+                               project=project, can_manage=False, projects=[])
     result = load_result(analysis)
     projects = db.session.scalars(select(Project).where(
         Project.owner_user_id == analysis.user_id, Project.scrape_type == FREE,
@@ -121,11 +125,11 @@ def dashboard(analysis_id: UUID):
     ).order_by(Project.name)).all()
     if analysis.tool_id == "pdf_scraper":
         return render_template("resultado.html", resultado=result, identificador=analysis.id,
-                               analysis=analysis, projects=projects, documents=documents_for(analysis),
+                               analysis=analysis, project=project, projects=projects, documents=documents_for(analysis),
                                can_manage=_can_manage(analysis))
     chart_data = systematic_chart_data(result)
     return render_template("platform/analysis_dashboard.html", analysis=analysis,
-                           result=result, projects=projects, documents=documents_for(analysis),
+                           project=project, result=result, projects=projects, documents=documents_for(analysis),
                            can_manage=_can_manage(analysis), chart_data=chart_data)
 
 

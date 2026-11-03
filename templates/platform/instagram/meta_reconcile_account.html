@@ -1,0 +1,20 @@
+{% extends "platform/base.html" %}
+{% from 'platform/instagram/_project_tabs.html' import project_tabs %}
+
+{% block title %}Confirmar vínculo da conta — {{ project.name }}{% endblock %}
+{% block page_intro %}<div class="mb-3"><h1 class="h4 mb-1">Confirmar vínculo da conta</h1><p class="platform-muted mb-0">{{ project.name }}</p></div>{% endblock %}
+{% block body %}
+{{ project_tabs(project, 'import') }}
+<section class="platform-panel" aria-labelledby="meta-reconciliation-title">
+  <h2 id="meta-reconciliation-title" class="h5">Confirmar vínculo da conta</h2>
+  <p>Este projeto já possui dados associados a <strong>@{{ project.instagram_account.username }}</strong>. A conta autenticada no Instagram também é <strong>@{{ provider_profile.username }}</strong>.</p>
+  <p class="platform-muted">O identificador usado anteriormente pelo projeto é diferente do identificador oficial retornado pela Meta.</p>
+  <p>Ao confirmar, os dados existentes serão preservados, nenhuma publicação ou execução será apagada e a conexão passará a usar a identidade oficial da conta. O identificador já utilizado pelo projeto não será substituído silenciosamente.</p>
+  <form method="post" class="d-flex flex-wrap gap-2">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="reconciliation_token" value="{{ reconciliation_token }}">
+    <button class="btn btn-primary" name="reconciliation_action" value="confirm" type="submit">Vincular esta conta ao projeto</button>
+    <button class="btn btn-outline-primary" name="reconciliation_action" value="cancel" type="submit">Cancelar</button>
+  </form>
+</section>
+{% endblock %}

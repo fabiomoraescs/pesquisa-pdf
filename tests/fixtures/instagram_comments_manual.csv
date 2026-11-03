@@ -1,0 +1,9 @@
+media_external_id,comment_external_id,comment_text,published_at,observed_at,parent_comment_external_id,author_username,author_external_id,like_count,replies_count
+post-manual-1,manual-positive,"Gostei muito desta publicação!",2026-10-06T10:00:00-03:00,2026-10-07T09:00:00-03:00,,leitora_positiva,user-positive,5,1
+post-manual-1,manual-negative,"Discordo do ponto principal; a fonte não sustenta essa conclusão.",2026-10-06T10:20:00-03:00,2026-10-07T09:00:00-03:00,,leitora_critica,user-negative,2,0
+post-manual-1,manual-neutral,"A fonte citada é de qual ano?",2026-10-06T10:40:00-03:00,2026-10-07T09:00:00-03:00,,leitora_neutra,user-neutral,1,0
+post-manual-1,manual-mixed,"Gostei da discussão, mas faltaram exemplos concretos.",2026-10-06T11:00:00-03:00,2026-10-07T09:00:00-03:00,,leitora_mista,user-mixed,3,0
+post-manual-1,manual-question,"Onde encontro o artigo completo?",2026-10-06T12:00:00-03:00,2026-10-07T09:00:00-03:00,,leitora_pergunta,user-question,0,1
+post-manual-1,manual-praise,"Excelente trabalho de pesquisa; parabéns pela seleção de fontes.",2026-10-06T12:20:00-03:00,2026-10-07T09:00:00-03:00,,leitora_elogio,user-praise,7,0
+post-manual-1,manual-request,"Poderiam disponibilizar o PDF completo?",2026-10-06T12:40:00-03:00,2026-10-07T09:00:00-03:00,,leitora_pedido,user-request,1,0
+post-manual-1,manual-reply,"Ele está no link da bio.",2026-10-06T12:05:00-03:00,2026-10-07T09:00:00-03:00,manual-question,,,,0

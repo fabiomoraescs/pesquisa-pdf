@@ -48,7 +48,7 @@ from .qualitative_automatic import automatic_coding, remove_coding
 from .qualitative_expanded_search import SemanticModelUnavailable
 from .qualitative_search import QualitativeSearchError, search_qualitative_document
 from .scraping_types import QUALITATIVE, QUALITATIVE_TOOL
-from .services import ACCOUNT_LIFECYCLE_LOCK, account_accepts_new_work, can_use_tool, get_project_for_user
+from .services import ACCOUNT_LIFECYCLE_LOCK, account_accepts_new_work, get_project_for_user, require_tool_access
 
 
 qualitative_bp = Blueprint("qualitative", __name__, url_prefix="/analise-qualitativa")
@@ -113,8 +113,7 @@ def semantic_job_progress(analysis_id: UUID, job_id: UUID):
 
 
 def _require_tool() -> None:
-    if not can_use_tool(current_user, QUALITATIVE_TOOL):
-        abort(403)
+    require_tool_access(current_user, QUALITATIVE_TOOL)
 
 
 def _project(project_id: UUID, *, active: bool = False) -> Project:
@@ -126,6 +125,7 @@ def _project(project_id: UUID, *, active: bool = False) -> Project:
 
 
 def _base(analysis_id: UUID) -> Analysis:
+    _require_tool()
     return get_qualitative_analysis(str(analysis_id), current_user)
 
 

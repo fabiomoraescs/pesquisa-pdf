@@ -1,0 +1,2 @@
+{% with progress_prefix='ojs-seo-', progress_title='Preparando análise bibliográfica', progress_context=project.name if project is defined else '', progress_message='A solicitação está sendo enviada.', progress_detail='Aguardando resposta segura.', progress_aria_label='Acompanhamento da análise bibliográfica OJS SEO', progress_show_detail=true, progress_show_time=false, progress_allow_close=true %}{% include 'platform/_progress_overlay.html' %}{% endwith %}
+<script defer src="{{ url_for('static', filename='js/platform_form_loading_overlay.js') }}"></script>

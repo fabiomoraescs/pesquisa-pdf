@@ -2,7 +2,7 @@
 
 import unittest
 import tempfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 from uuid import uuid4
@@ -14,8 +14,9 @@ from sqlalchemy.exc import IntegrityError
 import app as legacy
 from historico_racial import routes as documentary
 from platform_helpers import create_user, csrf_from, isolated_platform, login
+from platform_core.commercial_trial_services import activate_commercial_trial, CommercialTrialError
 from platform_core.extensions import db
-from platform_core.models import AccessGrant, AuditLog, Project, User, UserProfile, UserToolOverride
+from platform_core.models import AccessGrant, AuditLog, CommercialTrial, Project, User, UserProfile, UserToolOverride, utcnow
 from platform_core.services import record_audit, replace_grant
 
 
@@ -79,6 +80,115 @@ class PermanentUserDeletionTests(unittest.TestCase):
         self.assertNotIn("password", str(audit.before_json).lower())
         self.assertNotIn(secret_hash, str(audit.before_json) + str(audit.after_json))
 
+
+    def test_permanent_deletion_removes_trial_and_soft_deletion_preserves_it(self):
+        original = create_user("Trial original", "trial-original@example.org")
+        started = utcnow()
+        fingerprint = "a" * 64
+
+        def make_trial(user):
+            return CommercialTrial(
+                cpf_fingerprint=fingerprint,
+                cpf_key_version="v1",
+                commercial_group_id="research",
+                user_id=user.id,
+                plan_id="research_quali",
+                started_at=started,
+                expires_at=started + timedelta(days=7),
+                activated_by_id=self.admin.id,
+                activated_by_name_snapshot=self.admin.name,
+            )
+
+        first_trial = make_trial(original)
+        db.session.add(first_trial)
+        db.session.commit()
+        original_id = original.id
+        first_trial_id = first_trial.id
+
+        self.assertEqual(self.submit(original_id).status_code, 302)
+        self.assertIsNone(db.session.get(User, original_id))
+        self.assertIsNone(db.session.get(CommercialTrial, first_trial_id))
+
+        replacement = create_user("Novo cadastro", "novo-trial@example.org")
+        second_trial = make_trial(replacement)
+        db.session.add(second_trial)
+        db.session.commit()
+
+        self.assertIsNotNone(db.session.get(CommercialTrial, second_trial.id))
+
+        url = f"/admin/usuarios/{replacement.id}/excluir"
+        page = self.client.get(url)
+        self.assertEqual(page.status_code, 200)
+        response = self.client.post(url, data={
+            "csrf_token": csrf_from(page),
+            "confirm": "yes",
+        })
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIsNotNone(db.session.get(CommercialTrial, second_trial.id))
+        self.assertIsNotNone(db.session.get(User, replacement.id).deleted_at)
+
+
+    def test_trial_service_releases_cpf_after_permanent_deletion(self):
+        self.app.config["PESQUISAPDF_CPF_HMAC_SECRET"] = (
+            "trial-reset-test-secret-that-is-long-enough-123456"
+        )
+        cpf = "529.982.247-25"
+
+
+        def create_trial_candidate(name, email):
+            user = User(name=name, email=email, role="user", status="active")
+            user.set_password("senha-de-teste-segura-123")
+            db.session.add(user)
+            db.session.commit()
+            return user
+
+        original = create_trial_candidate("Trial inicial", "trial-inicial@example.org")
+        first = activate_commercial_trial(
+            self.admin, original, "research_quali", cpf
+        )
+        db.session.commit()
+
+        first_id = first.id
+        fingerprint = first.cpf_fingerprint
+        original_id = original.id
+
+        replacement = create_trial_candidate("Trial posterior", "trial-posterior@example.org")
+
+        with self.assertRaises(CommercialTrialError):
+            activate_commercial_trial(
+                self.admin, replacement, "research_quali", cpf
+            )
+
+        self.assertEqual(self.submit(original_id).status_code, 302)
+        self.assertIsNone(db.session.get(User, original_id))
+        self.assertIsNone(db.session.get(CommercialTrial, first_id))
+
+        second = activate_commercial_trial(
+            self.admin, replacement, "research_quali", cpf
+        )
+        db.session.commit()
+
+        second_id = second.id
+        self.assertEqual(second.cpf_fingerprint, fingerprint)
+        self.assertIsNotNone(db.session.get(CommercialTrial, second_id))
+
+        url = f"/admin/usuarios/{replacement.id}/excluir"
+        page = self.client.get(url)
+        self.assertEqual(page.status_code, 200)
+        response = self.client.post(url, data={
+            "csrf_token": csrf_from(page),
+            "confirm": "yes",
+        })
+        self.assertEqual(response.status_code, 302)
+        self.assertIsNotNone(db.session.get(CommercialTrial, second_id))
+
+        another = create_trial_candidate("Terceiro cadastro", "terceiro-trial@example.org")
+        with self.assertRaises(CommercialTrialError):
+            activate_commercial_trial(
+                self.admin, another, "research_quali", cpf
+            )
+
     def test_common_user_get_and_post_are_forbidden(self):
         target = create_user("Alvo", "alvo@example.org")
         ordinary = create_user("Comum", "comum@example.org")
@@ -112,7 +222,7 @@ class PermanentUserDeletionTests(unittest.TestCase):
         other_id = other_admin.id
         beneficiary = create_user("Beneficiário", "beneficiario@example.org")
         record_audit(other_admin, "tool_state_changed", "tool", "pdf_scraper", {"active": True}, {"active": False})
-        replace_grant(beneficiary, "researcher", "admin_courtesy", "active", other_admin)
+        replace_grant(beneficiary, "research_quali", "admin_courtesy", "active", other_admin)
         db.session.commit()
         log_id = db.session.scalar(select(AuditLog.id).where(
             AuditLog.admin_user_id == other_id, AuditLog.action == "tool_state_changed"))
@@ -231,14 +341,19 @@ class PermanentUserMigrationTests(unittest.TestCase):
                         "INSERT INTO access_grants (id,user_id,plan_id,access_mode,status,created_at,granted_by_id) "
                         "VALUES (:id,:user,'student','admin_courtesy','active',:moment,:admin)"
                     ), {"id": str(uuid4()), "user": actor_id, "moment": moment, "admin": actor_id})
+                upgrade(directory=migrations, revision="e6c8b5f42a10")
+                with db.engine.connect() as connection:
+                    self.assertEqual(connection.scalar(text(
+                        "SELECT granted_by_name_snapshot FROM access_grants WHERE granted_by_id = :id"
+                    ), {"id": actor_id}), "Admin anterior")
                 upgrade(directory=migrations, revision="head")
                 with db.engine.connect() as connection:
                     self.assertEqual(connection.scalar(text(
                         "SELECT admin_name_snapshot FROM audit_logs WHERE admin_user_id = :id"
                     ), {"id": actor_id}), "Admin anterior")
-                    self.assertEqual(connection.scalar(text(
-                        "SELECT granted_by_name_snapshot FROM access_grants WHERE granted_by_id = :id"
-                    ), {"id": actor_id}), "Admin anterior")
+                    self.assertIsNone(connection.scalar(text(
+                        "SELECT id FROM access_grants WHERE granted_by_id = :id"
+                    ), {"id": actor_id}))
                 db.session.remove()
                 db.engine.dispose()
 

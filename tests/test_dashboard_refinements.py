@@ -84,10 +84,10 @@ class DashboardRefinementsTests(unittest.TestCase):
             tool_id=QUALITATIVE_TOOL, tool_version="manual-v1", parameters={}, name="Leitura qualitativa")
         systematic_project = self._project(owner, "Projeto estruturado", "systematic")
         expected = (
-            (self._base(owner, "Busca de termos", "pdf_scraper", status="processando"), "Busca por termos"),
+            (self._base(owner, "Busca de termos", "pdf_scraper", status="processando"), "Raspagem por termos"),
             (self._base(owner, "Busca de entidades", "document_analysis", project=systematic_project,
-                        status="processando"), "Busca estruturada"),
-            (qualitative, "Análise quali-dados"),
+                        status="processando"), "Raspagem estruturada"),
+            (qualitative, "Análise Documental"),
         )
         login(self.client)
         response = self.client.get("/")
@@ -137,7 +137,7 @@ class DashboardRefinementsTests(unittest.TestCase):
             r'<section[^>]+aria-labelledby="continue-working-heading">(.*?)</section>', html, re.DOTALL
         )[1]
         self.assertIn("Base concluída", continuation)
-        self.assertIn("Busca por termos", continuation)
+        self.assertIn("Raspagem por termos", continuation)
         self.assertIn("8 documento(s)", continuation)
         self.assertNotIn(">Continuar<", continuation)
         self.assertNotIn("Concluída · Concluída em", continuation)
@@ -177,9 +177,9 @@ class DashboardRefinementsTests(unittest.TestCase):
         login(self.client)
 
         html = self.client.get("/").get_data(as_text=True)
-        self.assertRegex(html, r'<strong>1</strong>\s*<span>Projetos</span>')
-        self.assertRegex(html, r'<strong>1</strong>\s*<span>Bases</span>')
-        self.assertRegex(html, r'<strong>7</strong>\s*<span>Documentos nas Bases</span>')
+        self.assertRegex(html, r'(?s)<span class="platform-metric-card__title">Projetos</span>.*?<strong>1</strong>')
+        self.assertRegex(html, r'(?s)<span class="platform-metric-card__title">Bases</span>.*?<strong>1</strong>')
+        self.assertRegex(html, r'(?s)<span class="platform-metric-card__title">Documentos nas Bases</span>.*?<strong>7</strong>')
         self.assertNotIn("Projeto alheio", html)
         self.assertNotIn("Base alheia", html)
 
@@ -209,7 +209,7 @@ class DashboardRefinementsTests(unittest.TestCase):
         # O ambiente vazio continua sendo destino funcional; não exige preparo.
         self.assertEqual(self.client.get(f'/analise-qualitativa/bases/{second.id}', follow_redirects=True).status_code, 200)
 
-    def test_workspace_layout_is_compact_responsive_and_uses_metric_icons(self):
+    def test_workspace_layout_is_compact_responsive_and_uses_metric_composition(self):
         create_user(role="admin")
         login(self.client)
 
@@ -221,17 +221,213 @@ class DashboardRefinementsTests(unittest.TestCase):
             r'<section[^>]+aria-labelledby="workspace-summary-heading">(.*?)</section>', html, re.DOTALL
         )[1]
         self.assertEqual(summary.count('platform-workspace-metric-card'), 4)
-        self.assertEqual(summary.count('<svg class="platform-icon"'), 4)
-        self.assertRegex(summary, r'(?s)<svg class="platform-icon".*?</svg>\s*<strong>0</strong>\s*<span>Projetos</span>')
+        self.assertEqual(summary.count('<svg class="platform-icon"'), 0)
+        self.assertIn('platform-metric-card__sparkline', summary)
+        self.assertIn('data-illustrative-sparkline="true"', summary)
+        self.assertRegex(summary, r'(?s)<span class="platform-metric-card__title">Projetos</span>\s*<span class="platform-metric-card__content">.*?<span class="platform-metric-card__value">\s*<strong>0</strong>')
+        self.assertIn("Projetos aos quais você tem acesso.", summary)
         css = (Path(__file__).resolve().parents[1] / "static/css/platform.css").read_text(encoding="utf-8")
         self.assertIn('.platform-workspace-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));', css)
         self.assertIn('.platform-workspace-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }', css)
-        self.assertIn('flex-direction: row;', css)
-        self.assertIn('min-height: 0; padding: .7rem .8rem;', css)
-        self.assertIn('width: 1.65rem; height: 1.65rem;', css)
+        self.assertIn('.platform-metric-card { display: grid;', css)
+        self.assertIn('.platform-kpi-grid > [class*="col-"] { display: flex;', css)
+        self.assertIn('.platform-kpi-card, .platform-workspace-metric-card { width: 100%; height: 100%; }', css)
+        self.assertIn('.platform-metric-card__content { display: grid; grid-template-columns: minmax(0, 1fr) minmax(3.25rem, 4.75rem);', css)
+        self.assertIn('.platform-metric-card__value { display: inline-flex;', css)
+        self.assertIn('min-height: 0; padding: .8rem .85rem;', css)
+        self.assertIn('.platform-metric-card__sparkline {', css)
         self.assertIn('font-size: clamp(1.55rem, 2.8vw, 1.9rem);', css)
-        self.assertIn('text-overflow: ellipsis; white-space: nowrap;', css)
-        self.assertIn('grid-template-columns: minmax(12rem, 1fr) minmax(0, auto) auto;', css)
+        self.assertIn('.platform-metric-card__description { display: block;', css)
+        self.assertNotIn('.platform-metric-card__description { display: -webkit-box;', css)
+        self.assertNotIn('-webkit-line-clamp', css[css.index('.platform-metric-card {'):css.index('.platform-workspace-metric-card')])
+
+    def test_three_themes_are_declared_by_shared_tokens_and_header_menu(self):
+        create_user()
+        login(self.client)
+        html = self.client.get("/").get_data(as_text=True)
+        self.assertIn('data-theme-selector', html)
+        self.assertIn('data-theme-option="light"', html)
+        self.assertIn('data-theme-option="dark"', html)
+        self.assertIn('data-theme-option="black"', html)
+        self.assertIn('Escuro azul', html)
+        self.assertIn('>Preto<', html)
+        self.assertIn("['light', 'dark', 'black'].includes(t)", html)
+        self.assertIn("? t : 'light'; } catch (_) { document.documentElement.dataset.theme = 'light'; }", html)
+        css = (Path(__file__).resolve().parents[1] / "static/css/style.css").read_text(encoding="utf-8")
+        interface = (Path(__file__).resolve().parents[1] / "static/js/interface.js").read_text(encoding="utf-8")
+        self.assertIn('color-scheme: light;', css)
+        self.assertNotIn('prefers-color-scheme', css)
+        self.assertIn("? raiz.dataset.theme : 'light'", interface)
+        self.assertIn("? tema : 'light'", interface)
+        self.assertIn('html[data-theme="black"]', css)
+        for token, value in (("--paper", "#0d0d0d"), ("--surface", "#1c1c1c"), ("--border", "#343434"), ("--ink", "#f5f5f5")):
+            self.assertIn(f'{token}: {value}', css)
+
+    def test_all_theme_bootstraps_default_to_light_before_loading_stylesheets(self):
+        root = Path(__file__).resolve().parents[1]
+        partial = (root / "templates/platform/_theme_bootstrap.html").read_text(encoding="utf-8")
+        bootstrap = (
+            "document.documentElement.dataset.theme = ['light', 'dark', 'black'].includes(t) "
+            "? t : 'light'; } catch (_) { document.documentElement.dataset.theme = 'light'; }"
+        )
+        self.assertIn(bootstrap, partial)
+        self.assertNotIn("? t : 'dark'", partial)
+        templates = (
+            "templates/platform/base.html",
+            "templates/platform/error.html",
+            "templates/index.html",
+            "templates/resultado.html",
+            "templates/historico_racial/index.html",
+            "templates/historico_racial/resultado.html",
+            "templates/historico_racial/vocabulario.html",
+        )
+        for relative_path in templates:
+            source = (root / relative_path).read_text(encoding="utf-8")
+            with self.subTest(template=relative_path):
+                self.assertIn("{% include 'platform/_theme_bootstrap.html' %}", source)
+                self.assertLess(source.index("{% include 'platform/_theme_bootstrap.html' %}"), source.index('<link href='))
+
+    def test_ojs_overview_uses_metric_trends_without_decorative_icons_and_accessible_table_actions(self):
+        root = Path(__file__).resolve().parents[1]
+        overview = (root / "templates/platform/ojs_seo/_dashboard_individual.html").read_text(encoding="utf-8")
+        css = (root / "static/css/platform.css").read_text(encoding="utf-8")
+
+        self.assertNotIn("bibliography_icons", overview)
+        self.assertIn("from 'platform/_metric_card.html' import metric_card_content", overview)
+        self.assertIn('{{ metric_card_content(metric, variant) }}', overview)
+        self.assertNotIn('bibliography_icons', overview)
+        self.assertIn('ojs-dashboard-bar-link--problem-type', overview)
+        self.assertIn('class="platform-table-actions"', overview)
+        self.assertIn('aria-label="Visualizar auditoria de', overview)
+        self.assertNotIn(">Ver</a>", overview)
+        self.assertIn(".platform-table-actions .platform-action-button", css)
+        self.assertNotIn('ojs-dashboard-columns', overview)
+        self.assertNotIn('ojs-dashboard-column', overview)
+        self.assertNotIn('grid-template-areas: "summary summary" "bibliography problems" "history problems"', css)
+        self.assertIn('.ojs-dashboard-problem-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-areas: "severity certainty nature" "types types types";', css)
+        self.assertIn('@container (max-width: 24rem)', css)
+
+    def test_ojs_overview_flows_in_the_required_full_width_order_without_last_audit_card(self):
+        root = Path(__file__).resolve().parents[1]
+        overview = (root / "templates/platform/ojs_seo/_dashboard_individual.html").read_text(encoding="utf-8")
+        detail = (root / "templates/platform/ojs_seo/journal_detail.html").read_text(encoding="utf-8")
+        css = (root / "static/css/platform.css").read_text(encoding="utf-8")
+
+        self.assertNotIn('class="ojs-dashboard-columns"', overview)
+        self.assertNotIn('latest_audit_panel', overview)
+        self.assertNotIn('Última análise solicitada', overview)
+        self.assertNotIn('platform-metric-card ojs-dashboard-metric-link p-3 h-100', overview)
+        self.assertNotIn('platform-metric-card p-3 h-100', overview)
+        self.assertLess(overview.index('ojs-dashboard--problems'), overview.index('{{ history_panel() }}'))
+        self.assertLess(overview.index('{{ history_panel() }}'), overview.index('ojs-dashboard--bibliography'))
+        self.assertIn("'confirmed-articles'", overview)
+        self.assertIn("'high-priorities'", overview)
+        self.assertIn('col-12 col-sm-6 col-xl-3', overview)
+        self.assertNotIn('aria-labelledby="ojs-seo-last-check-title"', detail)
+        self.assertIn('.ojs-dashboard-content > .ojs-dashboard { min-width: 0; height: auto;', css)
+        self.assertIn('.ojs-dashboard--bibliography .ojs-dashboard-bars { grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));', css)
+
+    def test_metric_cards_use_lightweight_illustrative_sparkline_variants_without_historical_data(self):
+        root = Path(__file__).resolve().parents[1]
+        component = (root / "templates/platform/_metric_card.html").read_text(encoding="utf-8")
+        css = (root / "static/css/platform.css").read_text(encoding="utf-8")
+
+        self.assertIn('data-illustrative-sparkline="true"', component)
+        self.assertIn('viewBox="0 0 72 28"', component)
+        self.assertIn('aria-hidden="true"', component)
+        self.assertNotIn('metric.sparkline_path', component)
+        self.assertIn('platform-metric-card__description', component)
+        self.assertLess(component.index('platform-metric-card__sparkline'), component.index('platform-metric-card__description'))
+        self.assertIn('.platform-metric-card__sparkline-area', css)
+        self.assertNotIn('metric-card:not(.platform-metric-card)', css)
+        self.assertNotIn('illustration_variant', component)
+        self.assertEqual(component.count('data-illustrative-sparkline="true"'), 1)
+        self.assertEqual(component.count('data-sparkline-variant="{{ resolved_variant }}"'), 1)
+        self.assertEqual(component.count('class="platform-metric-card__sparkline-area" stroke="none"'), 5)
+        self.assertEqual(component.count('class="platform-metric-card__sparkline-line" fill="none"'), 5)
+        self.assertNotIn('Math.random', component)
+        self.assertIn('preserveAspectRatio="xMaxYMax meet"', component)
+        self.assertIn('fill: color-mix(in srgb, currentColor 14%, transparent); stroke: none;', css)
+        self.assertIn('stroke-width: 1.6;', css)
+
+        template = legacy.app.jinja_env.get_template("platform/_metric_card.html")
+        rendered = [
+            template.module.metric_card("Indicador", 12, "Descrição completa", variant=index)
+            for index in range(5)
+        ]
+        for index, markup in enumerate(rendered):
+            self.assertIn(f'data-sparkline-variant="{index}"', markup)
+            self.assertEqual(markup.count('stroke="none"'), 1)
+            self.assertEqual(markup.count('class="platform-metric-card__sparkline-line"'), 1)
+        self.assertEqual(len(set(rendered)), 5)
+
+    def test_all_visible_kpi_groups_reuse_the_canonical_metric_component(self):
+        root = Path(__file__).resolve().parents[1]
+        component = (root / "templates/platform/_metric_card.html").read_text(encoding="utf-8")
+        css = (root / "static/css/platform.css").read_text(encoding="utf-8")
+        templates = (
+            "templates/resultado.html",
+            "templates/historico_racial/resultado.html",
+            "templates/platform/admin.html",
+            "templates/platform/dashboard.html",
+            "templates/platform/instagram/dashboard.html",
+            "templates/platform/instagram/comments.html",
+            "templates/platform/instagram/report_detail.html",
+            "templates/platform/ojs_seo/index.html",
+            "templates/platform/ojs_seo/_dashboard_individual.html",
+            "templates/platform/ojs_seo/audit_detail.html",
+            "templates/platform/ojs_seo/articles.html",
+            "templates/platform/ojs_seo/html_audit_detail.html",
+            "templates/platform/ojs_seo/recommendations.html",
+            "templates/platform/ojs_seo/journal_history.html",
+        )
+
+        self.assertEqual(component.count('class="platform-metric-card__sparkline"'), 1)
+        self.assertEqual(component.count('platform-metric-card__sparkline-line" fill="none"'), 5)
+        self.assertNotIn('sparkline_path', component)
+        for relative_path in templates:
+            source = (root / relative_path).read_text(encoding="utf-8")
+            with self.subTest(template=relative_path):
+                self.assertIn("platform/_metric_card.html", source)
+                self.assertIn("platform-metric-card", source)
+                self.assertNotRegex(source, r'<div class="metric-card">')
+                self.assertNotIn('data-illustrative-sparkline=', source)
+                self.assertNotIn('platform-metric-card__sparkline"', source)
+        self.assertIn('grid-template-rows: minmax(2.5rem, auto) 1.9rem minmax(1.9rem, auto);', css)
+        self.assertIn('align-items: flex-end;', css)
+        self.assertNotIn('-webkit-mask: url("data:image/svg+xml', css)
+
+    def test_theme_selector_preserves_explicit_dark_and_persists_new_choices(self):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("Node não disponível")
+        source = (Path(__file__).resolve().parents[1] / "static/js/interface.js").read_text(encoding="utf-8")
+        script = r"""
+const assert=require('node:assert/strict');
+const handlers={}; const events=[]; const storage=new Map();
+const makeOption=(theme)=>({dataset:{themeOption:theme},attrs:{},listeners:{},check:{hidden:true},setAttribute(k,v){this.attrs[k]=String(v)},getAttribute(k){return this.attrs[k]},addEventListener(k,fn){this.listeners[k]=fn},querySelector(){return this.check},focus(){this.focused=true}});
+const options=['light','dark','black'].map(makeOption);
+const menu={hidden:true};
+const selector={querySelector:()=>menu,querySelectorAll:()=>options,contains:target=>target===selector || target===menu || options.includes(target)};
+const button={attrs:{},listeners:{},setAttribute(k,v){this.attrs[k]=String(v)},getAttribute(k){return this.attrs[k]},addEventListener(k,fn){this.listeners[k]=fn},focus(){this.focused=true}};
+const root={dataset:{theme:'dark'}};
+const document={documentElement:root,getElementById:id=>id==='theme-toggle'?button:null,querySelector:selectorText=>selectorText==='[data-theme-selector]'?selector:null,querySelectorAll:()=>[],addEventListener:(name,fn)=>handlers[name]=fn,dispatchEvent:event=>events.push(event)};
+const localStorage={getItem:key=>storage.get(key)||null,setItem:(key,value)=>storage.set(key,value)};
+const window={addEventListener:()=>{}};
+const CustomEvent=function(name,options){return {name,detail:options.detail}};
+""" + source + r"""
+assert.equal(root.dataset.theme,'dark');
+assert.equal(options[1].attrs['aria-checked'],'true');
+button.listeners.click(); assert.equal(menu.hidden,false);
+options[2].listeners.click();
+assert.equal(root.dataset.theme,'black');
+assert.equal(storage.get('varredura-pdf-theme'),'black');
+assert.equal(menu.hidden,true);
+assert.equal(options[2].attrs['aria-checked'],'true');
+assert.equal(events.at(-1).detail.tema,'black');
+"""
+        result = subprocess.run([node, "-e", script], capture_output=True, text=True, encoding="utf-8")
+        self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_qualitative_work_is_textual_and_does_not_load_coding_chart_data(self):
         owner = create_user()
@@ -342,17 +538,17 @@ class DashboardRefinementsTests(unittest.TestCase):
         self.assertNotIn("Ações rápidas", html)
         self.assertNotIn("Atividade recente", html)
         self.assertNotIn("Bases concluídas por ferramenta", html)
-        self.assertIn("Busca por termos", html)
-        self.assertIn("Busca estruturada", html)
+        self.assertIn("Raspagem por termos", html)
+        self.assertIn("Raspagem estruturada", html)
         self.assertNotIn("Projeto sigiloso alheio", html)
         self.assertNotIn("Base em projeto alheio", html)
         self.assertNotIn("Base secreta", html)
         self.assertIn('>Base livre recente</a>', html)
         self.assertIn('>Base sistemática recente</a>', html)
         self.assert_recent_records_have_no_chart(html)
-        self.assertRegex(html, r'<strong>2</strong>\s*<span>Projetos</span>')
-        self.assertRegex(html, r'<strong>4</strong>\s*<span>Bases</span>')
-        self.assertRegex(html, r'<strong>3</strong>\s*<span>Bases concluídas</span>')
+        self.assertRegex(html, r'(?s)<span class="platform-metric-card__title">Projetos</span>.*?<strong>2</strong>')
+        self.assertRegex(html, r'(?s)<span class="platform-metric-card__title">Bases</span>.*?<strong>4</strong>')
+        self.assertRegex(html, r'(?s)<span class="platform-metric-card__title">Bases concluídas</span>.*?<strong>3</strong>')
         self.assertNotIn("dashboard-workspace-chart-data", html)
         self.assertNotIn('dashboard-chart-workspace', html)
         self.assertNotIn("dashboard-admin-chart-data", html)
@@ -363,9 +559,9 @@ class DashboardRefinementsTests(unittest.TestCase):
         db.session.commit()
         login(self.client)
         for kind, path, label in (
-            ("free", "/projetos/livres", "Busca por termos"),
-            ("systematic", "/projetos", "Busca estruturada"),
-            ("qualitative", "/projetos/qualitativos", "Análise quali-dados"),
+            ("free", "/projetos/livres", "Raspagem por termos"),
+            ("systematic", "/projetos", "Raspagem estruturada"),
+            ("qualitative", "/projetos/qualitativos", "Análise Documental"),
         ):
             with self.subTest(kind=kind):
                 project = self._project(owner, f"Projeto {label}", kind)
@@ -401,8 +597,8 @@ class DashboardRefinementsTests(unittest.TestCase):
 
         def check(qualitative, total):
             html = self.client.get("/").get_data(as_text=True)
-            self.assertRegex(html, rf'<strong>{total}</strong>\s*<span>Projetos</span>')
-            self.assertRegex(html, r'<strong>0</strong>\s*<span>Bases</span>')
+            self.assertRegex(html, rf'(?s)<span class="platform-metric-card__title">Projetos</span>.*?<strong>{total}</strong>')
+            self.assertRegex(html, r'(?s)<span class="platform-metric-card__title">Bases</span>.*?<strong>0</strong>')
             self.assertNotIn("dashboard-admin-chart-data", html)
 
         check(0, 2)
@@ -421,7 +617,7 @@ class DashboardRefinementsTests(unittest.TestCase):
         self._project(admin, "Projeto do administrador", "qualitative")
         login(self.client, admin.email)
         html = self.client.get("/").get_data(as_text=True)
-        self.assertRegex(html, r'<strong>1</strong>\s*<span>Projetos</span>')
+        self.assertRegex(html, r'(?s)<span class="platform-metric-card__title">Projetos</span>.*?<strong>1</strong>')
         self.assertNotIn("Projeto de outro usuário", html)
         self.assertIn("dashboard-admin-chart-data", html)
         self.assertEqual(html.count('id="dashboard-chart-users"'), 1)
@@ -455,8 +651,8 @@ class DashboardRefinementsTests(unittest.TestCase):
         self.assertIn("Base sistemática do projeto", self.client.get("/analises/sistematicas").get_data(as_text=True))
         with patch.object(legacy, "executar_analises", side_effect=AssertionError("reprocessou PDF")):
             html = self.client.get("/").get_data(as_text=True)
-        self.assertRegex(html, r'<strong>2</strong>\s*<span>Projetos</span>')
-        self.assertRegex(html, r'<strong>3</strong>\s*<span>Bases</span>')
+        self.assertRegex(html, r'(?s)<span class="platform-metric-card__title">Projetos</span>.*?<strong>2</strong>')
+        self.assertRegex(html, r'(?s)<span class="platform-metric-card__title">Bases</span>.*?<strong>3</strong>')
         self.assertNotIn("dashboard-workspace-chart-data", html)
         self.assertIn("Base livre do projeto", html)
         self.assertIn("Base sistemática do projeto", html)
@@ -487,10 +683,10 @@ class DashboardRefinementsTests(unittest.TestCase):
         login(self.client)
         first = self.client.get("/").get_data(as_text=True)
         self.assertIn("Base V3", first)
-        self.assertRegex(first, r'<strong>1</strong>\s*<span>Projetos</span>')
-        self.assertRegex(first, r'<strong>1</strong>\s*<span>Bases</span>')
+        self.assertRegex(first, r'(?s)<span class="platform-metric-card__title">Projetos</span>.*?<strong>1</strong>')
+        self.assertRegex(first, r'(?s)<span class="platform-metric-card__title">Bases</span>.*?<strong>1</strong>')
         self.assertNotIn("dashboard-workspace-chart-data", first)
-        db.session.delete(db.session.get(PlanTool, ("student", "pdf_scraper")))
+        db.session.delete(db.session.get(PlanTool, ("research_quali", "pdf_scraper")))
         db.session.commit()
         restricted = self.client.get("/").get_data(as_text=True)
         self.assertNotIn("Base V3", restricted)
@@ -526,16 +722,17 @@ class DashboardRefinementsTests(unittest.TestCase):
         self.assertEqual(admin_html.count('id="dashboard-chart-usage"'), 1)
         self.assertNotIn("dashboard-chart-workspace", admin_html)
         self.assertEqual(chart_data(admin_html, "dashboard-admin-chart-data")["usage"], {
-            "labels": ["Busca por termos", "Busca estruturada", "Análise quali-dados",
-                       "Análise quantitativa", "ChatDoc"],
-            "values": [1, 1, 0, 0, 0],
+            "labels": ["Raspagem por termos", "Raspagem estruturada", "Análise Documental",
+                       "Pesquisa Quanti", "Instagram", "OJS Analytics", "Busca Bibliográfica", "Transcrição",
+                       "Marketing & Funis"],
+            "values": [1, 1, 0, 0, 0, 0, 0, 0, 0],
         })
 
     def assert_recent_records_have_no_chart(self, html):
         section = re.search(r'<section[^>]+aria-labelledby="continue-working-heading">(.*?)</section>', html, re.DOTALL)[1]
         self.assertNotRegex(section, r'<canvas|class="(?:chart|empty-chart)|role="img"|skeleton|Plotly')
 
-    def test_empty_summaries_have_no_chart_placeholders_and_chatdoc_is_visual_only(self):
+    def test_empty_summaries_have_no_chart_placeholders_and_editorial_is_absent(self):
         create_user()
         login(self.client)
         html = self.client.get("/").text
@@ -544,11 +741,17 @@ class DashboardRefinementsTests(unittest.TestCase):
         self.assertNotIn('dashboard-chart-workspace', html)
         self.assertNotIn('cdn.plot.ly', html)
         for label in ("Projetos", "Bases", "Documentos nas Bases", "Bases concluídas"):
-            self.assertRegex(html, rf'<strong>0</strong>\s*<span>{re.escape(label)}</span>')
-        for name in ("Análise quantitativa", "ChatDoc"):
-            self.assertRegex(html, r'(?s)<span class="platform-nav-unavailable" aria-disabled="true">\s*<svg[^>]*>.*?</svg>\s*<span>' + name + r'</span></span>')
-        self.assertFalse(any("chatdoc" in rule.rule.lower() for rule in self.app.url_map.iter_rules()))
-        self.assertFalse(any("chatdoc" in name.lower() for name in db.metadata.tables))
+            self.assertRegex(html, rf'(?s)<span class="platform-metric-card__title">{re.escape(label)}</span>.*?<strong>0</strong>')
+        # Ferramentas futuras podem ser visíveis, mas continuam sem link operacional.
+        self.assertIn("Pesquisa Quanti", html)
+        self.assertIn("OJS SEO", html)
+        self.assertIn("OJS Analytics", html)
+        self.assertIn("Busca Bibliográfica", html)
+        self.assertIn("Transcrição", html)
+        self.assertIn("Marketing &amp; Funis", html)
+        self.assertNotIn("Editorial", html)
+        self.assertFalse(any("editorial" in rule.rule.lower() for rule in self.app.url_map.iter_rules()))
+        self.assertFalse(any(name.startswith("editorial_") for name in db.metadata.tables))
 
     @staticmethod
     def _csrf(html):
@@ -574,33 +777,54 @@ class DashboardRefinementsTests(unittest.TestCase):
         self.assertIn('id="structured-analysis-chart-data"', html)
         self.assertNotIn("Primeiras ocorrências", html)
         self.assertNotIn('title="Ver trechos" aria-label="Ver trechos"', html)
-        self.assertIn("© 2026 Análysis. Todos os direitos reservados.", html)
+        self.assertIn("Todos os direitos reservados © - Análysis | 2026.", html)
 
-    def test_shared_footer_has_exact_wording_and_external_link_safety(self):
+    def test_shared_footer_has_only_the_required_centered_message(self):
         create_user()
         login_html = self.client.get("/login").get_data(as_text=True)
         login(self.client)
         for path in ("/", "/raspagem-livre", "/login"):
             with self.subTest(path=path):
                 html = login_html if path == "/login" else self.client.get(path).get_data(as_text=True)
+                self.assertEqual(html.count('<footer class="app-footer">'), 1)
                 footer = html.split('<footer class="app-footer">', 1)[1].split('</footer>', 1)[0]
                 plain = " ".join(unescape(re.sub(r"<[^>]+>", "", footer)).split())
-                self.assertEqual(plain, "© 2026 Análysis. Todos os direitos reservados. "
-                                 "Criado e desenvolvido por Fabio Monteiro de Moraes. "
-                                 "Parceria: Grupo de pesquisa: ConsCiências-Sociais")
-                self.assertIn('href="http://lattes.cnpq.br/0075160400322127" '
-                              'target="_blank" rel="noopener noreferrer"', footer)
-                self.assertIn('href="http://dgp.cnpq.br/dgp/espelhogrupo/538438" '
-                              'target="_blank" rel="noopener noreferrer"', footer)
+                self.assertEqual(plain, "Todos os direitos reservados © - Análysis | 2026.")
+                self.assertNotIn("<a", footer)
+                self.assertNotIn("Fabio Monteiro de Moraes", footer)
+                self.assertNotIn("ConsCiências-Sociais", footer)
                 self.assertNotIn("Versão beta", html)
 
 
 class DashboardChartFrontendTests(unittest.TestCase):
+    def test_dashdark_tokens_are_shared_by_platform_shell_and_charts(self):
+        root = Path(__file__).resolve().parents[1]
+        style = (root / "static/css/style.css").read_text(encoding="utf-8")
+        platform = (root / "static/css/platform.css").read_text(encoding="utf-8")
+        plot_theme = (root / "static/js/plot_theme.js").read_text(encoding="utf-8")
+
+        for token in (
+            "--nav-surface", "--header-surface", "--surface-elevated",
+            "--chart-cyan", "--chart-magenta", "--chart-violet",
+            "--state-success", "--state-warning", "--state-danger",
+        ):
+            self.assertIn(token, style)
+        self.assertIn("--paper: #0e1028", style)
+        self.assertIn("--blue: #1f4e78", style)
+        self.assertIn("--blue: #78b7e5", style)
+        self.assertIn("background: var(--header-surface)", platform)
+        self.assertIn("background: var(--nav-surface)", platform)
+        self.assertIn("--dashboard-cyan: var(--chart-cyan)", platform)
+        self.assertNotIn("--dashboard-page: #151334", platform)
+        self.assertIn("paletteTokens", plot_theme)
+        self.assertIn("--chart-magenta", plot_theme)
+
     def test_historical_admin_charts_render_their_two_aggregate_series(self):
         node = shutil.which("node")
         if not node:
             self.skipTest("Node não disponível")
         source = (Path(__file__).resolve().parents[1] / "static/js/platform_dashboard.js").read_text(encoding="utf-8")
+        self.assertNotIn("ResizeObserver", source)
         script = r"""
 const assert=require('node:assert/strict');
 const calls=[], handlers={};
@@ -609,7 +833,7 @@ const charts={
   'dashboard-chart-users':chart(),
   'dashboard-chart-usage':chart(),
 };
-const admin={registrations:{labels:['2026-09','2026-10'],values:[1,2]},usage:{labels:['Busca por termos','Busca estruturada'],values:[2,1]}};
+const admin={registrations:{labels:['2026-09','2026-10'],values:[1,2]},usage:{labels:['Raspagem por termos','Raspagem estruturada'],values:[2,1]}};
 const document={getElementById:id=>id==='dashboard-admin-chart-data'?{textContent:JSON.stringify(admin)}:charts[id]||null,
   addEventListener:(name,fn)=>handlers[name]=fn,querySelectorAll:()=>[]};
 const Plotly={react:(...args)=>calls.push(args),Plots:{resize(){}}};
@@ -620,7 +844,7 @@ assert.deepEqual(calls[0][1][0].x,['09/2026','10/2026']);
 assert.deepEqual(calls[0][1][0].y,[1,2]);
 assert.equal(calls[0][1][0].orientation,'v');
 assert.deepEqual(calls[1][1][0].x,[2,1]);
-assert.deepEqual(calls[1][1][0].y,['Busca por termos','Busca estruturada']);
+assert.deepEqual(calls[1][1][0].y,['Raspagem por termos','Raspagem estruturada']);
 assert.equal(calls[1][1][0].orientation,'h');
 assert.match(calls[1][1][0].hovertemplate,/Base\(s\) concluída\(s\)/);
 assert.equal(calls[1][3].responsive,true);
@@ -637,27 +861,52 @@ assert.equal(calls[1][3].responsive,true);
 const assert = require('node:assert/strict');
 const handlers = {}, calls = [], resized = [], frames = new Map();
 const classes = new Set(['js-plotly-plot']);
-const cards=[{}, {}]; let observed=[], serial=0;
+let serial=0;
 const chart=()=>({classList:{contains:x=>classes.has(x),add:x=>classes.add(x),remove:x=>classes.delete(x)}});
 const charts=[chart(), chart()];
 const document = {
-  getElementById:id=>id==='dashboard-admin-chart-data'?{textContent:JSON.stringify({registrations:{labels:['2026-10'],values:[1]},usage:{labels:['Busca por termos'],values:[1]}})}:
+  getElementById:id=>id==='dashboard-admin-chart-data'?{textContent:JSON.stringify({registrations:{labels:['2026-10'],values:[1]},usage:{labels:['Raspagem por termos'],values:[1]}})}:
     id==='dashboard-chart-users'?charts[0]:id==='dashboard-chart-usage'?charts[1]:null,
   addEventListener:(name,fn)=>handlers[name]=fn,
   querySelectorAll:selector=>selector.endsWith('.js-plotly-plot')?charts:selector.endsWith('.platform-panel')?cards:[],
 };
-const ResizeObserver = class {constructor(fn){this.fn=fn;} observe(target){observed.push(target);}};
 const requestAnimationFrame=fn=>{frames.set(++serial,fn);return serial;}, cancelAnimationFrame=id=>frames.delete(id);
 const Plotly={react:(...args)=>calls.push(args),Plots:{resize:target=>resized.push(target)}};
-const window={Plotly,ResizeObserver,PesquisaPdfPlotTheme:{palette:()=>['red','blue','green'],layout:margin=>({margin}),axis:x=>x}};
+const window={Plotly,PesquisaPdfPlotTheme:{palette:()=>['red','blue','green'],layout:margin=>({margin}),axis:x=>x},addEventListener:(name,fn)=>handlers[`window:${name}`]=fn};
 """ + source + r"""
 assert.equal(calls.length,2);
-assert.deepEqual(observed,cards);
 handlers['tema-alterado']();assert.equal(calls.length,4);
 handlers['dashboard-redimensionar']();
 assert.equal(frames.size,1);for(const fn of frames.values())fn();frames.clear();
 assert.deepEqual(resized,charts);
-handlers['dashboard-redimensionar']();assert.equal(frames.size,1);
+handlers['window:resize']();assert.equal(frames.size,1);
+"""
+        result = subprocess.run([node, "-e", script], capture_output=True, text=True, encoding="utf-8")
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_ojs_history_uses_a_lightweight_svg_without_plotly(self):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("Node não disponível")
+        source = (Path(__file__).resolve().parents[1] / "static/js/ojs_dashboard_charts.js").read_text(encoding="utf-8")
+        self.assertNotIn("ResizeObserver", source)
+        script = r"""
+const assert=require('node:assert/strict');
+const handlers={};
+const element=(name='node')=>({name,attrs:{},children:[],dataset:{},setAttribute(key,value){this.attrs[key]=value},append(child){this.children.push(child)},replaceChildren(...children){this.children=children}});
+const target=element('target');
+const historyData={labels:['01/01/2026','02/01/2026','03/01/2026'],active_records:[1,2,3],records:[1,2,3],statuses:['Concluída','Concluída','Concluída']};
+const document={
+ getElementById:id=>id==='ojs-dashboard-history-chart-data'?{textContent:JSON.stringify(historyData)}:id==='ojs-dashboard-chart-history'?target:null,
+ createElementNS:(_,name)=>element(name), addEventListener:(name,fn)=>handlers[name]=fn,
+};
+const getComputedStyle=()=>({getPropertyValue:name=>({ '--plot-text':'#eef', '--muted':'#aac', '--plot-grid':'#345', '--chart-cyan':'#5cf', '--chart-magenta':'#e7d' }[name] || '')});
+const window={addEventListener:(name,fn)=>handlers[`window:${name}`]=fn};
+""" + source + "\n" + source + r"""
+assert.equal(target.dataset.chartRendered,'true');
+assert.equal(target.children[0].name,'svg');
+assert.equal(target.children[0].attrs.role,'img');
+handlers['tema-alterado'](); assert.equal(target.children.length,1);
 """
         result = subprocess.run([node, "-e", script], capture_output=True, text=True, encoding="utf-8")
         self.assertEqual(result.returncode, 0, result.stderr)

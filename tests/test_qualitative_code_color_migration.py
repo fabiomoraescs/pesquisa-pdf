@@ -40,7 +40,7 @@ class QualitativeCodeColorMigrationTests(unittest.TestCase):
                 id="owner", name="Pesquisador", email="color-migration@example.org", password_hash="test-only"))
             if not connection.exec_driver_sql("SELECT 1 FROM tools WHERE id = ?", (QUALITATIVE_TOOL,)).scalar():
                 connection.execute(Tool.__table__.insert().values(
-                    id=QUALITATIVE_TOOL, name="Análise quali-dados", route="/analise-qualitativa"))
+                    id=QUALITATIVE_TOOL, name="Análise Documental", route="/analise-qualitativa"))
             connection.execute(Project.__table__.insert().values(
                 id="project", owner_user_id="owner", name="Projeto existente", scrape_type="qualitative"))
             connection.execute(Analysis.__table__.insert().values(

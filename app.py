@@ -47,13 +47,15 @@ from platform_core.analysis_routes import analyses_bp
 from platform_core.qualitative_routes import qualitative_bp
 from platform_core.presentation import register_presentation
 from platform_core.cli import register_cli
-from platform_core.services import ACCOUNT_LIFECYCLE_LOCK, access_is_active, account_accepts_new_work, can_use_tool, get_project_for_user, tool_catalog
+from platform_core.services import ANALYTICS_INSTAGRAM_TOOL, ACCOUNT_LIFECYCLE_LOCK, access_is_active, account_accepts_new_work, awaiting_plan_activation, can_access_tool, get_project_for_user, navigation_groups_for_user, navigation_standalone_tools_for_user, require_tool_access, tool_catalog
 from platform_core.scraping_types import FREE, LABEL_BY_TOOL, QUALITATIVE, QUALITATIVE_TOOL, SYSTEMATIC, TOOL_BY_TYPE, tool_for_project
 from platform_core.semantic_threshold import normalize as normalize_semantic_threshold, template_settings
 from platform_core.term_input import has_invalid_term_separator
 from platform_core.assistant_context import assistant_context_for_endpoint, assistant_context_for_request
 from platform_core.assistant_routes import assistant_bp
 from platform_core.platform_help import load_help_registry, tutorial_for
+from platform_core.instagram_routes import instagram_bp
+from platform_core.ojs_seo_routes import ojs_seo_bp
 
 from analyzer.common import (
     ANALISADORES,
@@ -87,10 +89,19 @@ app.config.update(
     SQLALCHEMY_ENGINE_OPTIONS={"connect_args": {"timeout": 30}} if DATABASE_URI.startswith("sqlite:") else {},
     SQLALCHEMY_TRACK_MODIFICATIONS=False,
     PLATFORM_DATA_DIR=str(PLATFORM_DATA_DIR),
+    PRESENTATION_TIMEZONE=os.environ.get("PESQUISAPDF_PRESENTATION_TIMEZONE", "America/Maceio"),
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax",
     SESSION_COOKIE_SECURE=os.environ.get("PESQUISAPDF_HTTPS") == "1",
     PASSWORD_RECOVERY_TTL_SECONDS=1800,
+    # A impressão HMAC do CPF nunca é uma chave de sessão nem um hash simples.
+    # A ativação de teste recusa operar enquanto esta chave está ausente, para
+    # não persistir uma referência que deixaria de ser verificável após reinício.
+    PESQUISAPDF_CPF_HMAC_SECRET=os.environ.get("PESQUISAPDF_CPF_HMAC_SECRET", ""),
+    PESQUISAPDF_CPF_HMAC_KEY_VERSION=os.environ.get("PESQUISAPDF_CPF_HMAC_KEY_VERSION", "v1"),
+    # Operações administrativas destrutivas ou de preparação de integrações
+    # locais exigem esta confirmação explícita além da verificação do SQLite.
+    PESQUISAPDF_LOCAL_DEVELOPMENT=os.environ.get("PESQUISAPDF_LOCAL_DEVELOPMENT") == "1",
     PESQUISAPDF_PUBLIC_URL=os.environ.get("PESQUISAPDF_PUBLIC_URL", ""),
     MAIL_SERVER=os.environ.get("MAIL_SERVER", ""),
     MAIL_PORT=os.environ.get("MAIL_PORT", "587"),
@@ -107,6 +118,17 @@ app.config.update(
     # Compatibilidade somente para o primeiro bootstrap sem configuração
     # persistida. Depois disso, o Gerencial é a fonte operacional.
     AI_PROVIDER=os.environ.get("AI_PROVIDER", ""),
+    # Integração opcional da API Instagram. Credenciais ficam somente no
+    # ambiente local/deploy; nenhuma delas é exposta a templates ou logs.
+    PESQUISAPDF_META_APP_ID=os.environ.get("PESQUISAPDF_META_APP_ID", ""),
+    PESQUISAPDF_META_APP_SECRET=os.environ.get("PESQUISAPDF_META_APP_SECRET", ""),
+    PESQUISAPDF_META_INSTAGRAM_APP_ID=os.environ.get("PESQUISAPDF_META_INSTAGRAM_APP_ID", ""),
+    PESQUISAPDF_META_INSTAGRAM_APP_SECRET=os.environ.get("PESQUISAPDF_META_INSTAGRAM_APP_SECRET", ""),
+    PESQUISAPDF_META_REDIRECT_URI=os.environ.get("PESQUISAPDF_META_REDIRECT_URI", ""),
+    PESQUISAPDF_META_API_VERSION=os.environ.get("PESQUISAPDF_META_API_VERSION", "v26.0"),
+    PESQUISAPDF_META_TOKEN_ENCRYPTION_KEY=os.environ.get(
+        "PESQUISAPDF_META_TOKEN_ENCRYPTION_KEY", ""
+    ),
 )
 db.init_app(app)
 login_manager.init_app(app)
@@ -134,9 +156,15 @@ def _semantic_threshold_template_context():
         assistant_context = assistant_context_for_endpoint(request.endpoint, request.view_args)
     help_registry = load_help_registry()
     return {"semantic_threshold": template_settings(),
-            "free_access": bool(current_user.is_authenticated and can_use_tool(current_user, "pdf_scraper")),
-            "systematic_access": bool(current_user.is_authenticated and can_use_tool(current_user, "document_analysis")),
-            "qualitative_access": bool(current_user.is_authenticated and can_use_tool(current_user, QUALITATIVE_TOOL)),
+            "free_access": bool(current_user.is_authenticated and can_access_tool(current_user, "pdf_scraper")),
+            "systematic_access": bool(current_user.is_authenticated and can_access_tool(current_user, "document_analysis")),
+            "qualitative_access": bool(current_user.is_authenticated and can_access_tool(current_user, QUALITATIVE_TOOL)),
+            "instagram_access": bool(current_user.is_authenticated and can_access_tool(current_user, ANALYTICS_INSTAGRAM_TOOL)),
+            "navigation_groups": navigation_groups_for_user(current_user) if current_user.is_authenticated else (),
+            "navigation_standalone_tools": navigation_standalone_tools_for_user(current_user) if current_user.is_authenticated else (),
+            "pending_plan_activation": bool(
+                current_user.is_authenticated and awaiting_plan_activation(current_user)
+            ),
             "assistant_context": assistant_context,
             "platform_help": tutorial_for(assistant_context.get("key")),
             "platform_help_for": tutorial_for,
@@ -151,6 +179,8 @@ app.register_blueprint(profile_bp)
 app.register_blueprint(historico_racial_bp)
 app.register_blueprint(analyses_bp)
 app.register_blueprint(qualitative_bp)
+app.register_blueprint(instagram_bp)
+app.register_blueprint(ojs_seo_bp)
 app.register_blueprint(assistant_bp)
 
 
@@ -176,6 +206,19 @@ def _enforce_platform_access():
             return jsonify({"erro": "Altere sua senha antes de continuar."}), 403
         return redirect(url_for("auth.change_password"))
     if not access_is_active(current_user):
+        # Um cadastro sem plano é válido para autenticação e para as ações
+        # essenciais de conta. Ele não ganha acesso transitório a nenhuma
+        # ferramenta, inclusive por URL direta.
+        pending_account_endpoints = {
+            "home",
+            "profile.my_profile",
+            "profile.photo",
+            "profile.upload_photo",
+            "profile.remove_photo",
+            "auth.logout",
+        }
+        if awaiting_plan_activation(current_user) and request.endpoint in pending_account_endpoints:
+            return None
         if request.endpoint == "auth.logout":
             return None
         abort(403)
@@ -185,19 +228,16 @@ def _enforce_platform_access():
     elif ((request.path == "/" and request.method == "POST")
           or request.path == "/raspagem-livre"
           or request.path.startswith(("/resultado/", "/download/", "/api/progresso/"))):
-        if not can_use_tool(current_user, "pdf_scraper"):
-            abort(403)
+        require_tool_access(current_user, "pdf_scraper")
     elif request.path.startswith(("/historico-racial", "/analise-documental")):
-        if not can_use_tool(current_user, "document_analysis"):
-            abort(403)
+        require_tool_access(current_user, "document_analysis")
     else:
         # Ferramentas futuras cadastradas com prefixo próprio também recebem
         # proteção por plano, sem criar constantes duplicadas na navegação.
         for tool in db.session.scalars(select(Tool).where(Tool.route.notin_(("/", "/analise-documental")))):
             prefix = tool.route.rstrip("/")
             if prefix and (request.path == prefix or request.path.startswith(prefix + "/")):
-                if not can_use_tool(current_user, tool.id):
-                    abort(403)
+                require_tool_access(current_user, tool.id)
                 break
     return None
 
@@ -759,7 +799,7 @@ def home():
     """Mesa de trabalho baseada apenas em metadados persistidos e autorizados."""
     available_project_types = [
         kind for kind in TOOL_BY_TYPE
-        if can_use_tool(current_user, TOOL_BY_TYPE[kind])
+        if can_access_tool(current_user, TOOL_BY_TYPE[kind])
     ]
     project_filter = (Project.owner_user_id == current_user.id,
                       Project.status == "active", Project.deleted_at.is_(None),
@@ -866,13 +906,14 @@ def home():
     return render_template(
         "platform/dashboard.html",
         workspace_metrics=(
-            {"label": "Projetos", "value": projects_total, "icon": "projetos"},
-            {"label": "Bases", "value": bases_total, "icon": "ficha"},
-            {"label": "Documentos nas Bases", "value": documents_in_bases, "icon": "pdf"},
-            {"label": "Bases concluídas", "value": concluded_total, "icon": "ativar"},
+            {"label": "Projetos", "value": projects_total, "description": "Projetos aos quais você tem acesso."},
+            {"label": "Bases", "value": bases_total, "description": "Bases de análise acessíveis."},
+            {"label": "Documentos nas Bases", "value": documents_in_bases, "description": "Registros vinculados às suas Bases."},
+            {"label": "Bases concluídas", "value": concluded_total, "description": "Bases concluídas com acesso disponível."},
         ),
         recent_work=recent_work,
         admin_charts=admin_charts,
+        pending_plan_activation=awaiting_plan_activation(current_user),
     )
 
 
@@ -890,8 +931,7 @@ def inicio():
                 abort(403)
             if duplicate.project_id:
                 previous_project = get_project_for_user(duplicate.project_id, current_user)
-                if not can_use_tool(current_user, tool_for_project(previous_project)):
-                    abort(403)
+                require_tool_access(current_user, tool_for_project(previous_project))
         selected_project_id = request.args.get("project_id") or (duplicate.project_id if duplicate else None)
         selected_project = None
         if selected_project_id:
@@ -918,8 +958,7 @@ def inicio():
             abort(403)
         if duplicate.project_id:
             previous_project = get_project_for_user(duplicate.project_id, current_user)
-            if not can_use_tool(current_user, tool_for_project(previous_project)):
-                abort(403)
+            require_tool_access(current_user, tool_for_project(previous_project))
 
     selected_project_id = request.form.get("project_id", "").strip()
     if request.args.get("project_id"):
@@ -1143,6 +1182,8 @@ def create_app(test_config: dict | None = None) -> Flask:
     isolated.register_blueprint(historico_racial_bp)
     isolated.register_blueprint(analyses_bp)
     isolated.register_blueprint(qualitative_bp)
+    isolated.register_blueprint(instagram_bp)
+    isolated.register_blueprint(ojs_seo_bp)
     isolated.register_blueprint(assistant_bp)
     isolated.before_request(_enforce_platform_access)
     isolated.register_error_handler(CSRFError, _csrf_error)

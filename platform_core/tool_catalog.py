@@ -1,0 +1,308 @@
+"""Catálogo declarativo de ferramentas e política pura de visibilidade.
+
+O módulo não consulta o banco e não decide autorização.  Ele descreve a
+organização estável da plataforma para que a navegação, a administração e,
+futuramente, as regras comerciais possam consumir a mesma fonte de verdade.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Iterable, Mapping
+
+
+IMPLEMENTATION_STATUSES = frozenset({"available", "development", "future"})
+ANALYTICS_INSTAGRAM_TOOL = "analytics_instagram"
+VISIBILITY_SCOPE_GROUP = "group"
+VISIBILITY_SCOPE_TOOL = "tool"
+VISIBILITY_SCOPE_TYPES = frozenset({VISIBILITY_SCOPE_GROUP, VISIBILITY_SCOPE_TOOL})
+
+
+@dataclass(frozen=True, slots=True)
+class ToolGroupDefinition:
+    """Metadados estáveis de um agrupamento de ferramentas na navegação."""
+
+    group_id: str
+    name: str
+    group_order: int
+    icon: str
+
+
+@dataclass(frozen=True, slots=True)
+class ToolDefinition:
+    """Descrição estática de uma ferramenta, sem estado operacional."""
+
+    # ``None`` identifica uma ferramenta de primeiro nível. Ela continua
+    # participando do mesmo catálogo e da mesma política de visibilidade, mas
+    # não é artificialmente encaixada em um grupo de navegação.
+    group_id: str | None
+    tool_id: str
+    name: str
+    tool_order: int
+    implementation_status: str
+    tool_code: str | None = None
+    route: str | None = None
+    endpoint: str | None = None
+    authorization_points: tuple[str, ...] = ()
+    icon: str | None = None
+    # Algumas ferramentas podem ter código e rotas prontos, mas exigem uma
+    # publicação administrativa explícita. Isso evita que um bootstrap ou
+    # seed genérico disponibilize uma integração nova por acidente.
+    requires_explicit_provisioning: bool = False
+    # A descrição pertence ao catálogo, inclusive para capacidades futuras que
+    # ainda não possuem uma ``Tool`` persistida ou uma página própria.
+    description: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class VisibleToolGroup:
+    """Resultado imutável e pronto para uma futura renderização da sidebar."""
+
+    group: ToolGroupDefinition
+    tools: tuple[ToolDefinition, ...]
+
+
+TOOL_GROUPS: tuple[ToolGroupDefinition, ...] = (
+    ToolGroupDefinition("research_quali", "Pesquisa Quali", 0, "qualitativa"),
+    ToolGroupDefinition("research_quanti", "Pesquisa Quanti", 1, "quantitativa"),
+    ToolGroupDefinition("analytics", "Analytics", 2, "analytics"),
+)
+
+TOOL_DEFINITIONS: tuple[ToolDefinition, ...] = (
+    ToolDefinition(
+        "research_quali", "pdf_scraper", "Raspagem por termos", 0, "available",
+        tool_code="pdf_scraper", route="/", endpoint="projects.list_free_projects", icon="pdf",
+        authorization_points=("app._enforce_platform_access", "projects._require_tool", "analyses._authorized"),
+    ),
+    ToolDefinition(
+        "research_quali", "document_analysis", "Raspagem estruturada", 1, "available",
+        tool_code="document_analysis", route="/analise-documental", endpoint="projects.list_projects", icon="lista",
+        authorization_points=("app._enforce_platform_access", "projects._require_tool", "analyses._authorized"),
+    ),
+    ToolDefinition(
+        "research_quali", "qualitative_analysis", "Análise Documental", 2, "available",
+        tool_code="qualitative_analysis", route="/analise-qualitativa", endpoint="projects.list_qualitative_projects", icon="ficha",
+        authorization_points=("app._enforce_platform_access", "projects._require_tool", "qualitative._require_tool"),
+    ),
+    ToolDefinition(
+        "research_quanti", "quantitative_analysis", "Pesquisa Quanti", 0, "future",
+        icon="quantitativa",
+    ),
+    ToolDefinition(
+        "analytics", ANALYTICS_INSTAGRAM_TOOL, "Instagram", 0, "available",
+        tool_code=ANALYTICS_INSTAGRAM_TOOL, route="/analytics/instagram", endpoint="instagram.home", icon="analytics",
+        authorization_points=("app._enforce_platform_access", "instagram._require_tool"),
+    ),
+    ToolDefinition(
+        "analytics", "ojs_seo", "OJS SEO", 1, "available",
+        tool_code="ojs_seo", route="/analytics/ojs-seo", endpoint="ojs_seo.home",
+        authorization_points=("app._enforce_platform_access", "ojs_seo._require_tool"),
+        icon="seo", requires_explicit_provisioning=True,
+    ),
+    ToolDefinition("analytics", "ojs_analytics", "OJS Analytics", 2, "future", icon="analytics"),
+    ToolDefinition(None, "bibliographic_search", "Busca Bibliográfica", 0, "future", icon="ficha"),
+    ToolDefinition(
+        None, "transcription", "Transcrição", 1, "future", icon="transcricao",
+        description="Transcrição de áudio planejada como ferramenta compartilhada para pesquisa e gestão.",
+    ),
+    ToolDefinition(
+        None, "marketing_funnels", "Marketing & Funis", 2, "future", icon="funis",
+        description=(
+            "CRM, campanhas de e-mail, funis acadêmicos, automações e reforços opcionais por WhatsApp, "
+            "planejados separadamente da Mala Direta do OJS Analytics."
+        ),
+    ),
+)
+
+
+def _validate_catalog() -> None:
+    group_ids = [group.group_id for group in TOOL_GROUPS]
+    group_orders = [group.group_order for group in TOOL_GROUPS]
+    tool_ids = [tool.tool_id for tool in TOOL_DEFINITIONS]
+    tool_codes = [tool.tool_code for tool in TOOL_DEFINITIONS if tool.tool_code]
+    if len(group_ids) != len(set(group_ids)):
+        raise RuntimeError("O catálogo contém grupos duplicados.")
+    if len(group_orders) != len(set(group_orders)):
+        raise RuntimeError("O catálogo contém posições de grupo duplicadas.")
+    if len(tool_ids) != len(set(tool_ids)):
+        raise RuntimeError("O catálogo contém ferramentas duplicadas.")
+    if len(tool_codes) != len(set(tool_codes)):
+        raise RuntimeError("O catálogo contém referências Tool duplicadas.")
+    valid_groups = set(group_ids)
+    group_tool_orders: set[tuple[str | None, int]] = set()
+    for tool in TOOL_DEFINITIONS:
+        if tool.group_id is not None and tool.group_id not in valid_groups:
+            raise RuntimeError(f"Ferramenta com grupo inexistente: {tool.tool_id}")
+        if tool.implementation_status not in IMPLEMENTATION_STATUSES:
+            raise RuntimeError(f"Estado de implementação inválido: {tool.tool_id}")
+        if tool.implementation_status == "available" and (not tool.tool_code or not tool.route or not tool.endpoint):
+            raise RuntimeError(f"Ferramenta disponível sem Tool ou rota: {tool.tool_id}")
+        if tool.implementation_status != "available" and (tool.tool_code or tool.route or tool.endpoint):
+            raise RuntimeError(f"Ferramenta não implementada não pode declarar Tool ou rota: {tool.tool_id}")
+        if tool.requires_explicit_provisioning and tool.implementation_status != "available":
+            raise RuntimeError(f"Provisionamento explícito requer ferramenta disponível: {tool.tool_id}")
+        group_tool_order = (tool.group_id, tool.tool_order)
+        if group_tool_order in group_tool_orders:
+            raise RuntimeError(f"Ferramentas com a mesma posição: {tool.group_id}")
+        group_tool_orders.add(group_tool_order)
+
+
+def groups_in_display_order() -> tuple[ToolGroupDefinition, ...]:
+    return tuple(sorted(TOOL_GROUPS, key=lambda group: (group.group_order, group.group_id)))
+
+
+def tools_in_display_order() -> tuple[ToolDefinition, ...]:
+    group_order = {group.group_id: group.group_order for group in TOOL_GROUPS}
+    return tuple(sorted(
+        TOOL_DEFINITIONS,
+        key=lambda tool: (group_order.get(tool.group_id, len(TOOL_GROUPS)), tool.tool_order, tool.tool_id),
+    ))
+
+
+def standalone_tools_in_display_order() -> tuple[ToolDefinition, ...]:
+    """Ferramentas de primeiro nível, na ordem oficial do catálogo."""
+    return tuple(tool for tool in tools_in_display_order() if tool.group_id is None)
+
+
+def tool_definition(tool_id: str) -> ToolDefinition | None:
+    return next((tool for tool in TOOL_DEFINITIONS if tool.tool_id == tool_id), None)
+
+
+def group_definition(group_id: str) -> ToolGroupDefinition | None:
+    return next((group for group in TOOL_GROUPS if group.group_id == group_id), None)
+
+
+def validate_visibility_target(scope_type: str, scope_id: str) -> None:
+    """Valida uma chave persistível sem consultar o banco.
+
+    A configuração de visibilidade só pode referir metadados estáveis do
+    catálogo. Estados de implementação, ``Tool.active`` e permissões seguem
+    sendo avaliados em suas camadas próprias.
+    """
+    if scope_type == VISIBILITY_SCOPE_GROUP and group_definition(scope_id) is not None:
+        return
+    if scope_type == VISIBILITY_SCOPE_TOOL and tool_definition(scope_id) is not None:
+        return
+    if scope_type not in VISIBILITY_SCOPE_TYPES:
+        raise ValueError("Tipo de configuração de visibilidade inválido.")
+    raise ValueError("Grupo ou ferramenta de visibilidade inexistente.")
+
+
+def persistent_tool_seed_rows() -> tuple[tuple[str, str, str], ...]:
+    """Linhas de seed dos ``Tool`` realmente implementados, em ordem estável."""
+    return tuple(
+        (tool.tool_code, tool.name, tool.route)
+        for tool in tools_in_display_order()
+        if tool.implementation_status == "available"
+        and not tool.requires_explicit_provisioning
+        and tool.tool_code is not None and tool.route is not None
+    )
+
+
+def legacy_unavailable_tool_entries() -> tuple[dict[str, object], ...]:
+    """Adaptador temporário para a UI administrativa ainda não migrada."""
+    return tuple(
+        {
+            "id": tool.tool_id,
+            "group_id": tool.group_id,
+            "name": tool.name,
+            "icon": tool.icon,
+            "description": tool.description,
+        }
+        for tool in tools_in_display_order()
+        if tool.implementation_status != "available"
+    )
+
+
+def _visibility_value(settings: Mapping[str, bool] | None, identifier: str, *, kind: str) -> bool:
+    if settings is None or identifier not in settings:
+        return True
+    value = settings[identifier]
+    if not isinstance(value, bool):
+        raise ValueError(f"A visibilidade de {kind} deve ser booleana.")
+    return value
+
+
+def _validate_visibility_keys(settings: Mapping[str, bool] | None, valid_keys: set[str], *, kind: str) -> None:
+    if settings is None:
+        return
+    unknown = set(settings) - valid_keys
+    if unknown:
+        raise ValueError(f"Configuração de visibilidade para {kind} desconhecido: {sorted(unknown)[0]}")
+    for identifier in settings:
+        _visibility_value(settings, identifier, kind=kind)
+
+
+def visible_navigation_groups(
+    *,
+    group_visibility: Mapping[str, bool] | None = None,
+    tool_visibility: Mapping[str, bool] | None = None,
+) -> tuple[VisibleToolGroup, ...]:
+    """Filtra o catálogo sem mutá-lo e remove grupos sem itens exibíveis.
+
+    O resultado considera apenas a configuração de visibilidade e a situação
+    de implementação. Ferramentas futuras permanecem candidatas à navegação
+    quando o administrador assim decidir, mas seguem sem rota ou autorização
+    operacional. Elegibilidade por plano, overrides e ``Tool.active``
+    permanece deliberadamente fora desta política.
+    """
+    _validate_visibility_keys(group_visibility, {group.group_id for group in TOOL_GROUPS}, kind="grupo")
+    _validate_visibility_keys(tool_visibility, {tool.tool_id for tool in TOOL_DEFINITIONS}, kind="ferramenta")
+    tools_by_group: dict[str, list[ToolDefinition]] = {group.group_id: [] for group in TOOL_GROUPS}
+    for tool in tools_in_display_order():
+        if tool.group_id is None:
+            continue
+        if not _visibility_value(tool_visibility, tool.tool_id, kind="ferramenta"):
+            continue
+        tools_by_group[tool.group_id].append(tool)
+
+    return tuple(
+        VisibleToolGroup(group=group, tools=tuple(tools_by_group[group.group_id]))
+        for group in groups_in_display_order()
+        if _visibility_value(group_visibility, group.group_id, kind="grupo")
+        and tools_by_group[group.group_id]
+    )
+
+
+def visible_standalone_tools(
+    *, tool_visibility: Mapping[str, bool] | None = None,
+) -> tuple[ToolDefinition, ...]:
+    """Ferramentas de primeiro nível filtradas antes da renderização."""
+    _validate_visibility_keys(tool_visibility, {tool.tool_id for tool in TOOL_DEFINITIONS}, kind="ferramenta")
+    return tuple(
+        tool for tool in standalone_tools_in_display_order()
+        if _visibility_value(tool_visibility, tool.tool_id, kind="ferramenta")
+    )
+
+
+def administrative_catalog_entries(persisted_tools: Iterable[object]) -> list[dict[str, object]]:
+    """Projeção compatível com a administração atual, sem consultar o banco."""
+    persisted_by_id = {str(tool.id): tool for tool in persisted_tools}
+    rows: list[tuple[tuple[int, int, str], dict[str, object]]] = []
+    groups = {group.group_id: group for group in TOOL_GROUPS}
+    for tool in tools_in_display_order():
+        group = groups.get(tool.group_id) if tool.group_id is not None else None
+        persisted = persisted_by_id.pop(tool.tool_code, None) if tool.tool_code else None
+        if tool.implementation_status == "available":
+            if persisted is None:
+                continue
+            rows.append(((group.group_order if group else len(TOOL_GROUPS), tool.tool_order, tool.tool_id), {
+                "id": str(persisted.id), "group_id": tool.group_id, "name": tool.name,
+                "active": bool(persisted.active), "implemented": True, "icon": tool.icon,
+                "description": tool.description or str(getattr(persisted, "description", "") or ""),
+            }))
+        else:
+            rows.append(((group.group_order if group else len(TOOL_GROUPS), tool.tool_order, tool.tool_id), {
+                "id": tool.tool_id, "group_id": tool.group_id, "name": tool.name,
+                "active": False, "implemented": False, "icon": tool.icon, "description": tool.description,
+            }))
+    for tool_id, tool in persisted_by_id.items():
+        rows.append(((len(TOOL_GROUPS), len(rows), tool_id), {
+            "id": tool_id, "group_id": None, "name": str(tool.name),
+            "active": bool(tool.active), "implemented": True, "icon": None,
+            "description": str(getattr(tool, "description", "") or ""),
+        }))
+    return [row for _sort_key, row in sorted(rows, key=lambda item: item[0])]
+
+
+_validate_catalog()

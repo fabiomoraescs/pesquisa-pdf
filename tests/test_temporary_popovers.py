@@ -52,8 +52,11 @@ const helpRegexTrigger=new Element('BUTTON','help-regex-trigger'), helpLexicalTr
 for (const [panel,trigger] of [[helpRegex,helpRegexTrigger],[helpLexical,helpLexicalTrigger]]) {
   panel.native=true; panel.attrs['data-popover-anchor']=''; trigger.attrs['aria-controls']=panel.id;
 }
+const endAligned=new Element('DIV','end-aligned'); endAligned.native=true;
+endAligned.attrs['data-popover-anchor']=''; endAligned.attrs['data-popover-align-end']='';
+const endAlignedTrigger=new Element('BUTTON','end-aligned-trigger'); endAlignedTrigger.attrs['aria-controls']=endAligned.id;
 const window=new Element('WINDOW','window'); window.innerWidth=390; window.innerHeight=844;
-const panels=[upload,docs,codes,context,helpRegex,helpLexical], triggers=[docsTrigger,codesTrigger,helpRegexTrigger,helpLexicalTrigger];
+const panels=[upload,docs,codes,context,helpRegex,helpLexical,endAligned], triggers=[docsTrigger,codesTrigger,helpRegexTrigger,helpLexicalTrigger,endAlignedTrigger];
 document.querySelectorAll = selector => selector === '[data-temporary-popover]' ? panels :
   triggers.filter(t => `[aria-controls="${t.attrs['aria-controls']}"]` === selector);
 """
@@ -85,6 +88,15 @@ document.emit('keydown',{key:'Escape'}); assert.equal(helpLexical.matches(),fals
 assert.equal(document.activeElement,helpLexicalTrigger);
 helpRegex.showPopover(); document.emit('click',{target:outside}); assert.equal(helpRegex.matches(),false);
 helpRegex.showPopover(); docs.showPopover(); assert.equal(helpRegex.matches(),false);
+""")
+
+    def test_opt_in_end_alignment_uses_trigger_right_edge_and_stays_in_viewport(self):
+        self.run_js(r"""
+document.documentElement={clientWidth:500,clientHeight:844};
+endAlignedTrigger.focus(); endAligned.showPopover();
+assert.equal(endAligned.style.left,'115px');
+document.documentElement={clientWidth:375,clientHeight:844}; window.emit('resize');
+assert.equal(endAligned.style.left,'107px');
 """)
 
     def test_internal_interaction_and_trigger_keep_open_but_outside_click_closes(self):
