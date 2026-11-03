@@ -119,8 +119,11 @@ tar -C "$backup_directory/payload" -czf "$backup_directory/outputs.tar.gz" platf
   python - "$audit_run_id" <<'PY'
 import sqlite3
 import sys
+from pathlib import Path
 
-connection = sqlite3.connect("/app/outputs/platform/platform.sqlite3")
+database_path = Path("/app/outputs/platform/platform.sqlite3")
+database_path.parent.mkdir(parents=True, exist_ok=True)
+connection = sqlite3.connect(database_path)
 connection.execute("CREATE TABLE ojs_html_audit_runs (id TEXT PRIMARY KEY, status TEXT NOT NULL)")
 connection.execute("INSERT INTO ojs_html_audit_runs (id, status) VALUES (?, 'pending')", (sys.argv[1],))
 connection.commit()
