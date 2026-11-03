@@ -267,7 +267,7 @@ if PILOT_TEST_HTTP_FAIL=1 run_pilot --execute --confirm EXECUTAR-PILOTO-HTML > "
   printf '%s\n' 'web health failure was accepted' >&2
   exit 72
 fi
-sudo grep -Fq 'web_health_check_failed' /var/lib/analisys-html-pilots/*.report
+sudo /usr/bin/bash -c "grep -Fq -- 'web_health_check_failed' /var/lib/analisys-html-pilots/*.report"
 remove_pilot_container
 reset_audit
 
@@ -276,7 +276,7 @@ if run_pilot --execute --confirm EXECUTAR-PILOTO-HTML --max-execution-seconds 30
   printf '%s\n' 'pilot runtime timeout was accepted' >&2
   exit 73
 fi
-sudo grep -Fq 'pilot_runtime_limit' /var/lib/analisys-html-pilots/*.report
+sudo /usr/bin/bash -c "grep -Fq -- 'pilot_runtime_limit' /var/lib/analisys-html-pilots/*.report"
 remove_pilot_container
 
 printf '%s\n' 'html_pilot_real_docker_test=ok'
