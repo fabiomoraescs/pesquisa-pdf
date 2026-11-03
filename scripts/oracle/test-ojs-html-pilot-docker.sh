@@ -115,7 +115,7 @@ tar -C "$backup_directory/payload" -czf "$backup_directory/outputs.tar.gz" platf
 (cd "$backup_directory" && sha256sum outputs.tar.gz > outputs.tar.gz.sha256)
 
 "$real_docker" volume create "$volume_name" >/dev/null
-"$real_docker" run --rm --mount "type=volume,src=${volume_name},dst=/app/outputs" "$fixture_image" \
+"$real_docker" run --rm --interactive --mount "type=volume,src=${volume_name},dst=/app/outputs" "$fixture_image" \
   python - "$audit_run_id" <<'PY'
 import sqlite3
 import sys
@@ -165,7 +165,7 @@ run_pilot() {
 }
 
 audit_status() {
-  "$real_docker" run --rm --network none --mount "type=volume,src=${volume_name},dst=/app/outputs,readonly" \
+  "$real_docker" run --rm --interactive --network none --mount "type=volume,src=${volume_name},dst=/app/outputs,readonly" \
     "$fixture_image" python - "$audit_run_id" <<'PY'
 import sqlite3
 import sys
@@ -176,7 +176,7 @@ PY
 }
 
 audit_run_count() {
-  "$real_docker" run --rm --network none --mount "type=volume,src=${volume_name},dst=/app/outputs,readonly" \
+  "$real_docker" run --rm --interactive --network none --mount "type=volume,src=${volume_name},dst=/app/outputs,readonly" \
     "$fixture_image" python - <<'PY'
 import sqlite3
 connection = sqlite3.connect("file:/app/outputs/platform/platform.sqlite3?mode=ro", uri=True)
@@ -186,7 +186,7 @@ PY
 }
 
 reset_audit() {
-  "$real_docker" run --rm --mount "type=volume,src=${volume_name},dst=/app/outputs" "$fixture_image" \
+  "$real_docker" run --rm --interactive --mount "type=volume,src=${volume_name},dst=/app/outputs" "$fixture_image" \
     python - "$audit_run_id" <<'PY'
 import sqlite3
 import sys
